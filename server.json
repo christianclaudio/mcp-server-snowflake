@@ -1,0 +1,121 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.christianclaudio/snowflake",
+  "title": "mcp-server-snowflake",
+  "description": "Enterprise Model Context Protocol (MCP) server for Snowflake data cloud and Cortex AI.",
+  "repository": {
+    "url": "https://github.com/christianclaudio/mcp-server-snowflake",
+    "source": "github"
+  },
+  "version": "1.1.0",
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "mcp-server-snowflake",
+      "version": "1.1.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "SNOWFLAKE_ACCOUNT",
+          "description": "Snowflake account identifier (e.g. xy12345.us-east-1). Optional if configured in connections.toml.",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "SNOWFLAKE_USER",
+          "description": "Snowflake username. Optional if configured in connections.toml.",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "SNOWFLAKE_PASSWORD",
+          "description": "Snowflake password (if using password authentication)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true
+        },
+        {
+          "name": "SNOWFLAKE_TOKEN",
+          "description": "OAuth / PAT Bearer token",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true
+        },
+        {
+          "name": "SNOWFLAKE_PRIVATE_KEY_PATH",
+          "description": "Path to RSA private key file (for JWT key-pair authentication)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "SNOWFLAKE_PRIVATE_KEY_RAW",
+          "description": "Raw PEM-encoded RSA private key string",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true
+        },
+        {
+          "name": "SNOWFLAKE_PRIVATE_KEY_PASSPHRASE",
+          "description": "Passphrase for encrypted RSA private key",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": true
+        },
+        {
+          "name": "SNOWFLAKE_AUTHENTICATOR",
+          "description": "Authenticator type (e.g. externalbrowser, oauth, snowflake_jwt, username_password_mfa)",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "SNOWFLAKE_CONNECTION_NAME",
+          "description": "Connection profile name defined in ~/.snowflake/connections.toml (e.g. 'default', 'trial', 'prod'). When set, loads account, user, authenticator, role, and warehouse from the profile.",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "SNOWFLAKE_ROLE",
+          "description": "Snowflake role name",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "SNOWFLAKE_WAREHOUSE",
+          "description": "Default virtual warehouse",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "SNOWFLAKE_DATABASE",
+          "description": "Default database",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "SNOWFLAKE_SCHEMA",
+          "description": "Default schema",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "SNOWFLAKE_MCP_READONLY",
+          "description": "Set to 1 to enforce strict read-only mode, rejecting all DDL/DML mutations",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        }
+      ]
+    }
+  ]
+}

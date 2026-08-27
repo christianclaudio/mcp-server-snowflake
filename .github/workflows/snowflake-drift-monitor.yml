@@ -1,0 +1,68 @@
+name: Snowflake API & SDK Drift Monitor
+
+on:
+  schedule:
+    # Run every Sunday at midnight UTC
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  check-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run Drift Check
+        id: drift-check
+        run: |
+          python scripts/check_snowflake_drift.py > drift_results.txt 2>&1
+          echo "DRIFT_STATUS=$?" >> $GITHUB_ENV
+        continue-on-error: true
+
+      - name: Create Issue on Failure
+        if: env.DRIFT_STATUS != '0'
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const fs = require('fs');
+            let driftOutput = "No output captured.";
+            try {
+              driftOutput = fs.readFileSync('drift_results.txt', 'utf8');
+            } catch (err) {
+              console.error(err);
+            }
+            
+            const issueTitle = "⚠️ Alert: Snowflake API / SDK Drift Detected";
+            const issueBody = `### Snowflake Drift Monitor Alert
+            
+            The scheduled weekly Snowflake SDK & API drift scan detected new SDK releases or schema contract updates.
+            
+            #### Scan Output:
+            \`\`\`text
+            ${driftOutput}
+            \`\`\`
+            
+            _Automated check run by GitHub Actions._`;
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: issueTitle,
+              body: issueBody,
+              labels: ['maintenance', 'drift']
+            });
