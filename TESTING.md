@@ -39,7 +39,7 @@ If you have configured `~/.snowflake/connections.toml`:
 snowflake-mcp -c trial
 
 # Test in read-only mode (safe for prod)
-snowflake-mcp -c trulieve --readonly
+snowflake-mcp -c production --readonly
 ```
 
 ### 2. Interactive MCP Inspector

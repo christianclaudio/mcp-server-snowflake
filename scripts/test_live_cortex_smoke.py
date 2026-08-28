@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Execute live validation of Cortex AI tools against Trulieve enterprise account."""
+"""Execute live validation of Cortex AI tools against Snowflake account."""
 
 import asyncio
 import json
@@ -11,15 +11,14 @@ from snowflake_mcp.server import create_server
 
 
 async def main() -> None:
-    print("🔌 Connecting to Trulieve Snowflake Account (trulieve-trlvuse1 / us-east-1)...")
-    cfg = SnowflakeConfig.from_env_or_config(connection_name="trulieve")
-    cfg.warehouse = "DE_WAREHOUSE"
+    print("🔌 Connecting to Snowflake Account...")
+    cfg = SnowflakeConfig.from_env_or_config()
     client = SnowflakeClient(config=cfg)
 
     server = create_server(client=client)
     tools = server._tool_manager._tools
 
-    print(f"🚀 Testing {len(tools)} Cortex AI tools live against Trulieve Snowflake...\n")
+    print(f"🚀 Testing {len(tools)} Cortex AI tools live against Snowflake...\n")
 
     results = {}
 
@@ -92,7 +91,7 @@ async def main() -> None:
     results["snowflake_cortex_analyst_query"] = {"latency_ms": round(lat, 2), "result": res}
     print(f"7. [ANALYST_QUERY] ({lat:.1f}ms) -> {res.get('status')}: mode={res.get('execution_mode')}")
 
-    report_path = "scripts/trulieve_cortex_live_report.json"
+    report_path = "scripts/cortex_live_report.json"
     with open(report_path, "w") as f:
         json.dump(results, f, indent=2)
 
@@ -101,7 +100,7 @@ async def main() -> None:
         print(f"\n❌ Live Cortex validation failed for: {', '.join(failures)}")
         raise SystemExit(1)
 
-    print("\n✅ All live Cortex tools verified successfully on Trulieve enterprise account!")
+    print("\n✅ All live Cortex tools verified successfully on Snowflake account!")
 
 
 if __name__ == "__main__":
