@@ -1,4 +1,4 @@
-# 🚀 mcp-server-snowflake
+# ❄️ mcp-server-snowflake
 
 [![CI](https://github.com/christianclaudio/mcp-server-snowflake/actions/workflows/ci.yml/badge.svg)](https://github.com/christianclaudio/mcp-server-snowflake/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/mcp-server-snowflake)](https://pypi.org/project/mcp-server-snowflake/)
