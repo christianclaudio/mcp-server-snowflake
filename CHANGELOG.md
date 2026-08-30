@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.1.1] - 2026-08-30
+## [1.1.2] - 2026-08-30
 
 ### Fixed
 - **Graceful Shutdown Interceptor**: Registered custom `SIGTERM` and `SIGINT` signal handlers in `cli.py` to exit with status code `0`, preventing supervisor `exit status 143` errors on client restarts.

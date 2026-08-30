@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import signal
 import sys
 from typing import Any
@@ -57,8 +58,8 @@ def run_init_wizard() -> None:
 
 
 def _handle_shutdown(signum: int, frame: Any) -> None:
-    """Gracefully handle SIGTERM/SIGINT from host supervisor to exit with status 0."""
-    sys.exit(0)
+    """Gracefully handle SIGTERM/SIGINT from host supervisor to exit with status 0 immediately."""
+    os._exit(0)
 
 
 def main() -> None:
