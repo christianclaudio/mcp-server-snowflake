@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import signal
 import sys
 
 from snowflake_mcp.config import SnowflakeConfig
@@ -54,8 +55,15 @@ def run_init_wizard() -> None:
     sys.exit(0)
 
 
+def _handle_shutdown(signum: int, frame: Any) -> None:
+    """Gracefully handle SIGTERM/SIGINT from host supervisor to exit with status 0."""
+    sys.exit(0)
+
+
 def main() -> None:
     """CLI entrypoint."""
+    signal.signal(signal.SIGTERM, _handle_shutdown)
+    signal.signal(signal.SIGINT, _handle_shutdown)
     parser = argparse.ArgumentParser(
         prog="snowflake-mcp",
         description="Enterprise Model Context Protocol (MCP) server for Snowflake",
