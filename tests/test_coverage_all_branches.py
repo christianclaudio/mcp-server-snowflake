@@ -233,3 +233,11 @@ def test_cli_parsing() -> None:
     with patch("sys.argv", ["snowflake-mcp", "--version"]):
         with pytest.raises(SystemExit):
             cli_main()
+
+
+def test_handle_shutdown() -> None:
+    from snowflake_mcp.cli import _handle_shutdown
+
+    with pytest.raises(SystemExit) as exc_info:
+        _handle_shutdown(15, None)
+    assert exc_info.value.code == 0

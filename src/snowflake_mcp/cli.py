@@ -7,6 +7,7 @@ import json
 import logging
 import signal
 import sys
+from typing import Any
 
 from snowflake_mcp.config import SnowflakeConfig
 from snowflake_mcp.server import create_server
