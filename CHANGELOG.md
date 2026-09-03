@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.4] - 2026-09-03
+
+### Changed
+- **Synchronized Sunday Maintenance Schedule**: Standardized upstream SDK drift monitoring to Sunday 12:00 AM EDT / 04:00 UTC (`cron: '0 4 * * 0'`) and Dependabot dependency reconciliation to Sunday 12:30 AM EDT / 04:30 UTC (`time: "04:30"`).
+- **Suite Baseline Synchronization**: Synchronized release version to 1.1.4 across the enterprise MCP server suite.
+
 ## [1.1.2] - 2026-08-30
 
 ### Fixed
