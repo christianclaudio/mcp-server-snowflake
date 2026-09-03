@@ -7,12 +7,12 @@
     "url": "https://github.com/christianclaudio/mcp-server-snowflake",
     "source": "github"
   },
-  "version": "1.1.2",
+  "version": "1.1.4",
   "packages": [
     {
       "registryType": "pypi",
       "identifier": "mcp-server-snowflake",
-      "version": "1.1.2",
+      "version": "1.1.4",
       "transport": {
         "type": "stdio"
       },
