@@ -36,7 +36,7 @@ def register_horizon_tools(mcp: Any, client: SnowflakeClient) -> None:
             # Upstream: Objects that this object references / depends on
             if dir_mode in ("upstream", "both"):
                 up_sql = (
-                    "SELECT REFERENCED_DATABASE, REFERENCED_SCHEMA, REFERENCED_OBJECT_NAME, REFERENCED_OBJECT_KIND "
+                    "SELECT REFERENCED_DATABASE, REFERENCED_SCHEMA, REFERENCED_OBJECT_NAME, REFERENCED_OBJECT_DOMAIN, DEPENDENCY_TYPE "
                     "FROM SNOWFLAKE.ACCOUNT_USAGE.OBJECT_DEPENDENCIES "
                     f"WHERE REFERENCING_OBJECT_NAME = {quote_literal(clean_name)}"
                 )
@@ -50,7 +50,7 @@ def register_horizon_tools(mcp: Any, client: SnowflakeClient) -> None:
             # Downstream: Objects that reference / depend on this object
             if dir_mode in ("downstream", "both"):
                 down_sql = (
-                    "SELECT REFERENCING_DATABASE, REFERENCING_SCHEMA, REFERENCING_OBJECT_NAME, REFERENCING_OBJECT_KIND "
+                    "SELECT REFERENCING_DATABASE, REFERENCING_SCHEMA, REFERENCING_OBJECT_NAME, REFERENCING_OBJECT_DOMAIN, DEPENDENCY_TYPE "
                     "FROM SNOWFLAKE.ACCOUNT_USAGE.OBJECT_DEPENDENCIES "
                     f"WHERE REFERENCED_OBJECT_NAME = {quote_literal(clean_name)}"
                 )
@@ -74,6 +74,7 @@ def register_horizon_tools(mcp: Any, client: SnowflakeClient) -> None:
         column_name: str,
         database: str | None = None,
         schema_name: str | None = None,
+        days: int = 30,
         limit: int = 10,
     ) -> dict[str, Any]:
         """Trace column data origin and modifications."""
@@ -81,12 +82,12 @@ def register_horizon_tools(mcp: Any, client: SnowflakeClient) -> None:
             clean_tbl = table_name.strip().strip('"').upper()
             clean_col = column_name.strip().strip('"').upper()
             max_rows = max(1, min(limit, 50))
+            lookback_days = max(1, min(days, 365))
 
             sql = (
                 "SELECT QUERY_ID, QUERY_START_TIME, USER_NAME, DIRECT_OBJECTS_ACCESSED, BASE_OBJECTS_ACCESSED, OBJECTS_MODIFIED "
                 "FROM SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY "
-                f"WHERE ARRAY_SIZE(OBJECTS_MODIFIED) > 0 "
-                f"AND QUERY_START_TIME >= DATEADD('day', -30, CURRENT_TIMESTAMP()) "
+                f"WHERE QUERY_START_TIME >= DATEADD('day', -{lookback_days}, CURRENT_TIMESTAMP()) "
                 "ORDER BY QUERY_START_TIME DESC "
                 f"LIMIT {max_rows}"
             )

@@ -52,7 +52,7 @@ async def test_horizon_column_lineage(mock_client: SnowflakeClient) -> None:
     mcp = create_server(client=mock_client)
     fn = mcp._tool_manager._tools["snowflake_get_column_lineage"].fn
 
-    res = await fn("CUSTOMERS", "EMAIL", database="DB1", schema_name="SCH1", limit=5)
+    res = await fn("CUSTOMERS", "EMAIL", database="DB1", schema_name="SCH1", days=14, limit=5)
     assert res["status"] == "success"
     assert res["column_name"] == "EMAIL"
     assert len(res["access_history_records"]) == 1
