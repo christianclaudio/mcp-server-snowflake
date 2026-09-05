@@ -4,7 +4,7 @@ Instructions for AI coding agents (Antigravity, Claude Code, Copilot, Cursor, Wi
 
 ## Project Overview
 
-This is `mcp-server-snowflake` — an Enterprise Model Context Protocol (MCP) server exposing **130 tools** for Snowflake's Data Cloud and Cortex AI. It runs over stdio or SSE and is consumed by AI clients (Claude Desktop, VS Code, Antigravity, Cursor, etc.).
+This is `mcp-server-snowflake` — an Enterprise Model Context Protocol (MCP) server exposing **140 tools** for Snowflake's Data Cloud and Cortex AI. It runs over stdio or SSE and is consumed by AI clients (Claude Desktop, VS Code, Antigravity, Cursor, etc.).
 
 ## Architecture
 
@@ -12,10 +12,10 @@ This is `mcp-server-snowflake` — an Enterprise Model Context Protocol (MCP) se
 src/snowflake_mcp/
 ├── config.py             # Multi-auth resolver (PAT, RSA Key-Pair, OAuth, User/Password, connections.toml)
 ├── connection.py         # Connection pool, DictCursor query executor, and snowflake.core.Root bridge
-├── server.py             # MCPServer registration factory for all 18 domain modules
+├── server.py             # MCPServer registration factory for all 19 domain modules
 ├── cli.py                # CLI runner supporting stdio and sse transport
 └── tools/
-    ├── queries.py            # SQL queries, EXPLAIN plans, operator stats, transaction control (8 tools)
+    ├── queries.py            # SQL queries, EXPLAIN plans, operator stats, transaction control (9 tools)
     ├── databases.py          # Databases, zero-copy clones, undrop, DDL (7 tools)
     ├── schemas.py            # Schemas, zero-copy clones, undrop (6 tools)
     ├── tables.py             # Tables, views, DDL, samples, truncate, clone, undrop (10 tools)
@@ -23,14 +23,15 @@ src/snowflake_mcp/
     ├── stages.py             # Internal/external stages, files, remove (6 tools)
     ├── tasks.py              # Tasks, serverless execution, resume/suspend (7 tools)
     ├── streams.py            # Streams, CDC changes, append-only (5 tools)
-    ├── dynamic_tables.py     # Dynamic tables, lag monitoring, Apache Iceberg tables (7 tools)
+    ├── dynamic_tables.py     # Dynamic tables, Apache Iceberg, external volumes, catalog integrations (9 tools)
     ├── pipes.py              # Snowpipes, auto-ingest, pipe status (5 tools)
     ├── alerts.py             # Snowflake alerts, notification triggers, lifecycle (6 tools)
-    ├── governance.py         # Session context, roles, users, grants, RBAC (10 tools)
+    ├── governance.py         # Session context, multi-account switcher, roles, users, grants, RBAC (12 tools)
     ├── network.py            # Network policies, network rules, password policies (6 tools)
     ├── compute_services.py   # SPCS compute pools, container services, Streamlits, OCI repos (8 tools)
     ├── tags.py               # Object tags, metadata classification, tag references (4 tools)
-    ├── programmability.py    # Stored procedures, UDFs, secrets, sequences, integrations (8 tools)
+    ├── horizon.py            # Object lineage, column lineage, masking policies, row access policies (6 tools)
+    ├── programmability.py    # Procedures, UDFs, secrets, sequences, integrations, event tables, notifications (10 tools)
     ├── cortex.py             # Cortex LLM complete, summarize, sentiment, answer, translate, search, embeddings, analyst (8 tools)
     └── recipes.py            # Composite recipes (health_check, inspect_with_sample, profile, scale_and_execute, clone, export, usage, lineage) (8 tools)
 ```

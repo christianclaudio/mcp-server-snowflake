@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Contract verification script asserting full suite of 130 Snowflake MCP tools."""
+"""Contract verification script asserting full suite of 140 Snowflake MCP tools."""
 
 import sys
 
@@ -12,18 +12,26 @@ def verify_contract() -> int:
     mcp = create_server(config=dummy_cfg)
     tools = mcp._tool_manager.list_tools()
     tool_names = set(t.name for t in tools)
-    print(f"Verified {len(tools)} Snowflake MCP tools registered across 18 domain suites:")
+    print(f"Verified {len(tools)} Snowflake MCP tools registered across 19 domain suites:")
     for name in sorted(tool_names):
         print(f"  ✓ {name}")
 
     errors: list[str] = []
-    if len(tools) != 130:
-        errors.append(f"Expected 130 tools, found {len(tools)}")
+    if len(tools) != 140:
+        errors.append(f"Expected 140 tools, found {len(tools)}")
     for required in (
         "snowflake_rollback_transaction",
         "snowflake_query",
         "snowflake_list_connections",
         "snowflake_use_connection",
+        "snowflake_get_object_lineage",
+        "snowflake_get_column_lineage",
+        "snowflake_list_masking_policies",
+        "snowflake_list_row_access_policies",
+        "snowflake_list_external_volumes",
+        "snowflake_list_catalog_integrations",
+        "snowflake_list_event_tables",
+        "snowflake_list_notification_integrations",
     ):
         if required not in tool_names:
             errors.append(f"Missing {required}")

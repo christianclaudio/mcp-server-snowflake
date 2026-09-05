@@ -52,7 +52,7 @@ jobs:
         run: pytest --cov=src/snowflake_mcp --cov-report=term-missing -q
 
   contract:
-    name: Tool Contract Verification (130 Tools)
+    name: Tool Contract Verification (140 Tools)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -64,7 +64,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
-      - name: Assert 130 tool contract
+      - name: Assert 140 tool contract
         run: python scripts/check_tool_contract.py
 
   build:

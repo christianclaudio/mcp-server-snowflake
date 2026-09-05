@@ -30,6 +30,11 @@ This skill provides expert operating guidelines, architectural recipes, and safe
 - **Semantic Text Search & Embeddings** — Generate 768-dimensional embeddings using `snowflake_cortex_embed_text_768(text=..., model="snowflake-arctic-embed-m")`.
 - **Document Question Answering** — Extract answers from unstructured context with `snowflake_cortex_extract_answer(source_text=..., question=...)`.
 
+### 5. Horizon Lineage & Governance
+- **Object Lineage Graph** — Trace upstream sources and downstream dependents with `snowflake_get_object_lineage(object_name="MY_VIEW", direction="both")`.
+- **Column Lineage Tracing** — Audit column creation origins and historical modifications with `snowflake_get_column_lineage(table_name="CUSTOMERS", column_name="EMAIL")`.
+- **Data Privacy Policies** — Inspect active column masking and row access policies with `snowflake_list_masking_policies` and `snowflake_list_row_access_policies`.
+
 ---
 
 ## 🛡️ Safety & Execution Directives for AI Agents
@@ -60,5 +65,6 @@ This skill provides expert operating guidelines, architectural recipes, and safe
 | **Stages & Ingestion** | `snowflake_list_stages`, `snowflake_list_stage_files`, `snowflake_create_pipe`, `snowflake_get_pipe_status` |
 | **CDC & Orchestration** | `snowflake_create_stream`, `snowflake_read_stream_changes`, `snowflake_create_task`, `snowflake_create_alert` |
 | **Governance & RBAC** | `snowflake_get_current_context`, `snowflake_list_connections`, `snowflake_use_connection`, `snowflake_list_roles`, `snowflake_list_grants_to_role`, `snowflake_list_tags` |
+| **Horizon Lineage** | `snowflake_get_object_lineage`, `snowflake_get_column_lineage`, `snowflake_list_masking_policies`, `snowflake_list_row_access_policies` |
 | **Cortex AI** | `snowflake_cortex_complete`, `snowflake_cortex_summarize`, `snowflake_cortex_sentiment`, `snowflake_cortex_embed_text_768` |
 | **Composite Recipes** | `snowflake_health_check`, `snowflake_inspect_table_with_sample`, `snowflake_profile_table`, `snowflake_account_usage_summary` |

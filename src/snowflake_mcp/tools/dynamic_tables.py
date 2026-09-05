@@ -190,3 +190,37 @@ def register_dynamic_table_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "success", "iceberg_table": target, "details": res.get("data", [])}
         except Exception as e:
             return {"status": "error", "error": str(e)}
+
+    @mcp.tool(
+        name="snowflake_list_external_volumes",
+        description="List external cloud storage volumes configured for Apache Iceberg tables.",
+    )
+    async def snowflake_list_external_volumes(
+        pattern: str | None = None,
+    ) -> dict[str, Any]:
+        """List external volumes."""
+        try:
+            sql = "SHOW EXTERNAL VOLUMES"
+            if pattern:
+                sql += f" LIKE {quote_literal(pattern)}"
+            res = client.execute_query(sql)
+            return {"status": "success", "external_volumes": res.get("data", [])}
+        except Exception as e:
+            return {"status": "error", "error": str(e)}
+
+    @mcp.tool(
+        name="snowflake_list_catalog_integrations",
+        description="List catalog integrations (Polaris, AWS Glue, Object Storage) configured in Snowflake.",
+    )
+    async def snowflake_list_catalog_integrations(
+        pattern: str | None = None,
+    ) -> dict[str, Any]:
+        """List catalog integrations."""
+        try:
+            sql = "SHOW CATALOG INTEGRATIONS"
+            if pattern:
+                sql += f" LIKE {quote_literal(pattern)}"
+            res = client.execute_query(sql)
+            return {"status": "success", "catalog_integrations": res.get("data", [])}
+        except Exception as e:
+            return {"status": "error", "error": str(e)}

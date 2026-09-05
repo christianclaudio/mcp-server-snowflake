@@ -21,8 +21,8 @@ async def test_all_128_tools_execution(client: SnowflakeClient) -> None:
     mcp = create_server(client=client)
     tools = mcp._tool_manager._tools
 
-    # Assert 130 total tools
-    assert len(tools) == 130
+    # Assert 140 total tools
+    assert len(tools) == 140
 
     import inspect
 

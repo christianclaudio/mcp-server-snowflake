@@ -51,17 +51,17 @@ def main() -> int:
     for pkg, ver in versions.items():
         print(f"  • {pkg}: {ver}")
 
-    print("\n🛡️ Verifying Local 130-Tool Contract Alignment:")
+    print("\n🛡️ Verifying Local 140-Tool Contract Alignment:")
     from snowflake_mcp.config import SnowflakeConfig
     from snowflake_mcp.server import create_server
 
     server = create_server(config=SnowflakeConfig(account="dummy_acc", user="dummy_user"))
     tools = getattr(server, "_tool_manager", None)
     tool_count = len(tools._tools) if tools else len(getattr(server, "_tools", {}))
-    print(f"  • Registered MCP Tools in Suite: {tool_count} / 130")
+    print(f"  • Registered MCP Tools in Suite: {tool_count} / 140")
 
-    if tool_count != 130:
-        print(f"❌ Drift Error: Registered tools ({tool_count}) != exact expected 130 tools!")
+    if tool_count != 140:
+        print(f"❌ Drift Error: Registered tools ({tool_count}) != exact expected 140 tools!")
         return 1
 
     print("\n✅ Drift scan completed successfully. All contracts aligned.")

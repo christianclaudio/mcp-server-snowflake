@@ -18,6 +18,7 @@ from snowflake_mcp.tools.cortex import register_cortex_tools
 from snowflake_mcp.tools.databases import register_database_tools
 from snowflake_mcp.tools.dynamic_tables import register_dynamic_table_tools
 from snowflake_mcp.tools.governance import register_governance_tools
+from snowflake_mcp.tools.horizon import register_horizon_tools
 from snowflake_mcp.tools.network import register_network_tools
 from snowflake_mcp.tools.pipes import register_pipe_tools
 from snowflake_mcp.tools.programmability import register_programmability_tools
@@ -66,6 +67,7 @@ def create_server(
     register_network_tools(mcp, snow_client)
     register_compute_service_tools(mcp, snow_client)
     register_tag_tools(mcp, snow_client)
+    register_horizon_tools(mcp, snow_client)
     register_programmability_tools(mcp, snow_client)
     register_cortex_tools(mcp, snow_client)
     register_recipe_tools(mcp, snow_client)

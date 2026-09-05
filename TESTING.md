@@ -20,7 +20,7 @@ pytest tests/test_coverage_full.py
 
 ## 🛡️ Tool Contract Verification
 
-`scripts/check_tool_contract.py` guarantees that all **130 tools** remain registered across all 18 domain modules without silent regression.
+`scripts/check_tool_contract.py` guarantees that all **140 tools** remain registered across all 19 domain modules without silent regression.
 
 ```bash
 python scripts/check_tool_contract.py

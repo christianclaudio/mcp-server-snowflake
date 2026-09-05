@@ -278,3 +278,48 @@ def register_programmability_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "success", "integrations": res.get("data", [])}
         except Exception as e:
             return {"status": "error", "error": str(e)}
+
+    @mcp.tool(
+        name="snowflake_list_event_tables",
+        description="List event tables used for application logging, tracing, and SPCS telemetry.",
+    )
+    async def snowflake_list_event_tables(
+        database: str | None = None,
+        schema_name: str | None = None,
+        pattern: str | None = None,
+    ) -> dict[str, Any]:
+        """List event tables."""
+        try:
+            db = database or client.config.database
+            sch = schema_name or client.config.schema_name
+            if db and sch:
+                sql = f"SHOW EVENT TABLES IN SCHEMA {quote_ident(db)}.{quote_ident(sch)}"
+            elif db:
+                sql = f"SHOW EVENT TABLES IN DATABASE {quote_ident(db)}"
+            else:
+                sql = "SHOW EVENT TABLES"
+
+            if pattern:
+                sql += f" LIKE {quote_literal(pattern)}"
+
+            res = client.execute_query(sql)
+            return {"status": "success", "event_tables": res.get("data", [])}
+        except Exception as e:
+            return {"status": "error", "error": str(e)}
+
+    @mcp.tool(
+        name="snowflake_list_notification_integrations",
+        description="List notification integrations configured for alerts, tasks, and cloud messaging (SNS, PubSub, Webhooks).",
+    )
+    async def snowflake_list_notification_integrations(
+        pattern: str | None = None,
+    ) -> dict[str, Any]:
+        """List notification integrations."""
+        try:
+            sql = "SHOW NOTIFICATION INTEGRATIONS"
+            if pattern:
+                sql += f" LIKE {quote_literal(pattern)}"
+            res = client.execute_query(sql)
+            return {"status": "success", "notification_integrations": res.get("data", [])}
+        except Exception as e:
+            return {"status": "error", "error": str(e)}
