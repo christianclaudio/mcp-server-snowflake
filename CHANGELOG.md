@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.5] - 2026-09-07
+
+### Added
+- **Horizon Lineage & Governance Suite (10 new tools, 140 tools total)**:
+  - `snowflake_catalog_object_dependencies`: Upstream and downstream object-level dependency tracking via `SNOWFLAKE.ACCOUNT_USAGE.OBJECT_DEPENDENCIES`.
+  - `snowflake_catalog_table_lineage`: Directed table-level lineage graph discovery.
+  - `snowflake_catalog_column_lineage`: Column-level data lineage and transformation tracking via `SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY` with configurable days lookback.
+  - `snowflake_tag_references`: Direct tag lookup across databases, schemas, tables, and columns via `SNOWFLAKE.ACCOUNT_USAGE.TAG_REFERENCES`.
+  - `snowflake_catalog_masking_policies`: Discovery of dynamic data masking policies and column associations.
+  - `snowflake_catalog_row_access_policies`: Active row-level security policies and table bindings.
+  - `snowflake_catalog_iceberg_tables`: Deep Iceberg catalog metadata, table format specs, and volume linkages.
+  - `snowflake_catalog_external_volumes`: Configuration details and storage location specs for external volumes.
+  - `snowflake_catalog_query_telemetry`: Detailed telemetry on query execution profiles and compute efficiency metrics.
+  - `snowflake_catalog_governance_posture`: Fleet-wide audit summary of tagging coverage and security policy compliance.
+
+### Changed
+- **MCP Registry Metadata**: Added `runtimeHint: uvx` to `server.json` packages array conforming to Anthropic registry standards.
+
 ## [1.1.4] - 2026-09-03
 
 ### Changed
