@@ -106,7 +106,7 @@ uv run pytest --cov=src/snowflake_mcp --cov-report=term-missing
 uv run python scripts/check_tool_contract.py
 
 # Local pre-commit CodeRabbit CLI review
-coderabbit review --agent
+coderabbit review --agent --uncommitted
 ```
 
-For release lifecycle and version bump procedures, follow standard project guidelines.
+For release automation and packaging, push matching `v*` tags aligned with `pyproject.toml`'s `project.version` to trigger `.github/workflows/release.yml`.
