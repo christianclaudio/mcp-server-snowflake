@@ -54,7 +54,6 @@ mcp-server-snowflake/
 ├── Dockerfile                    # Multi-stage container running as non-root USER mcp
 ├── server.json                   # MCP Registry catalog metadata (runtimeHint: uvx, stdio transport)
 ├── pyproject.toml                # Packaging metadata, entrypoint CLI (snowflake-mcp), mcp>=2.1.1
-├── COOKBOOK.md                   # Private maintainer runbook (9-step release SOP, query recipes)
 └── README.md                     # User documentation and setup guide
 ```
 
@@ -110,4 +109,4 @@ uv run python scripts/check_tool_contract.py
 coderabbit review --agent
 ```
 
-For the release lifecycle and version bump procedure, consult **`COOKBOOK.md`**.
+For release lifecycle and version bump procedures, follow standard project guidelines.
