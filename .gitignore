@@ -76,3 +76,6 @@ dmypy.json
 # Local Test Reports
 scripts/*.json
 scripts/*_report.json
+
+# Private runbooks & recipes
+COOKBOOK.md
