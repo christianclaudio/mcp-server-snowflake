@@ -105,6 +105,9 @@ uv run pytest --cov=src/snowflake_mcp --cov-report=term-missing
 
 # Verify 140-tool contract
 uv run python scripts/check_tool_contract.py
+
+# Local pre-commit CodeRabbit CLI review
+coderabbit review --agent
 ```
 
 For the release lifecycle and version bump procedure, consult **`COOKBOOK.md`**.

@@ -18,9 +18,12 @@ Follow these steps in exact sequential order:
     *   Verify lint & formatting: `uv run ruff check . && uv run ruff format --check .`.
     *   Verify test suite: `uv run pytest --cov=src/snowflake_mcp`.
     *   Verify tool contracts (140 tools): `uv run python scripts/check_tool_contract.py`.
-*   **Step 4: Execute Local AI Self-Review Loop**
-    *   Instruct the active AI assistant: *"Analyze the git diff --cached. Audit for secret leaks, traversal vulnerabilities, type safety, and SQL injection."*
-    *   If the AI flags any issues, fix them, stage the changes, and repeat Steps 3 and 4 until 100% clean.
+*   **Step 4: Execute Local CodeRabbit Pre-Screen Loop**
+    *   Run local CodeRabbit review on staged changes:
+        ```bash
+        coderabbit review --agent
+        ```
+    *   Review findings (Critical, Warning, Info). If any actionable issues are flagged, resolve them, re-stage, and repeat Steps 3 and 4 until 100% clean.
 *   **Step 5: Document Changes (Changelog, Readme, Server Manifest)**
     *   Increment the version in `pyproject.toml` and `src/snowflake_mcp/__init__.py`.
     *   Sync version details and environment variables inside `server.json`.
