@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.1.6] - 2026-09-12
+
+### Added
+- **Streamable HTTP Transport (MCP Spec 2026-07-28)**:
+  - Full support for `--transport streamable-http` with paired flags `--stateless` / `--no-stateless` and `--json-response` / `--no-json-response`.
+  - Added `tests/test_protocol.py` validating stdio JSON-RPC initialization handshake, dynamic 140-tool contract listing, and Streamable HTTP `/mcp` execution offline.
+  - Added `tests/test_e2e_live.py` with `@pytest.mark.e2e` for safe, opt-in live trial verification.
+- **Deprecation Warning**:
+  - Emits `DeprecationWarning` for legacy HTTP+SSE transport per MCP Spec 2026-07-28.
+
+### Removed
+- **Ad-Hoc Standalone Scripts**: Retired `scripts/smoke_test.py`, `scripts/test_live_trial.py`, `scripts/test_live_trial_resilient.py`, `scripts/test_live_cortex_smoke.py`, and `scripts/test_all_tools_individually.py` in favor of standard pytest test pyramid.
+
 ## [1.1.5] - 2026-09-07
 
 ### Added
