@@ -99,8 +99,11 @@ uv run ruff check . && uv run ruff format --check .
 # Strict type checking
 uv run mypy src/
 
-# Run complete test suite
+# Run complete test suite (offline unit, mocked, and protocol tests)
 uv run pytest --cov=src/snowflake_mcp --cov-report=term-missing
+
+# Protocol and Streamable HTTP integration tests
+uv run pytest tests/test_protocol.py
 
 # Verify 140-tool contract
 uv run python scripts/check_tool_contract.py

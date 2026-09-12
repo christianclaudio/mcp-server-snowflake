@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mcp-server-snowflake"
-version = "1.1.5"
+version = "1.1.6"
 description = "Enterprise Model Context Protocol (MCP) server for Snowflake data cloud and Cortex AI."
 readme = "README.md"
 license = "Apache-2.0"
@@ -40,6 +40,7 @@ dev = [
     "pytest>=9.1.1",
     "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.1.0",
+    "httpx>=0.28.1",
     "mypy>=2.3.1",
     "ruff>=0.16.5",
     "build>=1.6.0",
@@ -63,7 +64,11 @@ packages = ["src/snowflake_mcp"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
+markers = [
+    "e2e: end-to-end live network tests against upstream services (run with -m e2e)",
+]
+addopts = "-m 'not e2e' --strict-markers --cov=src/snowflake_mcp --cov-report=term-missing"
 
 [tool.mypy]
 strict = false

@@ -10,10 +10,16 @@ This guide explains how to run the full test suite, verify tool contracts, and r
 # Run complete test suite with coverage
 pytest --cov=src/snowflake_mcp --cov-report=term-missing -q
 
-# Run specific test modules
+# Run protocol and transport integration tests
+pytest tests/test_protocol.py
+
+# Run specific unit test modules
 pytest tests/test_config.py
 pytest tests/test_tools.py
 pytest tests/test_coverage_full.py
+
+# Optional: Run on-demand live tests against a trial account
+pytest -m e2e tests/test_e2e_live.py
 ```
 
 ---

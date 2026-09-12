@@ -8,6 +8,7 @@ import logging
 import os
 import signal
 import sys
+import warnings
 from typing import Any
 
 from snowflake_mcp.config import SnowflakeConfig
@@ -103,6 +104,18 @@ def main() -> None:
         action="store_true",
         help="Run in strict read-only mode",
     )
+    parser.add_argument(
+        "--stateless",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enable stateless request-response mode for Streamable HTTP (default: True per MCP Spec 2026-07-28)",
+    )
+    parser.add_argument(
+        "--json-response",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enable JSON formatted responses over Streamable HTTP (default: True)",
+    )
 
     args = parser.parse_args()
 
@@ -121,11 +134,30 @@ def main() -> None:
 
     mcp = create_server(config=config)
 
-    if args.transport == "stdio":
-        mcp.run(transport="stdio")
-    else:
-        # Streamable HTTP / SSE transport
+    if args.transport != "streamable-http":
+        if not args.stateless:
+            logger.warning("--no-stateless flag is only applicable to 'streamable-http' transport.")
+        if not args.json_response:
+            logger.warning("--no-json-response flag is only applicable to 'streamable-http' transport.")
+
+    if args.transport == "sse":
+        warnings.warn(
+            "The 'sse' transport is deprecated in MCP Specification 2026-07-28 and will be removed "
+            "in a future release. Use 'streamable-http' instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         mcp.run(transport="sse")
+    elif args.transport == "streamable-http":
+        mcp.run(
+            transport="streamable-http",
+            host=args.host,
+            port=args.port,
+            stateless_http=args.stateless,
+            json_response=args.json_response,
+        )
+    else:
+        mcp.run(transport="stdio")
 
 
 if __name__ == "__main__":
