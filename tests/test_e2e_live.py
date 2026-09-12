@@ -34,7 +34,7 @@ def _redact_secrets(text: str) -> str:
 
 SAFE_TOOL_FIXTURES: dict[str, dict[str, Any]] = {
     "snowflake_query": {"query": "SELECT 1"},
-    "snowflake_execute_dml": {"dml": "SELECT 1"},
+    "snowflake_execute_dml": {"statement": "SELECT 1"},
     "snowflake_drop_database": {"name": "e2e_probe_db", "confirm": False},
     "snowflake_drop_schema": {"name": "e2e_probe_schema", "confirm": False},
     "snowflake_drop_table": {"table_name": "e2e_probe_tbl", "confirm": False},
@@ -65,10 +65,17 @@ async def dispatch_tool_call(srv: Any, tool_name: str, is_destructive: bool) -> 
 
         text = res.content[0].text if res.content else ""
 
-        # Destructive drop tools require confirm=False gating; receiving requires_confirmation is a PASS
-        if is_destructive or (tool_name in SAFE_TOOL_FIXTURES and "confirm" in SAFE_TOOL_FIXTURES[tool_name]):
+        is_destructive_call = is_destructive or (
+            tool_name in SAFE_TOOL_FIXTURES and "confirm" in SAFE_TOOL_FIXTURES[tool_name]
+        )
+        if is_destructive_call:
+            # Destructive drop tools require confirm=False gating; receiving requires_confirmation is a PASS
             if "requires_confirmation" in text:
                 return ("PASS", False, None)
+            if "Denied in read-only mode" in text or "read-only" in text.lower():
+                return ("PASS", False, None)
+            # If a destructive tool unexpectedly succeeded without confirmation, fail the safety gate!
+            return ("FAIL", True, f"Destructive safety gate bypassed for {tool_name}: unexpected success response")
 
         # Mutating tools in read-only mode return read-only denial, which is an expected safety outcome
         if "Denied in read-only mode" in text or "read-only" in text.lower():

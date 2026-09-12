@@ -259,7 +259,7 @@ def test_cli_run_server() -> None:
                 mock_mcp = MagicMock()
                 mock_srv.return_value = mock_mcp
                 cli_main()
-                mock_mcp.run.assert_called_once_with(transport="sse")
+                mock_mcp.run.assert_called_once_with(transport="sse", host="127.0.0.1", port=9000)
 
     with patch("sys.argv", ["snowflake-mcp", "--init"]):
         with pytest.raises(SystemExit):

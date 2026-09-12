@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import argparse
 import json
 import logging
 import os
@@ -284,7 +283,7 @@ def test_main_streamable_http_and_warning_branches(caplog: pytest.LogCaptureFixt
         mock_srv.return_value = mock_instance
         with pytest.deprecated_call(match="The 'sse' transport is deprecated in MCP Specification 2026-07-28"):
             main()
-        mock_instance.run.assert_called_once_with(transport="sse")
+        mock_instance.run.assert_called_once_with(transport="sse", host="127.0.0.1", port=8000)
 
     # 3. Warning when passing --no-stateless or --no-json-response to non-streamable transport
     with (
@@ -301,19 +300,51 @@ def test_main_streamable_http_and_warning_branches(caplog: pytest.LogCaptureFixt
 
 
 def test_main_cli_argparse_boolean_optional_flags() -> None:
-    """Verify parsing of paired boolean optional flags."""
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--stateless", action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument("--json-response", action=argparse.BooleanOptionalAction, default=True)
+    """Verify that main() CLI parses and forwards paired boolean flags to streamable-http."""
+    with (
+        patch("snowflake_mcp.cli.create_server") as mock_srv,
+        patch(
+            "sys.argv",
+            [
+                "snowflake-mcp",
+                "--transport",
+                "streamable-http",
+                "--no-stateless",
+                "--no-json-response",
+            ],
+        ),
+    ):
+        mock_instance = MagicMock()
+        mock_srv.return_value = mock_instance
+        main()
+        mock_instance.run.assert_called_once_with(
+            transport="streamable-http",
+            host="127.0.0.1",
+            port=8000,
+            stateless_http=False,
+            json_response=False,
+        )
 
-    args_default = parser.parse_args([])
-    assert args_default.stateless is True
-    assert args_default.json_response is True
-
-    args_off = parser.parse_args(["--no-stateless", "--no-json-response"])
-    assert args_off.stateless is False
-    assert args_off.json_response is False
-
-    args_on = parser.parse_args(["--stateless", "--json-response"])
-    assert args_on.stateless is True
-    assert args_on.json_response is True
+    with (
+        patch("snowflake_mcp.cli.create_server") as mock_srv,
+        patch(
+            "sys.argv",
+            [
+                "snowflake-mcp",
+                "--transport",
+                "streamable-http",
+                "--stateless",
+                "--json-response",
+            ],
+        ),
+    ):
+        mock_instance = MagicMock()
+        mock_srv.return_value = mock_instance
+        main()
+        mock_instance.run.assert_called_once_with(
+            transport="streamable-http",
+            host="127.0.0.1",
+            port=8000,
+            stateless_http=True,
+            json_response=True,
+        )

@@ -147,7 +147,7 @@ def main() -> None:
             DeprecationWarning,
             stacklevel=2,
         )
-        mcp.run(transport="sse")
+        mcp.run(transport="sse", host=args.host, port=args.port)
     elif args.transport == "streamable-http":
         mcp.run(
             transport="streamable-http",
