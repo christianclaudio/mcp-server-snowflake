@@ -100,7 +100,19 @@ jobs:
       #     rm "$ARCHIVE" checksums.txt
       #
       # - name: Authenticate to MCP Registry via GitHub OIDC
-      #   run: ./mcp-publisher login github-oidc
+      #   run: |
+      #     MAX_RETRIES=3
+      #     for ATTEMPT in $(seq 1 "$MAX_RETRIES"); do
+      #       if ./mcp-publisher login github-oidc; then
+      #         break
+      #       fi
+      #       if [ "$ATTEMPT" -eq "$MAX_RETRIES" ]; then
+      #         echo "mcp-publisher login failed after $MAX_RETRIES attempts" >&2
+      #         exit 1
+      #       fi
+      #       echo "mcp-publisher login failed (attempt $ATTEMPT/$MAX_RETRIES), retrying in 5s..."
+      #       sleep 5
+      #     done
       #
       # - name: Set version in server.json
       #   run: |
