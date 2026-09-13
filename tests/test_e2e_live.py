@@ -130,7 +130,17 @@ async def test_dispatch_tool_call_offline(monkeypatch: pytest.MonkeyPatch) -> No
     assert not is_err
     mock_srv.call_tool.assert_awaited_with("snowflake_drop_database", {"name": "e2e_probe_db", "confirm": False})
 
-    # 3. Error response with is_error=True
+    # 3. Unexpected destructive success must fail the safety check
+    mock_srv.call_tool.return_value = CallToolResult(
+        content=[TextContent(type="text", text=json.dumps({"status": "success"}))],
+        is_error=False,
+    )
+    status, is_err, err = await dispatch_tool_call(mock_srv, "snowflake_drop_database", is_destructive=True)
+    assert status == "FAIL"
+    assert is_err
+    assert "Destructive safety gate bypassed" in (err or "")
+
+    # 4. Error response with is_error=True
     mock_srv.call_tool.return_value = CallToolResult(content=[TextContent(type="text", text="error")], is_error=True)
     status, is_err, err = await dispatch_tool_call(mock_srv, "snowflake_query", is_destructive=False)
     assert status == "FAIL"
