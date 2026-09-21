@@ -261,17 +261,19 @@ def test_main_streamable_http_and_warning_branches(caplog: pytest.LogCaptureFixt
     # 1. Streamable HTTP execution path
     with (
         patch("snowflake_mcp.cli.create_server") as mock_srv,
-        patch("sys.argv", ["snowflake-mcp", "--transport", "streamable-http", "--host", "0.0.0.0", "--port", "9000"]),
+        patch("sys.argv", ["snowflake-mcp", "--transport", "streamable-http", "--host", "127.0.0.1", "--port", "9000"]),
     ):
         mock_instance = MagicMock()
         mock_srv.return_value = mock_instance
         main()
         mock_instance.run.assert_called_once_with(
             transport="streamable-http",
-            host="0.0.0.0",
+            host="127.0.0.1",
             port=9000,
             stateless_http=True,
             json_response=True,
+            host_origin_protection=True,
+            allowed_hosts=["127.0.0.1", "localhost", "127.0.0.1:9000", "localhost:9000"],
         )
 
     # 2. SSE deprecation warning branch
@@ -323,6 +325,8 @@ def test_main_cli_argparse_boolean_optional_flags() -> None:
             port=8000,
             stateless_http=False,
             json_response=False,
+            host_origin_protection=True,
+            allowed_hosts=["127.0.0.1", "localhost", "127.0.0.1:8000", "localhost:8000"],
         )
 
     with (
@@ -347,4 +351,100 @@ def test_main_cli_argparse_boolean_optional_flags() -> None:
             port=8000,
             stateless_http=True,
             json_response=True,
+            host_origin_protection=True,
+            allowed_hosts=["127.0.0.1", "localhost", "127.0.0.1:8000", "localhost:8000"],
         )
+
+
+def test_main_cli_wildcard_allowed_host_rejection() -> None:
+    """Verify that main() CLI rejects wildcard '*' in --allowed-host."""
+    with patch("sys.argv", ["snowflake-mcp", "--transport", "streamable-http", "--allowed-host", "*"]):
+        with pytest.raises(SystemExit):
+            main()
+
+
+def test_main_cli_allowed_host_and_origin_forwarding() -> None:
+    """Verify that main() CLI forwards explicit allowed-host and allowed-origin to streamable-http."""
+    with (
+        patch("snowflake_mcp.cli.create_server") as mock_srv,
+        patch(
+            "sys.argv",
+            [
+                "snowflake-mcp",
+                "--transport",
+                "streamable-http",
+                "--allowed-host",
+                "internal.example.com",
+                "--allowed-origin",
+                "https://internal.example.com",
+            ],
+        ),
+    ):
+        mock_instance = MagicMock()
+        mock_srv.return_value = mock_instance
+        main()
+        mock_instance.run.assert_called_once_with(
+            transport="streamable-http",
+            host="127.0.0.1",
+            port=8000,
+            stateless_http=True,
+            json_response=True,
+            host_origin_protection=True,
+            allowed_hosts=["internal.example.com"],
+            allowed_origins=["https://internal.example.com"],
+        )
+
+
+def test_handle_shutdown() -> None:
+    """Verify _handle_shutdown calls sys.exit(0)."""
+    from snowflake_mcp.cli import _handle_shutdown
+
+    with pytest.raises(SystemExit) as exc_info:
+        _handle_shutdown(15, None)
+    assert exc_info.value.code == 0
+
+
+def test_cli_wildcard_binding_requires_allowed_host() -> None:
+    """Verify binding to 0.0.0.0 without --allowed-host exits with error."""
+    with (
+        patch("snowflake_mcp.cli.create_server"),
+        patch(
+            "sys.argv",
+            [
+                "snowflake-mcp",
+                "--transport",
+                "streamable-http",
+                "--host",
+                "0.0.0.0",
+            ],
+        ),
+        pytest.raises(SystemExit) as exc_info,
+    ):
+        main()
+    assert exc_info.value.code != 0
+
+
+def test_cli_ipv6_bracketed_host_authority() -> None:
+    """Verify IPv6 literal binding formats bracketed authority in allowed_hosts."""
+    with (
+        patch("snowflake_mcp.cli.create_server") as mock_srv,
+        patch(
+            "sys.argv",
+            [
+                "snowflake-mcp",
+                "--transport",
+                "streamable-http",
+                "--host",
+                "::1",
+                "--port",
+                "8000",
+            ],
+        ),
+    ):
+        mock_instance = MagicMock()
+        mock_srv.return_value = mock_instance
+        main()
+        mock_instance.run.assert_called_once()
+        run_kwargs = mock_instance.run.call_args[1]
+        assert "[::1]" in run_kwargs["allowed_hosts"]
+        assert "[::1]:8000" in run_kwargs["allowed_hosts"]

@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import os
 import signal
 import sys
 import warnings
@@ -60,7 +59,7 @@ def run_init_wizard() -> None:
 
 def _handle_shutdown(signum: int, frame: Any) -> None:
     """Gracefully handle SIGTERM/SIGINT from host supervisor to exit with status 0 immediately."""
-    os._exit(0)
+    sys.exit(0)
 
 
 def main() -> None:
@@ -116,6 +115,20 @@ def main() -> None:
         default=True,
         help="Enable JSON formatted responses over Streamable HTTP (default: True)",
     )
+    parser.add_argument(
+        "--allowed-host",
+        action="append",
+        dest="allowed_hosts",
+        default=None,
+        help="Allowed host for HTTP transports (can be specified multiple times).",
+    )
+    parser.add_argument(
+        "--allowed-origin",
+        action="append",
+        dest="allowed_origins",
+        default=None,
+        help="Allowed origin for HTTP transports (can be specified multiple times).",
+    )
 
     args = parser.parse_args()
 
@@ -140,6 +153,25 @@ def main() -> None:
         if not args.json_response:
             logger.warning("--no-json-response flag is only applicable to 'streamable-http' transport.")
 
+    hosts = getattr(args, "allowed_hosts", None)
+    if hosts is None:
+        if args.host in ("0.0.0.0", "::"):
+            parser.error(f"Explicit --allowed-host required when binding to wildcard host '{args.host}'.")
+        host_authority = f"[{args.host}]" if (":" in args.host and not args.host.startswith("[")) else args.host
+        hosts = list(
+            dict.fromkeys(
+                [
+                    args.host,
+                    host_authority,
+                    "localhost",
+                    f"{host_authority}:{args.port}",
+                    f"localhost:{args.port}",
+                ]
+            )
+        )
+    elif any(h.strip() == "*" for h in hosts):
+        parser.error("Wildcard '*' is not permitted in --allowed-host; specify explicit hostnames.")
+
     if args.transport == "sse":
         warnings.warn(
             "The 'sse' transport is deprecated in MCP Specification 2026-07-28 and will be removed "
@@ -149,13 +181,18 @@ def main() -> None:
         )
         mcp.run(transport="sse", host=args.host, port=args.port)
     elif args.transport == "streamable-http":
-        mcp.run(
-            transport="streamable-http",
-            host=args.host,
-            port=args.port,
-            stateless_http=args.stateless,
-            json_response=args.json_response,
-        )
+        run_kwargs: dict[str, Any] = {
+            "transport": "streamable-http",
+            "host": args.host,
+            "port": args.port,
+            "stateless_http": args.stateless,
+            "json_response": args.json_response,
+            "host_origin_protection": True,
+            "allowed_hosts": hosts,
+        }
+        if getattr(args, "allowed_origins", None) is not None:
+            run_kwargs["allowed_origins"] = args.allowed_origins
+        mcp.run(**run_kwargs)
     else:
         mcp.run(transport="stdio")
 

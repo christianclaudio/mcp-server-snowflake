@@ -1,0 +1,22 @@
+{
+  "$schema": "https://gofastmcp.com/public/schemas/fastmcp.json/v1.json",
+  "source": {
+    "path": "src/snowflake_mcp/server.py",
+    "entrypoint": "mcp"
+  },
+  "environment": {
+    "dependencies": [
+      "mcp>=2.2.0",
+      "fastmcp>=4.0.5",
+      "snowflake-connector-python>=4.7.3",
+      "snowflake-core>=1.13.1",
+      "pydantic>=2.13.5",
+      "cryptography>=50.0.1",
+      "python-dotenv>=1.2.3"
+    ]
+  },
+  "deployment": {
+    "transport": "stdio",
+    "log_level": "INFO"
+  }
+}
