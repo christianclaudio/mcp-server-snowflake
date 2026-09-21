@@ -422,3 +422,29 @@ def test_cli_wildcard_binding_requires_allowed_host() -> None:
     ):
         main()
     assert exc_info.value.code != 0
+
+
+def test_cli_ipv6_bracketed_host_authority() -> None:
+    """Verify IPv6 literal binding formats bracketed authority in allowed_hosts."""
+    with (
+        patch("snowflake_mcp.cli.create_server") as mock_srv,
+        patch(
+            "sys.argv",
+            [
+                "snowflake-mcp",
+                "--transport",
+                "streamable-http",
+                "--host",
+                "::1",
+                "--port",
+                "8000",
+            ],
+        ),
+    ):
+        mock_instance = MagicMock()
+        mock_srv.return_value = mock_instance
+        main()
+        mock_instance.run.assert_called_once()
+        run_kwargs = mock_instance.run.call_args[1]
+        assert "[::1]" in run_kwargs["allowed_hosts"]
+        assert "[::1]:8000" in run_kwargs["allowed_hosts"]

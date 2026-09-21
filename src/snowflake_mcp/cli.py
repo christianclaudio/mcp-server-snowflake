@@ -157,7 +157,18 @@ def main() -> None:
     if hosts is None:
         if args.host in ("0.0.0.0", "::"):
             parser.error(f"Explicit --allowed-host required when binding to wildcard host '{args.host}'.")
-        hosts = [args.host, "localhost", f"{args.host}:{args.port}", f"localhost:{args.port}"]
+        host_authority = f"[{args.host}]" if (":" in args.host and not args.host.startswith("[")) else args.host
+        hosts = list(
+            dict.fromkeys(
+                [
+                    args.host,
+                    host_authority,
+                    "localhost",
+                    f"{host_authority}:{args.port}",
+                    f"localhost:{args.port}",
+                ]
+            )
+        )
     elif any(h.strip() == "*" for h in hosts):
         parser.error("Wildcard '*' is not permitted in --allowed-host; specify explicit hostnames.")
 

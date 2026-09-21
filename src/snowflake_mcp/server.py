@@ -137,7 +137,10 @@ def _streamable_http_app(
                 f"Explicit allowed_hosts required when binding to wildcard host '{host}'. "
                 "Specify allowed_hosts=['your-host'] to enable DNS rebinding and host origin protection."
             )
-        allowed_hosts = [host, "localhost", f"{host}:{port}", f"localhost:{port}"]
+        host_authority = f"[{host}]" if (":" in host and not host.startswith("[")) else host
+        allowed_hosts = list(
+            dict.fromkeys([host, host_authority, "localhost", f"{host_authority}:{port}", f"localhost:{port}"])
+        )
     return self.http_app(
         path=path,
         transport="streamable-http",
