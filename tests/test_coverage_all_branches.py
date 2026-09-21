@@ -238,6 +238,6 @@ def test_cli_parsing() -> None:
 def test_handle_shutdown() -> None:
     from snowflake_mcp.cli import _handle_shutdown
 
-    with patch("os._exit") as mock_exit:
+    with patch("sys.exit") as mock_exit:
         _handle_shutdown(15, None)
         mock_exit.assert_called_once_with(0)

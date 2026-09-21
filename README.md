@@ -1,3 +1,4 @@
+<!-- mcp-name: io.github.christianclaudio/mcp-server-snowflake -->
 # ❄️ mcp-server-snowflake
 
 [![CI](https://github.com/christianclaudio/mcp-server-snowflake/actions/workflows/ci.yml/badge.svg)](https://github.com/christianclaudio/mcp-server-snowflake/actions/workflows/ci.yml)
@@ -9,6 +10,48 @@
 
 > **Supercharge AI Agents with Native Snowflake Data Cloud & Cortex AI Superpowers!** ⚡  
 > An enterprise-grade Model Context Protocol (MCP) server providing **140 tools** across 19 domain modules, dynamic profile switching, zero-config connection resolution, safe SQL execution, virtual warehouse management, object inspection, Horizon data lineage, and Cortex AI integrations straight to your favorite AI assistant.
+
+---
+
+## 🏛️ System Architecture
+
+```mermaid
+flowchart TD
+    subgraph Clients["AI Clients & Hosts"]
+        Claude["Claude Desktop / Claude Code"]
+        Antigravity["Antigravity / Gemini CLI"]
+        CortexClient["Snowflake Cortex Agent"]
+        Cursor["Cursor / VS Code"]
+    end
+
+    subgraph Protocol["MCP Protocol Boundary (Spec 2026-07-28)"]
+        STDIO["stdio Transport"]
+        HTTP["Streamable HTTP Transport (SSE)"]
+    end
+
+    subgraph Server["snowflake-mcp (FastMCP 4)"]
+        CLI["CLI & Arg Parser (Allowed Hosts & DNS Rebinding Protection)"]
+        Auth["Multi-Auth & Profile Resolver (~/.snowflake/connections.toml / Key-Pair / PAT / SSO)"]
+        Registry["Tool Registry (140 Tools across 19 Modules)"]
+        Safety["Safety Gates (confirm=True, Read-Only Guard, Row Limits)"]
+    end
+
+    subgraph Cloud["Snowflake Data Cloud"]
+        SQL["SQL & Transaction Engine"]
+        Warehouses["Virtual Warehouses & Scaling"]
+        Horizon["Horizon Lineage, Tags & Policies"]
+        Cortex["Cortex AI (Search, Complete, Analyst)"]
+        SPCS["SPCS Compute Pools & Services"]
+        Storage["Stages, Pipes, Streams & Iceberg"]
+    end
+
+    Clients --> STDIO & HTTP
+    STDIO & HTTP --> CLI
+    CLI --> Auth
+    Auth --> Registry
+    Registry --> Safety
+    Safety --> SQL & Warehouses & Horizon & Cortex & SPCS & Storage
+```
 
 ---
 
@@ -93,6 +136,147 @@ docker run -i --rm mcp-server-snowflake
 | **17. Programmability, UDFs & Secrets** | 10 | `snowflake_list_procedures`, `snowflake_describe_procedure`, `snowflake_list_functions`, `snowflake_describe_function`, `snowflake_list_secrets`, `snowflake_describe_secret`, `snowflake_list_sequences`, `snowflake_list_integrations`, `snowflake_list_event_tables`, `snowflake_list_notification_integrations` |
 | **18. Cortex AI & NLP Extensions** | 8 | `snowflake_cortex_complete`, `snowflake_cortex_summarize`, `snowflake_cortex_sentiment`, `snowflake_cortex_extract_answer`, `snowflake_cortex_translate`, `snowflake_cortex_search`, `snowflake_cortex_embed_text_768`, `snowflake_cortex_analyst_query` |
 | **19. Composite Agent Workflows** | 8 | `snowflake_health_check`, `snowflake_inspect_table_with_sample`, `snowflake_profile_table`, `snowflake_warehouse_scale_and_execute`, `snowflake_clone_table_recipe`, `snowflake_export_query_to_stage`, `snowflake_account_usage_summary`, `snowflake_discover_schema_lineage` |
+
+---
+
+## 🔌 Integration Guides for AI Assistants & IDEs
+
+`mcp-server-snowflake` works seamlessly with all major AI assistants, IDEs, and CLI tools via standard `stdio` or `streamable-http`.
+
+<details open>
+<summary><b>🧡 Claude Desktop & Claude Code</b></summary>
+
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+
+```json
+{
+  "mcpServers": {
+    "snowflake": {
+      "command": "snowflake-mcp",
+      "args": ["-c", "my_connection"],
+      "env": {
+        "SNOWFLAKE_DEFAULT_CONNECTION_NAME": "my_connection"
+      }
+    }
+  }
+}
+```
+
+For **Claude Code CLI**:
+```bash
+claude mcp add snowflake -- snowflake-mcp -c my_connection
+```
+</details>
+
+<details>
+<summary><b>♊ Google Antigravity & Gemini CLI</b></summary>
+
+Add to `.agents/mcp_config.json` (or global `~/.gemini/config/mcp_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "snowflake": {
+      "command": "snowflake-mcp",
+      "args": ["-c", "my_connection"],
+      "env": {
+        "SNOWFLAKE_DEFAULT_CONNECTION_NAME": "my_connection"
+      }
+    }
+  }
+}
+```
+</details>
+
+<details>
+<summary><b>❄️ Snowflake Cortex Agent</b></summary>
+
+Add to `~/.snowflake/cortex/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "snowflake": {
+      "command": "snowflake-mcp",
+      "args": ["-c", "my_connection"]
+    }
+  }
+}
+```
+</details>
+
+<details>
+<summary><b>💻 Cursor & Windsurf</b></summary>
+
+Add to `~/.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "snowflake": {
+      "command": "snowflake-mcp",
+      "args": ["-c", "my_connection"]
+    }
+  }
+}
+```
+</details>
+
+<details>
+<summary><b>⚡ VS Code (Cline, Roo Code, GitHub Copilot Agent Mode)</b></summary>
+
+Add to `cline_mcp_settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "snowflake": {
+      "command": "snowflake-mcp",
+      "args": ["-c", "my_connection"]
+    }
+  }
+}
+```
+</details>
+
+<details>
+<summary><b>🌐 Streamable HTTP Transport (SSE)</b></summary>
+
+Launch `snowflake-mcp` as a long-running Streamable HTTP service:
+
+```bash
+snowflake-mcp --transport streamable-http --host 127.0.0.1 --port 8000
+```
+
+Connect your HTTP client or proxy to endpoint `http://127.0.0.1:8000/mcp`.
+</details>
+
+---
+
+## 🧪 Verification Runbook
+
+All changes are strictly verified with automated safety and contract gates before release:
+
+```bash
+# 1. Format and lint checks
+uv run ruff check .
+uv run ruff format --check .
+
+# 2. Strict static typing
+uv run mypy src/
+
+# 3. Unit and mocked test suite
+uv run pytest
+
+# 4. AST Tool contract verification (140 tools)
+uv run python scripts/check_tool_contract.py
+
+# 5. MCP protocol conformance suite (Spec 2026-07-28)
+./scripts/check_conformance.sh
+
+# 6. Conventional commit SemVer bump determination
+uv run python scripts/determine_bump.py
+```
 
 ---
 

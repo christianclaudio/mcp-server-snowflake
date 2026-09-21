@@ -121,6 +121,6 @@ def test_cli_execution() -> None:
     mock_cfg = SnowflakeConfig(account="acc", user="usr")
     with patch("sys.argv", ["snowflake-mcp", "--readonly", "--transport", "stdio"]):
         with patch("snowflake_mcp.cli.SnowflakeConfig.from_env_or_config", return_value=mock_cfg):
-            with patch("mcp.server.mcpserver.server.MCPServer.run") as mock_run:
+            with patch("fastmcp.FastMCP.run") as mock_run:
                 main()
                 assert mock_run.called
