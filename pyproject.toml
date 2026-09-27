@@ -27,8 +27,8 @@ classifiers = [
 ]
 dependencies = [
     "mcp>=2.2.0",
-    "fastmcp>=4.0.5",
-    "snowflake-connector-python>=4.7.4",
+    "fastmcp>=4.0.8",
+    "snowflake-connector-python>=4.7.5",
     "snowflake-core>=1.13.1",
     "pydantic>=2.13.5",
     "cryptography>=50.0.1",
