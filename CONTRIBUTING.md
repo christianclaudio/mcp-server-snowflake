@@ -12,27 +12,25 @@ Thank you for your interest in contributing to `mcp-server-snowflake`!
    cd mcp-server-snowflake
    ```
 
-2. **Set up virtual environment:**
+2. **Install from the lockfile:**
    ```bash
-   python -m venv .venv
-   source .venv/bin/activate
-   pip install -e ".[dev]"
+   uv sync --locked --extra dev
    ```
 
 3. **Run tests & quality checks:**
    ```bash
    # Linting and formatting
-   ruff check .
-   ruff format --check .
+   uv run ruff check .
+   uv run ruff format --check .
 
    # Type checking
-   mypy --config-file pyproject.toml src/
+   uv run mypy src/
 
    # Test suite
-   pytest -q
+   uv run pytest -q
 
    # Tool contract verification
-   python scripts/check_tool_contract.py
+   uv run python scripts/check_tool_contract.py
    ```
 
 ---

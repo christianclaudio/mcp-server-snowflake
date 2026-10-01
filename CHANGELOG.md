@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.2.0] - 2026-10-01
+
+### Changed
+- **FastMCP floor**: `pyproject.toml` and `fastmcp.json` require `fastmcp>=4.0.10`. The Snowflake connector floor in `fastmcp.json` matches `pyproject.toml` (`>=4.7.5`). `uv.lock` resolves FastMCP 4.0.10 and package version 1.2.0.
+- **Locked installs**: CI lint, tests, tool contract, protocol conformance, and package build use `uv sync --locked --extra dev`. The weekly Snowflake drift monitor uses `uv sync --locked`. Release and Docker image builds still install with pip.
+- **Claim scrub**: Changelog tool names match registered `@mcp.tool` names. `AGENTS.md` no longer documents a phantom `errors.py`, a connection-pool API, a dynamic User-Agent header, or a stale `mcp>=2.1.1` floor. The drift-monitor docstring now states the 140-tool contract.
+
+### Removed
+- **`docs/`**: Removed the in-repo tree, including `docs/COOKBOOK.md`. The cookbook lives only on mcp-server-template.
+
 ## [1.1.6] - 2026-09-12
 
 ### Added
@@ -24,16 +34,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Horizon Lineage & Governance Suite (10 new tools, 140 tools total)**:
-  - `snowflake_catalog_object_dependencies`: Upstream and downstream object-level dependency tracking via `SNOWFLAKE.ACCOUNT_USAGE.OBJECT_DEPENDENCIES`.
-  - `snowflake_catalog_table_lineage`: Directed table-level lineage graph discovery.
-  - `snowflake_catalog_column_lineage`: Column-level data lineage and transformation tracking via `SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY` with configurable days lookback.
-  - `snowflake_tag_references`: Direct tag lookup across databases, schemas, tables, and columns via `SNOWFLAKE.ACCOUNT_USAGE.TAG_REFERENCES`.
-  - `snowflake_catalog_masking_policies`: Discovery of dynamic data masking policies and column associations.
-  - `snowflake_catalog_row_access_policies`: Active row-level security policies and table bindings.
-  - `snowflake_catalog_iceberg_tables`: Deep Iceberg catalog metadata, table format specs, and volume linkages.
-  - `snowflake_catalog_external_volumes`: Configuration details and storage location specs for external volumes.
-  - `snowflake_catalog_query_telemetry`: Detailed telemetry on query execution profiles and compute efficiency metrics.
-  - `snowflake_catalog_governance_posture`: Fleet-wide audit summary of tagging coverage and security policy compliance.
+  - `snowflake_get_object_lineage`: Upstream and downstream object-level dependency tracking via `SNOWFLAKE.ACCOUNT_USAGE.OBJECT_DEPENDENCIES`, including directed table-level lineage.
+  - `snowflake_get_column_lineage`: Column-level data lineage and transformation tracking via `SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY` with configurable days lookback.
+  - `snowflake_list_masking_policies`: Discovery of dynamic data masking policies and column associations.
+  - `snowflake_describe_masking_policy`: Masking policy signature, return type, and body.
+  - `snowflake_list_row_access_policies`: Active row-level security policies and table bindings.
+  - `snowflake_describe_row_access_policy`: Row access policy signature, filter expression, and comment.
+  - `snowflake_list_external_volumes`: Configuration details and storage location specs for external volumes.
+  - `snowflake_list_catalog_integrations`: Catalog integrations (Polaris, AWS Glue, object storage) used with Iceberg tables.
+  - `snowflake_list_event_tables`: Event tables for application logging, tracing, and query/SPCS telemetry.
+  - `snowflake_list_notification_integrations`: Notification integrations for alerts, tasks, and cloud messaging.
+  - Tag lookup stays `snowflake_get_object_tag_references` (already listed in 0.1.0). Iceberg table tools stay `snowflake_list_iceberg_tables` and `snowflake_describe_iceberg_table` (already listed in 0.1.0). There is no separate governance-posture tool.
 
 ### Changed
 - **MCP Registry Metadata**: Added `runtimeHint: uvx` to `server.json` packages array conforming to Anthropic registry standards.
@@ -58,8 +69,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.0] - 2026-08-25
 
 ### Added
-- **127 Enterprise MCP Tools** across 18 specialized domain suites matching Snowflake REST API v2 and `snowflake.core`.
-  - **SQL Queries & Transactions (8 tools)**: `snowflake_query`, `snowflake_execute_dml`, `snowflake_cancel_query`, `snowflake_get_query_history`, `snowflake_get_query_plan`, `snowflake_get_query_operator_stats`, `snowflake_begin_transaction`, `snowflake_commit_transaction`.
+- **130 Enterprise MCP Tools** across 18 specialized domain suites matching Snowflake REST API v2 and `snowflake.core`.
+  - **SQL Queries & Transactions (9 tools)**: `snowflake_query`, `snowflake_execute_dml`, `snowflake_cancel_query`, `snowflake_get_query_history`, `snowflake_get_query_plan`, `snowflake_get_query_operator_stats`, `snowflake_begin_transaction`, `snowflake_commit_transaction`, `snowflake_rollback_transaction`.
   - **Databases & Zero-Copy Clones (7 tools)**: `snowflake_list_databases`, `snowflake_describe_database`, `snowflake_create_database`, `snowflake_drop_database`, `snowflake_clone_database`, `snowflake_undrop_database`, `snowflake_get_database_ddl`.
   - **Schemas & Clones (6 tools)**: `snowflake_list_schemas`, `snowflake_describe_schema`, `snowflake_create_schema`, `snowflake_drop_schema`, `snowflake_clone_schema`, `snowflake_undrop_schema`.
   - **Tables, Views & Partitions (10 tools)**: `snowflake_list_tables`, `snowflake_list_views`, `snowflake_describe_table`, `snowflake_get_table_ddl`, `snowflake_sample_table`, `snowflake_create_table`, `snowflake_drop_table`, `snowflake_undrop_table`, `snowflake_truncate_table`, `snowflake_clone_table`.
@@ -70,7 +81,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Dynamic & Iceberg Tables (7 tools)**: `snowflake_list_dynamic_tables`, `snowflake_describe_dynamic_table`, `snowflake_refresh_dynamic_table`, `snowflake_resume_dynamic_table`, `snowflake_suspend_dynamic_table`, `snowflake_list_iceberg_tables`, `snowflake_describe_iceberg_table`.
   - **Snowpipe & Ingestion (5 tools)**: `snowflake_list_pipes`, `snowflake_describe_pipe`, `snowflake_create_pipe`, `snowflake_drop_pipe`, `snowflake_get_pipe_status`.
   - **Alerts & Notifications (6 tools)**: `snowflake_list_alerts`, `snowflake_describe_alert`, `snowflake_create_alert`, `snowflake_drop_alert`, `snowflake_resume_alert`, `snowflake_suspend_alert`.
-  - **Governance & RBAC (10 tools)**: `snowflake_get_current_context`, `snowflake_list_roles`, `snowflake_describe_role`, `snowflake_create_role`, `snowflake_drop_role`, `snowflake_list_users`, `snowflake_describe_user`, `snowflake_create_user`, `snowflake_list_grants_to_role`, `snowflake_list_grants_to_user`.
+  - **Governance & RBAC (12 tools)**: `snowflake_get_current_context`, `snowflake_list_connections`, `snowflake_use_connection`, `snowflake_list_roles`, `snowflake_describe_role`, `snowflake_create_role`, `snowflake_drop_role`, `snowflake_list_users`, `snowflake_describe_user`, `snowflake_create_user`, `snowflake_list_grants_to_role`, `snowflake_list_grants_to_user`.
   - **Network & Password Policies (6 tools)**: `snowflake_list_network_policies`, `snowflake_describe_network_policy`, `snowflake_list_network_rules`, `snowflake_describe_network_rule`, `snowflake_list_password_policies`, `snowflake_describe_password_policy`.
   - **SPCS & Streamlit Apps (8 tools)**: `snowflake_list_streamlits`, `snowflake_describe_streamlit`, `snowflake_list_compute_pools`, `snowflake_describe_compute_pool`, `snowflake_resume_compute_pool`, `snowflake_suspend_compute_pool`, `snowflake_list_services`, `snowflake_list_image_repositories`.
   - **Object Tags & Metadata (4 tools)**: `snowflake_list_tags`, `snowflake_describe_tag`, `snowflake_get_object_tag_references`, `snowflake_set_object_tag`.
