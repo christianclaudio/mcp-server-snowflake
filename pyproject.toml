@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mcp-server-snowflake"
-version = "1.1.6"
+version = "1.2.0"
 description = "Enterprise Model Context Protocol (MCP) server for Snowflake data cloud and Cortex AI."
 readme = "README.md"
 license = "Apache-2.0"
@@ -27,7 +27,7 @@ classifiers = [
 ]
 dependencies = [
     "mcp>=2.2.0",
-    "fastmcp>=4.0.8",
+    "fastmcp>=4.0.10",
     "snowflake-connector-python>=4.7.5",
     "snowflake-core>=1.13.1",
     "pydantic>=2.13.5",

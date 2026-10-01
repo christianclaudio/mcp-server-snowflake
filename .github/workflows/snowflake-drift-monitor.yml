@@ -17,20 +17,24 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7.6.0
+        with:
+          version: "latest"
+          enable-cache: true
+
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+        run: uv sync --locked --python 3.12
 
       - name: Run Drift Check
         id: drift-check
         run: |
-          python scripts/check_snowflake_drift.py > drift_results.txt 2>&1
+          uv run python scripts/check_snowflake_drift.py > drift_results.txt 2>&1
           echo "DRIFT_STATUS=$?" >> $GITHUB_ENV
         continue-on-error: true
 

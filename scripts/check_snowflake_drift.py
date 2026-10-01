@@ -2,7 +2,7 @@
 """Snowflake API & SDK Drift Monitor.
 
 Checks PyPI for new releases of core Snowflake SDKs (snowflake-connector-python,
-snowflake-core, snowflake-snowpark-python) and verifies 130-tool suite registration contract.
+snowflake-core, snowflake-snowpark-python) and verifies the 140-tool suite registration contract.
 """
 
 from __future__ import annotations

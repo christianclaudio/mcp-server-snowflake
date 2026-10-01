@@ -16,20 +16,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7.6.0
+        with:
+          version: "latest"
+          enable-cache: true
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-          cache: "pip"
       - name: Install
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+        run: uv sync --locked --extra dev --python 3.12
       - name: Ruff lint
-        run: ruff check .
+        run: uv run ruff check .
       - name: Ruff format check
-        run: ruff format --check .
+        run: uv run ruff format --check .
       - name: Mypy strict
-        run: mypy src/
+        run: uv run mypy src/
 
   test:
     name: Tests (py${{ matrix.python-version }})
@@ -40,50 +42,56 @@ jobs:
         python-version: ["3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v7
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7.6.0
+        with:
+          version: "latest"
+          enable-cache: true
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
-          cache: "pip"
       - name: Install
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+        run: uv sync --locked --extra dev --python ${{ matrix.python-version }}
       - name: Unit and mocked tests
-        run: pytest --cov=src/snowflake_mcp --cov-report=term-missing -q
+        run: uv run pytest --cov=src/snowflake_mcp --cov-report=term-missing -q
 
   contract:
     name: Tool Contract Verification (140 Tools)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7.6.0
+        with:
+          version: "latest"
+          enable-cache: true
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-          cache: "pip"
       - name: Install
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+        run: uv sync --locked --extra dev --python 3.12
       - name: Assert 140 tool contract
-        run: python scripts/check_tool_contract.py
+        run: uv run python scripts/check_tool_contract.py
 
   conformance:
     name: Protocol Conformance (MCP Spec 2026-07-28)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7.6.0
+        with:
+          version: "latest"
+          enable-cache: true
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-          cache: "pip"
       - name: Set up Node.js 22
         uses: actions/setup-node@v7
         with:
           node-version: "22"
       - name: Install
-        run: |
-          python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+        run: uv sync --locked --extra dev --python 3.12
       - name: Protocol conformance suite
         run: ./scripts/check_conformance.sh
 
@@ -92,18 +100,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      - name: Install uv
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7.6.0
+        with:
+          version: "latest"
+          enable-cache: true
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-          cache: "pip"
-      - name: Install build tooling
-        run: |
-          python -m pip install --upgrade pip
-          pip install build twine
+      - name: Install dependencies
+        run: uv sync --locked --extra dev --python 3.12
       - name: Build Wheel & Sdist
-        run: python -m build
+        run: uv run python -m build
       - name: Twine check
-        run: twine check dist/*
+        run: uv run twine check dist/*
       - name: Upload build artifacts
         uses: actions/upload-artifact@v7
         with:
