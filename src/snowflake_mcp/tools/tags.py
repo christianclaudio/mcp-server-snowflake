@@ -4,14 +4,16 @@ from __future__ import annotations
 
 from typing import Any
 
+from fastmcp import FastMCP
+
 from snowflake_mcp.connection import SnowflakeClient
 
 
-def register_tag_tools(mcp: Any, client: SnowflakeClient) -> None:
+def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     """Register Tag tools."""
 
     @mcp.tool(
-        name="snowflake_list_tags",
+        name="list_tags",
         description="List object tags defined in a database or schema.",
     )
     async def snowflake_list_tags(
@@ -39,7 +41,7 @@ def register_tag_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_describe_tag",
+        name="describe_tag",
         description="Describe tag properties, allowed values, and comment.",
     )
     async def snowflake_describe_tag(
@@ -66,7 +68,7 @@ def register_tag_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_get_object_tag_references",
+        name="get_object_tag_references",
         description="Get tag key/value assignments on a specific database object.",
     )
     async def snowflake_get_object_tag_references(
@@ -85,7 +87,7 @@ def register_tag_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_set_object_tag",
+        name="set_object_tag",
         description="Set or assign a tag value on a Snowflake object (TABLE, SCHEMA, DATABASE, etc.).",
     )
     async def snowflake_set_object_tag(

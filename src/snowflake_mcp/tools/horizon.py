@@ -4,14 +4,16 @@ from __future__ import annotations
 
 from typing import Any
 
+from fastmcp import FastMCP
+
 from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal
 
 
-def register_horizon_tools(mcp: Any, client: SnowflakeClient) -> None:
+def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     """Register Snowflake Horizon tools."""
 
     @mcp.tool(
-        name="snowflake_get_object_lineage",
+        name="get_object_lineage",
         description="Retrieve upstream source and downstream dependent object lineage from Snowflake Horizon.",
     )
     async def snowflake_get_object_lineage(
@@ -66,7 +68,7 @@ def register_horizon_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_get_column_lineage",
+        name="get_column_lineage",
         description="Trace origin and transformation lineage for a column using Snowflake Horizon Access History.",
     )
     async def snowflake_get_column_lineage(
@@ -104,7 +106,7 @@ def register_horizon_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_list_masking_policies",
+        name="list_masking_policies",
         description="List column masking policies in the account, database, or schema.",
     )
     async def snowflake_list_masking_policies(
@@ -132,7 +134,7 @@ def register_horizon_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_describe_masking_policy",
+        name="describe_masking_policy",
         description="Describe signature, return type, and body of a masking policy.",
     )
     async def snowflake_describe_masking_policy(
@@ -158,7 +160,7 @@ def register_horizon_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_list_row_access_policies",
+        name="list_row_access_policies",
         description="List row access policies defined in the account, database, or schema.",
     )
     async def snowflake_list_row_access_policies(
@@ -186,7 +188,7 @@ def register_horizon_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_describe_row_access_policy",
+        name="describe_row_access_policy",
         description="Describe signature, filter expression, and comment of a row access policy.",
     )
     async def snowflake_describe_row_access_policy(

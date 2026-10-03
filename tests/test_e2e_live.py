@@ -33,18 +33,18 @@ def _redact_secrets(text: str) -> str:
 
 
 SAFE_TOOL_FIXTURES: dict[str, dict[str, Any]] = {
-    "snowflake_query": {"query": "SELECT 1"},
-    "snowflake_execute_dml": {"statement": "SELECT 1"},
-    "snowflake_drop_database": {"name": "e2e_probe_db", "confirm": False},
-    "snowflake_drop_schema": {"name": "e2e_probe_schema", "confirm": False},
-    "snowflake_drop_table": {"table_name": "e2e_probe_tbl", "confirm": False},
-    "snowflake_drop_stage": {"stage_name": "e2e_probe_stage", "confirm": False},
-    "snowflake_drop_pipe": {"pipe_name": "e2e_probe_pipe", "confirm": False},
-    "snowflake_drop_stream": {"stream_name": "e2e_probe_stream", "confirm": False},
-    "snowflake_drop_alert": {"alert_name": "e2e_probe_alert", "confirm": False},
-    "snowflake_drop_role": {"role_name": "e2e_probe_role", "confirm": False},
-    "snowflake_drop_warehouse": {"name": "e2e_probe_wh", "confirm": False},
-    "snowflake_drop_task": {"task_name": "e2e_probe_task", "confirm": False},
+    "queries_query": {"query": "SELECT 1"},
+    "queries_execute_dml": {"statement": "SELECT 1"},
+    "databases_drop_database": {"name": "e2e_probe_db", "confirm": False},
+    "schemas_drop_schema": {"name": "e2e_probe_schema", "confirm": False},
+    "tables_drop_table": {"table_name": "e2e_probe_tbl", "confirm": False},
+    "stages_drop_stage": {"stage_name": "e2e_probe_stage", "confirm": False},
+    "pipes_drop_pipe": {"pipe_name": "e2e_probe_pipe", "confirm": False},
+    "streams_drop_stream": {"stream_name": "e2e_probe_stream", "confirm": False},
+    "alerts_drop_alert": {"alert_name": "e2e_probe_alert", "confirm": False},
+    "governance_drop_role": {"role_name": "e2e_probe_role", "confirm": False},
+    "warehouses_drop_warehouse": {"name": "e2e_probe_wh", "confirm": False},
+    "tasks_drop_task": {"task_name": "e2e_probe_task", "confirm": False},
 }
 
 
@@ -114,35 +114,35 @@ async def test_dispatch_tool_call_offline(monkeypatch: pytest.MonkeyPatch) -> No
 
     # 1. Successful non-destructive tool
     mock_srv.call_tool.return_value = CallToolResult(content=[TextContent(type="text", text="ok")], is_error=False)
-    status, is_err, err = await dispatch_tool_call(mock_srv, "snowflake_query", is_destructive=False)
+    status, is_err, err = await dispatch_tool_call(mock_srv, "queries_query", is_destructive=False)
     assert status == "PASS"
     assert not is_err
     assert err is None
-    mock_srv.call_tool.assert_awaited_with("snowflake_query", {"query": "SELECT 1"})
+    mock_srv.call_tool.assert_awaited_with("queries_query", {"query": "SELECT 1"})
 
     # 2. Destructive tool with safety confirmation gate from fixture map
     mock_srv.call_tool.return_value = CallToolResult(
         content=[TextContent(type="text", text=json.dumps({"status": "requires_confirmation"}))],
         is_error=False,
     )
-    status, is_err, err = await dispatch_tool_call(mock_srv, "snowflake_drop_database", is_destructive=True)
+    status, is_err, err = await dispatch_tool_call(mock_srv, "databases_drop_database", is_destructive=True)
     assert status == "PASS"
     assert not is_err
-    mock_srv.call_tool.assert_awaited_with("snowflake_drop_database", {"name": "e2e_probe_db", "confirm": False})
+    mock_srv.call_tool.assert_awaited_with("databases_drop_database", {"name": "e2e_probe_db", "confirm": False})
 
     # 3. Unexpected destructive success must fail the safety check
     mock_srv.call_tool.return_value = CallToolResult(
         content=[TextContent(type="text", text=json.dumps({"status": "success"}))],
         is_error=False,
     )
-    status, is_err, err = await dispatch_tool_call(mock_srv, "snowflake_drop_database", is_destructive=True)
+    status, is_err, err = await dispatch_tool_call(mock_srv, "databases_drop_database", is_destructive=True)
     assert status == "FAIL"
     assert is_err
     assert "Destructive safety gate bypassed" in (err or "")
 
     # 4. Error response with is_error=True
     mock_srv.call_tool.return_value = CallToolResult(content=[TextContent(type="text", text="error")], is_error=True)
-    status, is_err, err = await dispatch_tool_call(mock_srv, "snowflake_query", is_destructive=False)
+    status, is_err, err = await dispatch_tool_call(mock_srv, "queries_query", is_destructive=False)
     assert status == "FAIL"
     assert is_err
     assert err is None
@@ -151,7 +151,7 @@ async def test_dispatch_tool_call_offline(monkeypatch: pytest.MonkeyPatch) -> No
     mock_srv.call_tool.side_effect = RuntimeError(
         "failed with Bearer eyJhbGciOiJIUzI1NiIsIn... and password=supersecret123 and -----BEGIN RSA PRIVATE KEY-----\nMIIE...\n-----END RSA PRIVATE KEY-----"
     )
-    status, is_err, err = await dispatch_tool_call(mock_srv, "snowflake_query", is_destructive=False)
+    status, is_err, err = await dispatch_tool_call(mock_srv, "queries_query", is_destructive=False)
     assert status == "FAIL"
     assert is_err
     assert err is not None
@@ -165,7 +165,7 @@ async def test_dispatch_tool_call_offline(monkeypatch: pytest.MonkeyPatch) -> No
     # 5. Non-CallToolResult return value returns failure
     mock_srv.call_tool.side_effect = None
     mock_srv.call_tool.return_value = "plain string output"
-    status, is_err, err = await dispatch_tool_call(mock_srv, "snowflake_query", is_destructive=False)
+    status, is_err, err = await dispatch_tool_call(mock_srv, "queries_query", is_destructive=False)
     assert status == "FAIL"
     assert is_err
     assert "Expected CallToolResult" in (err or "")
@@ -178,7 +178,7 @@ async def test_server_tools_with_mocked_cursor(mock_snowflake_client: SnowflakeC
     mock_cursor = mock_snowflake_client.get_connection().cursor.return_value
 
     # 1. Non-destructive query tool exercises cursor execution
-    status, is_err, err = await dispatch_tool_call(srv, "snowflake_query", is_destructive=False)
+    status, is_err, err = await dispatch_tool_call(srv, "queries_query", is_destructive=False)
     assert status == "PASS"
     assert not is_err
     assert err is None
@@ -186,7 +186,7 @@ async def test_server_tools_with_mocked_cursor(mock_snowflake_client: SnowflakeC
 
     # 2. Destructive drop tool safety gate (confirm=False) is verified as PASS without cursor execution
     mock_cursor.execute.reset_mock()
-    status, is_err, err = await dispatch_tool_call(srv, "snowflake_drop_database", is_destructive=True)
+    status, is_err, err = await dispatch_tool_call(srv, "databases_drop_database", is_destructive=True)
     assert status == "PASS"
     assert not is_err
     assert err is None
@@ -194,7 +194,7 @@ async def test_server_tools_with_mocked_cursor(mock_snowflake_client: SnowflakeC
 
     # 3. Read-only rejection on mutation is treated as a valid safety check
     mock_snowflake_client.config.read_only = True
-    status, is_err, err = await dispatch_tool_call(srv, "snowflake_drop_database", is_destructive=True)
+    status, is_err, err = await dispatch_tool_call(srv, "databases_drop_database", is_destructive=True)
     assert status == "PASS"
     assert not is_err
     assert err is None

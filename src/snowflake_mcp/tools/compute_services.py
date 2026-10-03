@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from fastmcp import FastMCP
+
 from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal
 
 
@@ -26,11 +28,11 @@ def qualify_compute_target(
     return ".".join(parts)
 
 
-def register_compute_service_tools(mcp: Any, client: SnowflakeClient) -> None:
+def register_compute_service_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     """Register SPCS and Streamlit tools."""
 
     @mcp.tool(
-        name="snowflake_list_streamlits",
+        name="list_streamlits",
         description="List Streamlit applications hosted in Snowflake.",
     )
     async def snowflake_list_streamlits(
@@ -58,7 +60,7 @@ def register_compute_service_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_describe_streamlit",
+        name="describe_streamlit",
         description="Describe Streamlit application root location, stage, and query warehouse.",
     )
     async def snowflake_describe_streamlit(
@@ -78,7 +80,7 @@ def register_compute_service_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_list_compute_pools",
+        name="list_compute_pools",
         description="List Snowpark Container Services (SPCS) compute pools.",
     )
     async def snowflake_list_compute_pools(
@@ -93,7 +95,7 @@ def register_compute_service_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_describe_compute_pool",
+        name="describe_compute_pool",
         description="Describe compute pool instance family, min/max nodes, active nodes, and state.",
     )
     async def snowflake_describe_compute_pool(
@@ -108,7 +110,7 @@ def register_compute_service_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_resume_compute_pool",
+        name="resume_compute_pool",
         description="Resume an idle or suspended SPCS compute pool.",
     )
     async def snowflake_resume_compute_pool(
@@ -125,7 +127,7 @@ def register_compute_service_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_suspend_compute_pool",
+        name="suspend_compute_pool",
         description="Suspend an active SPCS compute pool to stop node provisioning costs.",
     )
     async def snowflake_suspend_compute_pool(
@@ -142,7 +144,7 @@ def register_compute_service_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_list_services",
+        name="list_services",
         description="List container services running on SPCS compute pools.",
     )
     async def snowflake_list_services(
@@ -170,7 +172,7 @@ def register_compute_service_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_list_image_repositories",
+        name="list_image_repositories",
         description="List OCI image repositories in Snowflake.",
     )
     async def snowflake_list_image_repositories(

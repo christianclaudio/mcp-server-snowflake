@@ -4,15 +4,17 @@ from __future__ import annotations
 
 from typing import Any
 
+from fastmcp import FastMCP
+
 from snowflake_mcp.config import SnowflakeConfig
 from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal
 
 
-def register_governance_tools(mcp: Any, client: SnowflakeClient) -> None:
+def register_governance_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     """Register governance and RBAC tools."""
 
     @mcp.tool(
-        name="snowflake_get_current_context",
+        name="get_current_context",
         description="Retrieve current active session context (current user, role, warehouse, database, schema, and account).",
     )
     async def snowflake_get_current_context() -> dict[str, Any]:
@@ -36,7 +38,7 @@ def register_governance_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_list_connections",
+        name="list_connections",
         description="List available connection profiles configured in ~/.snowflake/connections.toml and show active profile.",
     )
     async def snowflake_list_connections() -> dict[str, Any]:
@@ -52,7 +54,7 @@ def register_governance_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_use_connection",
+        name="use_connection",
         description="Dynamically switch the active Snowflake session to a different connection profile from ~/.snowflake/connections.toml.",
     )
     async def snowflake_use_connection(connection_name: str) -> dict[str, Any]:
@@ -71,7 +73,7 @@ def register_governance_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_list_roles",
+        name="list_roles",
         description="List roles available in the Snowflake account.",
     )
     async def snowflake_list_roles(
@@ -86,7 +88,7 @@ def register_governance_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_describe_role",
+        name="describe_role",
         description="Describe role properties and assigned grants.",
     )
     async def snowflake_describe_role(
@@ -101,7 +103,7 @@ def register_governance_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_create_role",
+        name="create_role",
         description="Create a new role in Snowflake.",
     )
     async def snowflake_create_role(
@@ -122,7 +124,7 @@ def register_governance_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_drop_role",
+        name="drop_role",
         description="Drop a role in Snowflake. Requires confirmation.",
     )
     async def snowflake_drop_role(
@@ -145,7 +147,7 @@ def register_governance_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_list_users",
+        name="list_users",
         description="List users in the Snowflake account with login status and default roles.",
     )
     async def snowflake_list_users(
@@ -160,7 +162,7 @@ def register_governance_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_describe_user",
+        name="describe_user",
         description="Describe user properties, email, disabled status, and default warehouse/role.",
     )
     async def snowflake_describe_user(
@@ -175,7 +177,7 @@ def register_governance_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_create_user",
+        name="create_user",
         description="Create a new Snowflake user with default role and warehouse.",
     )
     async def snowflake_create_user(
@@ -208,7 +210,7 @@ def register_governance_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": err_msg}
 
     @mcp.tool(
-        name="snowflake_list_grants_to_role",
+        name="list_grants_to_role",
         description="List privileges granted to a specific role.",
     )
     async def snowflake_list_grants_to_role(
@@ -223,7 +225,7 @@ def register_governance_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_list_grants_to_user",
+        name="list_grants_to_user",
         description="List roles granted to a specific user.",
     )
     async def snowflake_list_grants_to_user(

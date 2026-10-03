@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from fastmcp import FastMCP
+
 from snowflake_mcp.connection import (
     SnowflakeClient,
     is_sql_read_only,
@@ -11,11 +13,11 @@ from snowflake_mcp.connection import (
 )
 
 
-def register_query_tools(mcp: Any, client: SnowflakeClient) -> None:
+def register_query_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     """Register query execution and management tools."""
 
     @mcp.tool(
-        name="snowflake_query",
+        name="query",
         description="Execute a SQL SELECT or read-only query on Snowflake and return structured rows with metadata.",
     )
     async def snowflake_query(
@@ -37,7 +39,7 @@ def register_query_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_execute_dml",
+        name="execute_dml",
         description="Execute a data modification SQL statement (INSERT, UPDATE, DELETE, MERGE, CREATE).",
     )
     async def snowflake_execute_dml(
@@ -57,7 +59,7 @@ def register_query_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_cancel_query",
+        name="cancel_query",
         description="Cancel an active running Snowflake query by its Query ID.",
     )
     async def snowflake_cancel_query(
@@ -74,7 +76,7 @@ def register_query_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_get_query_history",
+        name="get_query_history",
         description="Retrieve recent query execution history for the current account/user.",
     )
     async def snowflake_get_query_history(
@@ -105,7 +107,7 @@ def register_query_tools(mcp: Any, client: SnowflakeClient) -> None:
                 return {"status": "error", "error": f"{primary_error}; fallback failed: {e}"}
 
     @mcp.tool(
-        name="snowflake_get_query_plan",
+        name="get_query_plan",
         description="Generate the EXPLAIN execution plan for a SQL query without executing it.",
     )
     async def snowflake_get_query_plan(
@@ -120,7 +122,7 @@ def register_query_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_get_query_operator_stats",
+        name="get_query_operator_stats",
         description="Retrieve operator-level execution statistics and profiling data for a past Query ID.",
     )
     async def snowflake_get_query_operator_stats(
@@ -135,7 +137,7 @@ def register_query_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_begin_transaction",
+        name="begin_transaction",
         description="Begin an explicit transaction on the active session.",
     )
     async def snowflake_begin_transaction() -> dict[str, Any]:
@@ -149,7 +151,7 @@ def register_query_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_commit_transaction",
+        name="commit_transaction",
         description="Commit the current active transaction on the session.",
     )
     async def snowflake_commit_transaction() -> dict[str, Any]:
@@ -163,7 +165,7 @@ def register_query_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_rollback_transaction",
+        name="rollback_transaction",
         description="Rollback the current active transaction on the session.",
     )
     async def snowflake_rollback_transaction() -> dict[str, Any]:

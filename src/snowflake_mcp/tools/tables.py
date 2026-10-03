@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from fastmcp import FastMCP
+
 from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal
 
 VALID_DDL_OBJECT_TYPES = {
@@ -39,11 +41,11 @@ def qualify_table_target(
     return ".".join(parts)
 
 
-def register_table_tools(mcp: Any, client: SnowflakeClient) -> None:
+def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     """Register table and view inspection tools."""
 
     @mcp.tool(
-        name="snowflake_list_tables",
+        name="list_tables",
         description="List tables in a database schema with row counts and bytes.",
     )
     async def snowflake_list_tables(
@@ -71,7 +73,7 @@ def register_table_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_list_views",
+        name="list_views",
         description="List views in a database schema.",
     )
     async def snowflake_list_views(
@@ -99,7 +101,7 @@ def register_table_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_describe_table",
+        name="describe_table",
         description="Describe column definitions, data types, nullability, and primary keys for a table or view.",
     )
     async def snowflake_describe_table(
@@ -119,7 +121,7 @@ def register_table_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_get_table_ddl",
+        name="get_table_ddl",
         description="Retrieve the exact CREATE OR REPLACE TABLE/VIEW DDL definition for an object.",
     )
     async def snowflake_get_table_ddl(
@@ -141,7 +143,7 @@ def register_table_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_sample_table",
+        name="sample_table",
         description="Preview sample rows from a table (default 10 rows).",
     )
     async def snowflake_sample_table(
@@ -161,7 +163,7 @@ def register_table_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_create_table",
+        name="create_table",
         description="Create a table in Snowflake with specified column definitions SQL.",
     )
     async def snowflake_create_table(
@@ -186,7 +188,7 @@ def register_table_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_drop_table",
+        name="drop_table",
         description="Drop a table in Snowflake. Requires confirmation flag.",
     )
     async def snowflake_drop_table(
@@ -210,7 +212,7 @@ def register_table_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_undrop_table",
+        name="undrop_table",
         description="Restore a recently dropped table using Time Travel.",
     )
     async def snowflake_undrop_table(
@@ -228,7 +230,7 @@ def register_table_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_truncate_table",
+        name="truncate_table",
         description="Truncate all data rows from a table while preserving schema. Requires confirmation.",
     )
     async def snowflake_truncate_table(
@@ -252,7 +254,7 @@ def register_table_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_clone_table",
+        name="clone_table",
         description="Create a zero-copy clone of an existing table.",
     )
     async def snowflake_clone_table(

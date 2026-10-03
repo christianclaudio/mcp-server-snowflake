@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from fastmcp import FastMCP
+
 from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal
 
 
@@ -26,11 +28,11 @@ def qualify_policy_target(
     return ".".join(parts)
 
 
-def register_network_tools(mcp: Any, client: SnowflakeClient) -> None:
+def register_network_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     """Register Network and Security tools."""
 
     @mcp.tool(
-        name="snowflake_list_network_policies",
+        name="list_network_policies",
         description="List network policies configured in the account.",
     )
     async def snowflake_list_network_policies(
@@ -45,7 +47,7 @@ def register_network_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_describe_network_policy",
+        name="describe_network_policy",
         description="Describe allowed IP lists, blocked IP lists, and comments for a network policy.",
     )
     async def snowflake_describe_network_policy(
@@ -60,7 +62,7 @@ def register_network_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_list_network_rules",
+        name="list_network_rules",
         description="List network rules defined in a database or schema.",
     )
     async def snowflake_list_network_rules(
@@ -88,7 +90,7 @@ def register_network_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_describe_network_rule",
+        name="describe_network_rule",
         description="Describe mode (INGRESS, INTERNAL_STAGE, EGRESS), type (IPV4, AWSVPCEID, HOST_PORT), and value list of a network rule.",
     )
     async def snowflake_describe_network_rule(
@@ -108,7 +110,7 @@ def register_network_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_list_password_policies",
+        name="list_password_policies",
         description="List password security policies defined in the account or database.",
     )
     async def snowflake_list_password_policies(
@@ -136,7 +138,7 @@ def register_network_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_describe_password_policy",
+        name="describe_password_policy",
         description="Describe password policy constraints (min length, lockout time, history, age).",
     )
     async def snowflake_describe_password_policy(

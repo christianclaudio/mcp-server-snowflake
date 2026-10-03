@@ -4,14 +4,16 @@ from __future__ import annotations
 
 from typing import Any
 
+from fastmcp import FastMCP
+
 from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal
 
 
-def register_pipe_tools(mcp: Any, client: SnowflakeClient) -> None:
+def register_pipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     """Register Snowpipe tools."""
 
     @mcp.tool(
-        name="snowflake_list_pipes",
+        name="list_pipes",
         description="List Snowpipes configured in a database or schema.",
     )
     async def snowflake_list_pipes(
@@ -39,7 +41,7 @@ def register_pipe_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_describe_pipe",
+        name="describe_pipe",
         description="Describe pipe definition and COPY statement.",
     )
     async def snowflake_describe_pipe(
@@ -63,7 +65,7 @@ def register_pipe_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_create_pipe",
+        name="create_pipe",
         description="Create a Snowpipe for continuous ingestion.",
     )
     async def snowflake_create_pipe(
@@ -94,7 +96,7 @@ def register_pipe_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_drop_pipe",
+        name="drop_pipe",
         description="Drop a Snowpipe. Requires confirmation.",
     )
     async def snowflake_drop_pipe(
@@ -126,7 +128,7 @@ def register_pipe_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_get_pipe_status",
+        name="get_pipe_status",
         description="Get execution and health status of a Snowpipe (pending file count, last ingested timestamp).",
     )
     async def snowflake_get_pipe_status(

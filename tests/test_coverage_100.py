@@ -152,40 +152,40 @@ async def test_tools_missing_branches() -> None:
     tools = server._tool_manager._tools
 
     # compute_services: database only, pattern only, and combinations
-    await tools["snowflake_list_streamlits"].fn(database="DB", schema_name=None, pattern="ST%")
-    await tools["snowflake_list_streamlits"].fn(database=None, schema_name=None, pattern=None)
-    await tools["snowflake_list_services"].fn(database="DB", schema_name=None, pattern="SRV%")
-    await tools["snowflake_list_services"].fn(database=None, schema_name=None, pattern=None)
-    await tools["snowflake_list_image_repositories"].fn(database="DB", schema_name=None, pattern="IMG%")
-    await tools["snowflake_list_image_repositories"].fn(database=None, schema_name=None, pattern=None)
-    await tools["snowflake_list_compute_pools"].fn(pattern="POOL%")
+    await tools["compute_services_list_streamlits"].fn(database="DB", schema_name=None, pattern="ST%")
+    await tools["compute_services_list_streamlits"].fn(database=None, schema_name=None, pattern=None)
+    await tools["compute_services_list_services"].fn(database="DB", schema_name=None, pattern="SRV%")
+    await tools["compute_services_list_services"].fn(database=None, schema_name=None, pattern=None)
+    await tools["compute_services_list_image_repositories"].fn(database="DB", schema_name=None, pattern="IMG%")
+    await tools["compute_services_list_image_repositories"].fn(database=None, schema_name=None, pattern=None)
+    await tools["compute_services_list_compute_pools"].fn(pattern="POOL%")
 
     # dynamic_tables: database only and patterns
-    await tools["snowflake_list_dynamic_tables"].fn(database="DB", schema_name=None, pattern="DT%")
-    await tools["snowflake_list_dynamic_tables"].fn(database=None, schema_name=None, pattern=None)
-    await tools["snowflake_list_iceberg_tables"].fn(database="DB", schema_name=None, pattern="ICE%")
-    await tools["snowflake_list_iceberg_tables"].fn(database=None, schema_name=None, pattern=None)
+    await tools["dynamic_tables_list_dynamic_tables"].fn(database="DB", schema_name=None, pattern="DT%")
+    await tools["dynamic_tables_list_dynamic_tables"].fn(database=None, schema_name=None, pattern=None)
+    await tools["dynamic_tables_list_iceberg_tables"].fn(database="DB", schema_name=None, pattern="ICE%")
+    await tools["dynamic_tables_list_iceberg_tables"].fn(database=None, schema_name=None, pattern=None)
 
     # network: database only, pattern only
-    await tools["snowflake_list_network_rules"].fn(database="DB", schema_name=None, pattern="NR%")
-    await tools["snowflake_list_network_rules"].fn(database=None, schema_name=None, pattern=None)
-    await tools["snowflake_list_password_policies"].fn(database="DB", schema_name=None, pattern="PP%")
-    await tools["snowflake_list_password_policies"].fn(database=None, schema_name=None, pattern=None)
+    await tools["network_list_network_rules"].fn(database="DB", schema_name=None, pattern="NR%")
+    await tools["network_list_network_rules"].fn(database=None, schema_name=None, pattern=None)
+    await tools["network_list_password_policies"].fn(database="DB", schema_name=None, pattern="PP%")
+    await tools["network_list_password_policies"].fn(database=None, schema_name=None, pattern=None)
 
     # stages: database only, remove file confirmation, and patterns
-    await tools["snowflake_list_stage_files"].fn(stage_location="my_stage", pattern="*.csv")
-    await tools["snowflake_list_stage_files"].fn(stage_location="@my_stage", pattern=None)
-    await tools["snowflake_drop_stage"].fn(stage_name="STG", database="DB", schema_name=None, confirm=True)
-    await tools["snowflake_describe_stage"].fn(stage_name="STG", database="DB", schema_name=None)
-    await tools["snowflake_remove_stage_file"].fn(stage_file_path="my_stage/file.csv", confirm=False)
+    await tools["stages_list_stage_files"].fn(stage_location="my_stage", pattern="*.csv")
+    await tools["stages_list_stage_files"].fn(stage_location="@my_stage", pattern=None)
+    await tools["stages_drop_stage"].fn(stage_name="STG", database="DB", schema_name=None, confirm=True)
+    await tools["stages_describe_stage"].fn(stage_name="STG", database="DB", schema_name=None)
+    await tools["stages_remove_stage_file"].fn(stage_file_path="my_stage/file.csv", confirm=False)
 
     # tags: no db/schema and db only
-    await tools["snowflake_describe_tag"].fn(tag_name="TG", database="DB", schema_name=None)
-    await tools["snowflake_describe_tag"].fn(tag_name="TG", database=None, schema_name=None)
+    await tools["tags_describe_tag"].fn(tag_name="TG", database="DB", schema_name=None)
+    await tools["tags_describe_tag"].fn(tag_name="TG", database=None, schema_name=None)
 
     # warehouses: load history, fallback, and drop wh
-    await tools["snowflake_get_warehouse_load_history"].fn(warehouse_name="WH")
-    await tools["snowflake_drop_warehouse"].fn(warehouse_name="WH", confirm=True)
+    await tools["warehouses_get_warehouse_load_history"].fn(warehouse_name="WH")
+    await tools["warehouses_drop_warehouse"].fn(warehouse_name="WH", confirm=True)
 
     # Fallback warehouse load history
     def wh_side_effect(query: str, **kwargs: object) -> dict[str, object]:
@@ -194,17 +194,17 @@ async def test_tools_missing_branches() -> None:
         return {"status": "success", "data": []}
 
     client.execute_query.side_effect = wh_side_effect
-    await tools["snowflake_get_warehouse_load_history"].fn(warehouse_name="WH")
+    await tools["warehouses_get_warehouse_load_history"].fn(warehouse_name="WH")
     client.execute_query.side_effect = None
     client.execute_query.return_value = {"status": "success", "data": [{"size": "SMALL"}]}
 
     # recipes: table without schema, warehouse_scale_and_execute, account usage fallback
-    await tools["snowflake_inspect_table_with_sample"].fn(table_name="USERS", database=None, schema_name=None)
-    await tools["snowflake_profile_table"].fn(table_name="USERS", database=None, schema_name=None)
-    await tools["snowflake_discover_schema_lineage"].fn(database=None, schema_name=None)
-    await tools["snowflake_account_usage_summary"].fn()
-    await tools["snowflake_clone_table_recipe"].fn(source_table="SRC", target_table="TGT")
-    await tools["snowflake_warehouse_scale_and_execute"].fn(
+    await tools["recipes_inspect_table_with_sample"].fn(table_name="USERS", database=None, schema_name=None)
+    await tools["recipes_profile_table"].fn(table_name="USERS", database=None, schema_name=None)
+    await tools["recipes_discover_schema_lineage"].fn(database=None, schema_name=None)
+    await tools["recipes_account_usage_summary"].fn()
+    await tools["recipes_clone_table_recipe"].fn(source_table="SRC", target_table="TGT")
+    await tools["recipes_warehouse_scale_and_execute"].fn(
         warehouse_name="WH", target_size="LARGE", query="SELECT 1", restore_previous_size=True
     )
 
@@ -215,7 +215,7 @@ async def test_tools_missing_branches() -> None:
         return {"status": "success", "data": []}
 
     client.execute_query.side_effect = usage_side_effect
-    await tools["snowflake_account_usage_summary"].fn()
+    await tools["recipes_account_usage_summary"].fn()
     client.execute_query.side_effect = None
     client.execute_query.return_value = {"status": "success", "data": [{"size": "SMALL"}]}
 
@@ -224,14 +224,14 @@ async def test_tools_missing_branches() -> None:
     client_ro = SnowflakeClient(config=cfg_ro)
     server_ro = create_server(client=client_ro)
     tools_ro = server_ro._tool_manager._tools
-    await tools_ro["snowflake_query"].fn(query="DROP TABLE my_table")
+    await tools_ro["queries_query"].fn(query="DROP TABLE my_table")
 
     # programmability: integration types valid, invalid and pattern
-    await tools["snowflake_list_integrations"].fn(integration_type="STORAGE", pattern="S3%")
-    await tools["snowflake_list_integrations"].fn(integration_type="INVALID_TYPE")
+    await tools["programmability_list_integrations"].fn(integration_type="STORAGE", pattern="S3%")
+    await tools["programmability_list_integrations"].fn(integration_type="INVALID_TYPE")
 
     # query history normal & fallback
-    await tools["snowflake_get_query_history"].fn(limit=20)
+    await tools["queries_get_query_history"].fn(limit=20)
 
     def q_side_effect(query: str, **kwargs: object) -> dict[str, object]:
         if "INFORMATION_SCHEMA" in query:
@@ -239,7 +239,7 @@ async def test_tools_missing_branches() -> None:
         return {"status": "success", "data": []}
 
     client.execute_query.side_effect = q_side_effect
-    await tools["snowflake_get_query_history"].fn(limit=20)
+    await tools["queries_get_query_history"].fn(limit=20)
 
 
 def test_cli_run_server() -> None:

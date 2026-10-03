@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from fastmcp import FastMCP
+
 from snowflake_mcp.connection import (
     SnowflakeClient,
     is_sql_read_only,
@@ -12,11 +14,11 @@ from snowflake_mcp.connection import (
 )
 
 
-def register_alert_tools(mcp: Any, client: SnowflakeClient) -> None:
+def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     """Register Alert tools."""
 
     @mcp.tool(
-        name="snowflake_list_alerts",
+        name="list_alerts",
         description="List configured alerts with condition queries, schedules, and state.",
     )
     async def snowflake_list_alerts(
@@ -44,7 +46,7 @@ def register_alert_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_describe_alert",
+        name="describe_alert",
         description="Describe alert condition SQL, action SQL, schedule, and warehouse.",
     )
     async def snowflake_describe_alert(
@@ -68,7 +70,7 @@ def register_alert_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_create_alert",
+        name="create_alert",
         description="Create an alert with schedule, condition SQL, and action SQL. Destructive actions require confirm=True.",
     )
     async def snowflake_create_alert(
@@ -111,7 +113,7 @@ def register_alert_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_drop_alert",
+        name="drop_alert",
         description="Drop an alert in Snowflake. Requires confirmation.",
     )
     async def snowflake_drop_alert(
@@ -143,7 +145,7 @@ def register_alert_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_resume_alert",
+        name="resume_alert",
         description="Resume a suspended alert.",
     )
     async def snowflake_resume_alert(
@@ -169,7 +171,7 @@ def register_alert_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_suspend_alert",
+        name="suspend_alert",
         description="Suspend an active alert.",
     )
     async def snowflake_suspend_alert(

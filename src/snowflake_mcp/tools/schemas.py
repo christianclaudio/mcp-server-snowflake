@@ -4,14 +4,16 @@ from __future__ import annotations
 
 from typing import Any
 
+from fastmcp import FastMCP
+
 from snowflake_mcp.connection import SnowflakeClient
 
 
-def register_schema_tools(mcp: Any, client: SnowflakeClient) -> None:
+def register_schema_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     """Register Schema management tools."""
 
     @mcp.tool(
-        name="snowflake_list_schemas",
+        name="list_schemas",
         description="List all schemas within a specific database or the current active database.",
     )
     async def snowflake_list_schemas(
@@ -33,7 +35,7 @@ def register_schema_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_describe_schema",
+        name="describe_schema",
         description="Describe schema properties, owner, and retention settings.",
     )
     async def snowflake_describe_schema(
@@ -51,7 +53,7 @@ def register_schema_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_create_schema",
+        name="create_schema",
         description="Create a new schema inside a specified database.",
     )
     async def snowflake_create_schema(
@@ -75,7 +77,7 @@ def register_schema_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_clone_schema",
+        name="clone_schema",
         description="Create a zero-copy clone of a schema.",
     )
     async def snowflake_clone_schema(
@@ -97,7 +99,7 @@ def register_schema_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_drop_schema",
+        name="drop_schema",
         description="Drop a schema in Snowflake. Requires confirmation flag.",
     )
     async def snowflake_drop_schema(
@@ -123,7 +125,7 @@ def register_schema_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_undrop_schema",
+        name="undrop_schema",
         description="Restore a recently dropped schema using Time Travel.",
     )
     async def snowflake_undrop_schema(

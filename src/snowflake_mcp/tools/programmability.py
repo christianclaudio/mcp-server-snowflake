@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from fastmcp import FastMCP
+
 from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal
 
 ALLOWED_ARG_TYPE_PATTERN = re.compile(
@@ -72,11 +74,11 @@ def validate_and_quote_routine_signature(
     return f"{name_part}({', '.join(validated_args)})"
 
 
-def register_programmability_tools(mcp: Any, client: SnowflakeClient) -> None:
+def register_programmability_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     """Register stored procedures, UDFs, secrets, sequences, and integrations tools."""
 
     @mcp.tool(
-        name="snowflake_list_procedures",
+        name="list_procedures",
         description="List stored procedures in a database or schema.",
     )
     async def snowflake_list_procedures(
@@ -104,7 +106,7 @@ def register_programmability_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_describe_procedure",
+        name="describe_procedure",
         description="Describe procedure signature, return type, language, and definition body.",
     )
     async def snowflake_describe_procedure(
@@ -124,7 +126,7 @@ def register_programmability_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_list_functions",
+        name="list_functions",
         description="List user-defined functions (UDFs) in a database or schema.",
     )
     async def snowflake_list_functions(
@@ -152,7 +154,7 @@ def register_programmability_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_describe_function",
+        name="describe_function",
         description="Describe UDF function signature, return type, language, and body.",
     )
     async def snowflake_describe_function(
@@ -172,7 +174,7 @@ def register_programmability_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_list_secrets",
+        name="list_secrets",
         description="List security secrets (API keys, OAuth credentials) stored in Snowflake.",
     )
     async def snowflake_list_secrets(
@@ -200,7 +202,7 @@ def register_programmability_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_describe_secret",
+        name="describe_secret",
         description="Describe secret metadata, type (GENERIC_STRING, OAUTH2), and owner without exposing secret value.",
     )
     async def snowflake_describe_secret(
@@ -224,7 +226,7 @@ def register_programmability_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_list_sequences",
+        name="list_sequences",
         description="List auto-increment sequences in a database or schema.",
     )
     async def snowflake_list_sequences(
@@ -252,7 +254,7 @@ def register_programmability_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_list_integrations",
+        name="list_integrations",
         description="List external integrations (API, Storage, Notification, Security integrations).",
     )
     async def snowflake_list_integrations(
@@ -280,7 +282,7 @@ def register_programmability_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_list_event_tables",
+        name="list_event_tables",
         description="List event tables used for application logging, tracing, and SPCS telemetry.",
     )
     async def snowflake_list_event_tables(
@@ -308,7 +310,7 @@ def register_programmability_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_list_notification_integrations",
+        name="list_notification_integrations",
         description="List notification integrations configured for alerts, tasks, and cloud messaging (SNS, PubSub, Webhooks).",
     )
     async def snowflake_list_notification_integrations(

@@ -4,14 +4,16 @@ from __future__ import annotations
 
 from typing import Any
 
+from fastmcp import FastMCP
+
 from snowflake_mcp.connection import SnowflakeClient
 
 
-def register_cortex_tools(mcp: Any, client: SnowflakeClient) -> None:
+def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     """Register Cortex AI, Search, Translation, Embeddings, and NLP tools."""
 
     @mcp.tool(
-        name="snowflake_cortex_complete",
+        name="complete",
         description="Run LLM completion using Snowflake Cortex AI (e.g., 'llama3.3-70b', 'mistral-large2', 'snowflake-arctic').",
     )
     async def snowflake_cortex_complete(
@@ -36,7 +38,7 @@ def register_cortex_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_cortex_summarize",
+        name="summarize",
         description="Summarize English text using Snowflake Cortex AI.",
     )
     async def snowflake_cortex_summarize(
@@ -54,7 +56,7 @@ def register_cortex_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_cortex_sentiment",
+        name="sentiment",
         description="Analyze sentiment of text returning score from -1.0 (most negative) to 1.0 (most positive).",
     )
     async def snowflake_cortex_sentiment(
@@ -72,7 +74,7 @@ def register_cortex_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_cortex_extract_answer",
+        name="extract_answer",
         description="Extract direct answer to a question from unstructured source document/text.",
     )
     async def snowflake_cortex_extract_answer(
@@ -92,7 +94,7 @@ def register_cortex_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_cortex_translate",
+        name="translate",
         description="Translate text from a source language to a target language using Snowflake Cortex AI.",
     )
     async def snowflake_cortex_translate(
@@ -112,7 +114,7 @@ def register_cortex_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_cortex_search",
+        name="search",
         description="Query a Snowflake Cortex Search Service index over unstructured text.",
     )
     async def snowflake_cortex_search(
@@ -135,7 +137,7 @@ def register_cortex_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_cortex_embed_text_768",
+        name="embed_text_768",
         description="Generate 768-dimensional dense vector embeddings for text using Snowflake Cortex AI.",
     )
     async def snowflake_cortex_embed_text_768(
@@ -154,7 +156,7 @@ def register_cortex_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_cortex_analyst_query",
+        name="analyst_query",
         description="Ask a natural language analytical question using Cortex Analyst semantic models.",
     )
     async def snowflake_cortex_analyst_query(

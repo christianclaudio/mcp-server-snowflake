@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.0.0] - 2026-10-03
+
+### Breaking
+- **Wire names**: Tools no longer use a product-wide `snowflake_` prefix. Each of the 19 domain modules is mounted with FastMCP `namespace=<domain>`, so clients see `{domain}_{name}` on one flat `tools/list`. Local tool names stay bare. Example: `snowflake_query` is now `queries_query`, and `snowflake_list_databases` is now `databases_list_databases`. Cortex tools drop the repeated domain token so the mount does not double-prefix them (`snowflake_cortex_complete` is `cortex_complete`). Package `snowflake_mcp` and server identity `snowflake` / `mcp-server-snowflake` are unchanged. This catalog has no prompts or resource URIs. This release is not tagged and is not published.
+
+### Domains
+`queries`, `databases`, `schemas`, `tables`, `warehouses`, `stages`, `tasks`, `streams`, `dynamic_tables`, `pipes`, `alerts`, `governance`, `network`, `compute_services`, `tags`, `horizon`, `programmability`, `cortex`, `recipes`.
+
 ## [1.2.0] - 2026-10-01
 
 ### Changed

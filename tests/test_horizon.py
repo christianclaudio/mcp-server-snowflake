@@ -21,7 +21,7 @@ async def test_horizon_object_lineage(mock_client: SnowflakeClient) -> None:
         "data": [{"REFERENCED_OBJECT_NAME": "RAW_TABLE"}]
     }
     mcp = create_server(client=mock_client)
-    fn = mcp._tool_manager._tools["snowflake_get_object_lineage"].fn
+    fn = mcp._tool_manager._tools["horizon_get_object_lineage"].fn
 
     # Both directions with db/schema
     res = await fn("CUSTOMERS_VIEW", direction="both", database="DB1", schema_name="SCH1")
@@ -50,7 +50,7 @@ async def test_horizon_column_lineage(mock_client: SnowflakeClient) -> None:
         "data": [{"QUERY_ID": "q01", "USER_NAME": "ADMIN"}]
     }
     mcp = create_server(client=mock_client)
-    fn = mcp._tool_manager._tools["snowflake_get_column_lineage"].fn
+    fn = mcp._tool_manager._tools["horizon_get_column_lineage"].fn
 
     res = await fn("CUSTOMERS", "EMAIL", database="DB1", schema_name="SCH1", days=14, limit=5)
     assert res["status"] == "success"
@@ -67,8 +67,8 @@ async def test_horizon_column_lineage(mock_client: SnowflakeClient) -> None:
 async def test_masking_policies(mock_client: SnowflakeClient) -> None:
     mock_client.execute_query.return_value = {"data": [{"name": "EMAIL_MASK"}]}  # type: ignore[attr-defined]
     mcp = create_server(client=mock_client)
-    fn_list = mcp._tool_manager._tools["snowflake_list_masking_policies"].fn
-    fn_desc = mcp._tool_manager._tools["snowflake_describe_masking_policy"].fn
+    fn_list = mcp._tool_manager._tools["horizon_list_masking_policies"].fn
+    fn_desc = mcp._tool_manager._tools["horizon_describe_masking_policy"].fn
 
     # List with schema, db, pattern
     res1 = await fn_list(database="DB1", schema_name="SCH1", pattern="EMAIL%")
@@ -100,8 +100,8 @@ async def test_masking_policies(mock_client: SnowflakeClient) -> None:
 async def test_row_access_policies(mock_client: SnowflakeClient) -> None:
     mock_client.execute_query.return_value = {"data": [{"name": "REGION_ROW_POLICY"}]}  # type: ignore[attr-defined]
     mcp = create_server(client=mock_client)
-    fn_list = mcp._tool_manager._tools["snowflake_list_row_access_policies"].fn
-    fn_desc = mcp._tool_manager._tools["snowflake_describe_row_access_policy"].fn
+    fn_list = mcp._tool_manager._tools["horizon_list_row_access_policies"].fn
+    fn_desc = mcp._tool_manager._tools["horizon_describe_row_access_policy"].fn
 
     # List with schema, db, pattern
     res1 = await fn_list(database="DB1", schema_name="SCH1", pattern="REGION%")
@@ -133,8 +133,8 @@ async def test_row_access_policies(mock_client: SnowflakeClient) -> None:
 async def test_external_volumes_and_catalog_integrations(mock_client: SnowflakeClient) -> None:
     mock_client.execute_query.return_value = {"data": [{"name": "S3_ICEBERG_VOL"}]}  # type: ignore[attr-defined]
     mcp = create_server(client=mock_client)
-    fn_vol = mcp._tool_manager._tools["snowflake_list_external_volumes"].fn
-    fn_cat = mcp._tool_manager._tools["snowflake_list_catalog_integrations"].fn
+    fn_vol = mcp._tool_manager._tools["dynamic_tables_list_external_volumes"].fn
+    fn_cat = mcp._tool_manager._tools["dynamic_tables_list_catalog_integrations"].fn
 
     res_vol = await fn_vol(pattern="S3%")
     assert res_vol["status"] == "success"
@@ -152,8 +152,8 @@ async def test_external_volumes_and_catalog_integrations(mock_client: SnowflakeC
 async def test_event_tables_and_notification_integrations(mock_client: SnowflakeClient) -> None:
     mock_client.execute_query.return_value = {"data": [{"name": "MY_EVENTS"}]}  # type: ignore[attr-defined]
     mcp = create_server(client=mock_client)
-    fn_event = mcp._tool_manager._tools["snowflake_list_event_tables"].fn
-    fn_notif = mcp._tool_manager._tools["snowflake_list_notification_integrations"].fn
+    fn_event = mcp._tool_manager._tools["programmability_list_event_tables"].fn
+    fn_notif = mcp._tool_manager._tools["programmability_list_notification_integrations"].fn
 
     # Event tables with schema, db, pattern
     res1 = await fn_event(database="DB1", schema_name="SCH1", pattern="MY_%")
