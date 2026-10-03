@@ -4,14 +4,16 @@ from __future__ import annotations
 
 from typing import Any
 
+from fastmcp import FastMCP
+
 from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal
 
 
-def register_database_tools(mcp: Any, client: SnowflakeClient) -> None:
+def register_database_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     """Register database management tools."""
 
     @mcp.tool(
-        name="snowflake_list_databases",
+        name="list_databases",
         description="List all available databases accessible to the current role.",
     )
     async def snowflake_list_databases(
@@ -26,7 +28,7 @@ def register_database_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_describe_database",
+        name="describe_database",
         description="Describe properties, owner, retention time, and comment of a database.",
     )
     async def snowflake_describe_database(
@@ -41,7 +43,7 @@ def register_database_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_create_database",
+        name="create_database",
         description="Create a new database in Snowflake.",
     )
     async def snowflake_create_database(
@@ -68,7 +70,7 @@ def register_database_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_clone_database",
+        name="clone_database",
         description="Create a zero-copy clone of a database in Snowflake.",
     )
     async def snowflake_clone_database(
@@ -91,7 +93,7 @@ def register_database_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_drop_database",
+        name="drop_database",
         description="Drop a database in Snowflake. Requires confirmation flag.",
     )
     async def snowflake_drop_database(
@@ -114,7 +116,7 @@ def register_database_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_undrop_database",
+        name="undrop_database",
         description="Restore a recently dropped database using Time Travel.",
     )
     async def snowflake_undrop_database(
@@ -131,7 +133,7 @@ def register_database_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_get_database_ddl",
+        name="get_database_ddl",
         description="Retrieve the exact CREATE DATABASE DDL definition.",
     )
     async def snowflake_get_database_ddl(

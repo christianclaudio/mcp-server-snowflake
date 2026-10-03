@@ -5,16 +5,18 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from fastmcp import FastMCP
+
 from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal
 from snowflake_mcp.tools.tables import qualify_table_target
 from snowflake_mcp.tools.warehouses import VALID_WAREHOUSE_SIZES
 
 
-def register_recipe_tools(mcp: Any, client: SnowflakeClient) -> None:
+def register_recipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     """Register composite workflow recipes."""
 
     @mcp.tool(
-        name="snowflake_health_check",
+        name="health_check",
         description="Composite recipe: Run health check on connection, active session, warehouse state, and credit consumption.",
     )
     async def snowflake_health_check() -> dict[str, Any]:
@@ -46,7 +48,7 @@ def register_recipe_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "healthy": False, "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_inspect_table_with_sample",
+        name="inspect_table_with_sample",
         description="Composite recipe: Describe table schema, row count, column types, and preview sample rows in 1 call.",
     )
     async def snowflake_inspect_table_with_sample(
@@ -79,7 +81,7 @@ def register_recipe_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_profile_table",
+        name="profile_table",
         description="Composite recipe: Profile table metadata, row count, and column inventory.",
     )
     async def snowflake_profile_table(
@@ -118,7 +120,7 @@ def register_recipe_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_warehouse_scale_and_execute",
+        name="warehouse_scale_and_execute",
         description="Composite recipe: Safely scale up a warehouse, run a heavy query, and optionally restore previous size.",
     )
     async def snowflake_warehouse_scale_and_execute(
@@ -173,7 +175,7 @@ def register_recipe_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_clone_table_recipe",
+        name="clone_table_recipe",
         description="Composite recipe: Clone table with Time Travel timestamp or statement ID in 1 call.",
     )
     async def snowflake_clone_table_recipe(
@@ -204,7 +206,7 @@ def register_recipe_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_export_query_to_stage",
+        name="export_query_to_stage",
         description="Composite recipe: Unload query results to a stage as Parquet or CSV files.",
     )
     async def snowflake_export_query_to_stage(
@@ -226,7 +228,7 @@ def register_recipe_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_account_usage_summary",
+        name="account_usage_summary",
         description="Composite recipe: Summary of warehouse compute credits and storage consumption over the past 7 days.",
     )
     async def snowflake_account_usage_summary() -> dict[str, Any]:
@@ -249,7 +251,7 @@ def register_recipe_tools(mcp: Any, client: SnowflakeClient) -> None:
                 return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_discover_schema_lineage",
+        name="discover_schema_lineage",
         description="Composite recipe: Discover all tables and views in a schema along with their column definitions.",
     )
     async def snowflake_discover_schema_lineage(

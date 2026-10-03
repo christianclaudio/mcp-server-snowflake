@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from fastmcp import FastMCP
+
 from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal
 
 VALID_WAREHOUSE_SIZES = {
@@ -27,11 +29,11 @@ VALID_WAREHOUSE_SIZES = {
 }
 
 
-def register_warehouse_tools(mcp: Any, client: SnowflakeClient) -> None:
+def register_warehouse_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     """Register warehouse management tools."""
 
     @mcp.tool(
-        name="snowflake_list_warehouses",
+        name="list_warehouses",
         description="List virtual warehouses in the account with size, state, and auto-suspend configurations.",
     )
     async def snowflake_list_warehouses(
@@ -46,7 +48,7 @@ def register_warehouse_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_describe_warehouse",
+        name="describe_warehouse",
         description="Describe details and running state of a specific virtual warehouse.",
     )
     async def snowflake_describe_warehouse(
@@ -63,7 +65,7 @@ def register_warehouse_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_create_warehouse",
+        name="create_warehouse",
         description="Create a new virtual warehouse in Snowflake.",
     )
     async def snowflake_create_warehouse(
@@ -95,7 +97,7 @@ def register_warehouse_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_drop_warehouse",
+        name="drop_warehouse",
         description="Drop a virtual warehouse. Requires confirmation.",
     )
     async def snowflake_drop_warehouse(
@@ -118,7 +120,7 @@ def register_warehouse_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_resume_warehouse",
+        name="resume_warehouse",
         description="Resume a suspended virtual warehouse.",
     )
     async def snowflake_resume_warehouse(
@@ -135,7 +137,7 @@ def register_warehouse_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_suspend_warehouse",
+        name="suspend_warehouse",
         description="Suspend an active virtual warehouse to save compute costs.",
     )
     async def snowflake_suspend_warehouse(
@@ -152,7 +154,7 @@ def register_warehouse_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_resize_warehouse",
+        name="resize_warehouse",
         description="Change warehouse compute size (XSMALL, SMALL, MEDIUM, LARGE, XLARGE, 2XLARGE, etc.).",
     )
     async def snowflake_resize_warehouse(
@@ -178,7 +180,7 @@ def register_warehouse_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_get_warehouse_load_history",
+        name="get_warehouse_load_history",
         description="Get execution load, queuing, and provisioning history for a warehouse.",
     )
     async def snowflake_get_warehouse_load_history(

@@ -139,17 +139,17 @@ async def test_specific_branch_conditions(mock_client: SnowflakeClient) -> None:
 
     # 1. Destructive safety gating without confirmation
     gated_tools = [
-        "snowflake_drop_database",
-        "snowflake_drop_schema",
-        "snowflake_drop_table",
-        "snowflake_truncate_table",
-        "snowflake_drop_warehouse",
-        "snowflake_drop_stage",
-        "snowflake_drop_task",
-        "snowflake_drop_alert",
-        "snowflake_drop_pipe",
-        "snowflake_drop_stream",
-        "snowflake_drop_role",
+        "databases_drop_database",
+        "schemas_drop_schema",
+        "tables_drop_table",
+        "tables_truncate_table",
+        "warehouses_drop_warehouse",
+        "stages_drop_stage",
+        "tasks_drop_task",
+        "alerts_drop_alert",
+        "pipes_drop_pipe",
+        "streams_drop_stream",
+        "governance_drop_role",
     ]
     for t_name in gated_tools:
         sig = inspect.signature(tools[t_name].fn)
@@ -157,31 +157,31 @@ async def test_specific_branch_conditions(mock_client: SnowflakeClient) -> None:
         res = await tools[t_name].fn(**dummy_args)
         assert res.get("status") == "requires_confirmation", f"Tool {t_name} failed gating"
 
-    await tools["snowflake_list_databases"].fn(pattern="TEST%")
-    await tools["snowflake_list_schemas"].fn(database="TEST_DB", pattern="PUBLIC%")
-    await tools["snowflake_list_tables"].fn(database="TEST_DB", schema_name="PUBLIC", pattern="T%")
-    await tools["snowflake_list_views"].fn(database="TEST_DB", schema_name="PUBLIC", pattern="V%")
-    await tools["snowflake_list_warehouses"].fn(pattern="WH%")
-    await tools["snowflake_list_stages"].fn(database="TEST_DB", schema_name="PUBLIC", pattern="ST%")
-    await tools["snowflake_list_tasks"].fn(database="TEST_DB", schema_name="PUBLIC", pattern="TSK%")
-    await tools["snowflake_list_streams"].fn(database="TEST_DB", schema_name="PUBLIC", pattern="STR%")
-    await tools["snowflake_list_pipes"].fn(database="TEST_DB", schema_name="PUBLIC", pattern="P%")
-    await tools["snowflake_list_alerts"].fn(database="TEST_DB", schema_name="PUBLIC", pattern="A%")
-    await tools["snowflake_list_tags"].fn(database="TEST_DB", schema_name="PUBLIC", pattern="TG%")
-    await tools["snowflake_describe_tag"].fn(tag_name="TG", database="TEST_DB", schema_name="PUBLIC")
-    await tools["snowflake_describe_tag"].fn(tag_name="TG", database="TEST_DB", schema_name=None)
-    await tools["snowflake_list_functions"].fn(database="TEST_DB", schema_name="PUBLIC", pattern="F%")
-    await tools["snowflake_list_procedures"].fn(database="TEST_DB", schema_name="PUBLIC", pattern="P%")
-    await tools["snowflake_list_secrets"].fn(database="TEST_DB", schema_name="PUBLIC", pattern="S%")
-    await tools["snowflake_list_sequences"].fn(database="TEST_DB", schema_name="PUBLIC", pattern="SEQ%")
-    await tools["snowflake_list_integrations"].fn(pattern="INT%")
+    await tools["databases_list_databases"].fn(pattern="TEST%")
+    await tools["schemas_list_schemas"].fn(database="TEST_DB", pattern="PUBLIC%")
+    await tools["tables_list_tables"].fn(database="TEST_DB", schema_name="PUBLIC", pattern="T%")
+    await tools["tables_list_views"].fn(database="TEST_DB", schema_name="PUBLIC", pattern="V%")
+    await tools["warehouses_list_warehouses"].fn(pattern="WH%")
+    await tools["stages_list_stages"].fn(database="TEST_DB", schema_name="PUBLIC", pattern="ST%")
+    await tools["tasks_list_tasks"].fn(database="TEST_DB", schema_name="PUBLIC", pattern="TSK%")
+    await tools["streams_list_streams"].fn(database="TEST_DB", schema_name="PUBLIC", pattern="STR%")
+    await tools["pipes_list_pipes"].fn(database="TEST_DB", schema_name="PUBLIC", pattern="P%")
+    await tools["alerts_list_alerts"].fn(database="TEST_DB", schema_name="PUBLIC", pattern="A%")
+    await tools["tags_list_tags"].fn(database="TEST_DB", schema_name="PUBLIC", pattern="TG%")
+    await tools["tags_describe_tag"].fn(tag_name="TG", database="TEST_DB", schema_name="PUBLIC")
+    await tools["tags_describe_tag"].fn(tag_name="TG", database="TEST_DB", schema_name=None)
+    await tools["programmability_list_functions"].fn(database="TEST_DB", schema_name="PUBLIC", pattern="F%")
+    await tools["programmability_list_procedures"].fn(database="TEST_DB", schema_name="PUBLIC", pattern="P%")
+    await tools["programmability_list_secrets"].fn(database="TEST_DB", schema_name="PUBLIC", pattern="S%")
+    await tools["programmability_list_sequences"].fn(database="TEST_DB", schema_name="PUBLIC", pattern="SEQ%")
+    await tools["programmability_list_integrations"].fn(pattern="INT%")
 
     # 3. Recipes branches
-    await tools["snowflake_inspect_table_with_sample"].fn(table_name="TEST_DB.PUBLIC.USERS")
-    await tools["snowflake_profile_table"].fn(table_name="TEST_DB.PUBLIC.USERS")
-    await tools["snowflake_discover_schema_lineage"].fn(database="TEST_DB", schema_name="PUBLIC")
-    await tools["snowflake_export_query_to_stage"].fn(query="SELECT 1", stage_location="my_stage")
-    await tools["snowflake_clone_table_recipe"].fn(
+    await tools["recipes_inspect_table_with_sample"].fn(table_name="TEST_DB.PUBLIC.USERS")
+    await tools["recipes_profile_table"].fn(table_name="TEST_DB.PUBLIC.USERS")
+    await tools["recipes_discover_schema_lineage"].fn(database="TEST_DB", schema_name="PUBLIC")
+    await tools["recipes_export_query_to_stage"].fn(query="SELECT 1", stage_location="my_stage")
+    await tools["recipes_clone_table_recipe"].fn(
         source_table="SRC", target_table="TGT", at_or_before="AT(OFFSET => -60)"
     )
 

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from fastmcp import FastMCP
+
 from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal
 
 
@@ -26,11 +28,11 @@ def qualify_stream_target(
     return ".".join(parts)
 
 
-def register_stream_tools(mcp: Any, client: SnowflakeClient) -> None:
+def register_stream_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     """Register Snowflake Stream tools."""
 
     @mcp.tool(
-        name="snowflake_list_streams",
+        name="list_streams",
         description="List table/view streams in a database or schema.",
     )
     async def snowflake_list_streams(
@@ -58,7 +60,7 @@ def register_stream_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_describe_stream",
+        name="describe_stream",
         description="Describe stream metadata, source table, and stale status.",
     )
     async def snowflake_describe_stream(
@@ -78,7 +80,7 @@ def register_stream_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_create_stream",
+        name="create_stream",
         description="Create a CDC stream on a table or view.",
     )
     async def snowflake_create_stream(
@@ -106,7 +108,7 @@ def register_stream_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_drop_stream",
+        name="drop_stream",
         description="Drop a stream. Requires confirmation.",
     )
     async def snowflake_drop_stream(
@@ -134,7 +136,7 @@ def register_stream_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_read_stream_changes",
+        name="read_stream_changes",
         description="Query unconsumed CDC changes recorded in a stream (default 10 rows).",
     )
     async def snowflake_read_stream_changes(

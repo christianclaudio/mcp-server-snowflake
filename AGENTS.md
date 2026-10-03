@@ -70,7 +70,8 @@ mcp-server-snowflake/
    - Use `client.execute_query(sql, params)` on `SnowflakeClient` with SQL parameter bindings to prevent SQL injection.
    - For destructive operations (`DROP`, `TRUNCATE`, `ALTER`), require `confirm: bool = False`.
 2. **Register Tool in Domain Module**:
-   - Add the tool function inside `register_<domain>_tools(mcp, client)`.
+   - Add the tool function inside `register_<domain>_tools(mcp, client)` with a bare local `name` (no `snowflake_` prefix and no domain prefix).
+   - `create_server` mounts that module's FastMCP with `namespace=<domain>`. Clients see `{domain}_{name}` on one flat `tools/list`.
    - Read-only mode still registers every tool. Handlers reject mutations when `client.config.read_only` is set.
 3. **Pure Offline Testing**:
    - Add unit tests in `tests/` mocking `SnowflakeClient`.

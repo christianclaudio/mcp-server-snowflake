@@ -19,7 +19,7 @@ Describe the problem this would solve or the workflow it would enable in Snowfla
 How you envision this working. For new tools, include:
 
 - Snowflake SQL / Cortex API feature involved
-- Proposed tool name (e.g., `snowflake_...` or `cortex_...`)
+- Proposed tool name (e.g., `queries_...` or `cortex_...`)
 - Parameters and expected return value
 - Safety annotations (e.g., read-only vs mutation)
 

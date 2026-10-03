@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from fastmcp import FastMCP
+
 from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal
 
 
@@ -32,11 +34,11 @@ def sanitize_stage_location(loc: str) -> str:
     return clean if clean.startswith("@") else f"@{clean}"
 
 
-def register_stage_tools(mcp: Any, client: SnowflakeClient) -> None:
+def register_stage_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     """Register Snowflake stage tools."""
 
     @mcp.tool(
-        name="snowflake_list_stages",
+        name="list_stages",
         description="List internal and external stages available in the active database or schema.",
     )
     async def snowflake_list_stages(
@@ -64,7 +66,7 @@ def register_stage_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_describe_stage",
+        name="describe_stage",
         description="Describe stage location URL, storage integration, and file format properties.",
     )
     async def snowflake_describe_stage(
@@ -84,7 +86,7 @@ def register_stage_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_create_stage",
+        name="create_stage",
         description="Create an internal named stage in Snowflake.",
     )
     async def snowflake_create_stage(
@@ -110,7 +112,7 @@ def register_stage_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_drop_stage",
+        name="drop_stage",
         description="Drop a stage in Snowflake. Requires confirmation.",
     )
     async def snowflake_drop_stage(
@@ -138,7 +140,7 @@ def register_stage_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_list_stage_files",
+        name="list_stage_files",
         description="List files inside a Snowflake stage location (e.g. '@MY_STAGE/path/').",
     )
     async def snowflake_list_stage_files(
@@ -157,7 +159,7 @@ def register_stage_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_remove_stage_file",
+        name="remove_stage_file",
         description="Remove a file from a stage location. Requires confirmation.",
     )
     async def snowflake_remove_stage_file(

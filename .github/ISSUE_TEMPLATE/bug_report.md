@@ -13,7 +13,7 @@ A clear description of the bug.
 ## Steps to Reproduce
 
 1. Configure environment / connection with `...`
-2. Call tool `snowflake_...` with parameters `...`
+2. Call tool `{domain}_...` (for example `queries_query`) with parameters `...`
 3. Observe error
 
 ## Expected Behavior

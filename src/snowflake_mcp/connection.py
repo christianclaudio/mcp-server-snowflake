@@ -48,8 +48,6 @@ def is_sql_read_only(query: str) -> bool:
 
     upper = q.upper()
     tokens = upper.split()
-    if not tokens:
-        return True
 
     mutating_keywords = (
         "INSERT ",

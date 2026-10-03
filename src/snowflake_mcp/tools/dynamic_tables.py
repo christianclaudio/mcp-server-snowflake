@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from fastmcp import FastMCP
+
 from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal
 
 
@@ -26,11 +28,11 @@ def qualify_dynamic_table_target(
     return ".".join(parts)
 
 
-def register_dynamic_table_tools(mcp: Any, client: SnowflakeClient) -> None:
+def register_dynamic_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     """Register Dynamic Tables and Iceberg Table tools."""
 
     @mcp.tool(
-        name="snowflake_list_dynamic_tables",
+        name="list_dynamic_tables",
         description="List dynamic tables with lag targets, refresh mode, and last refresh status.",
     )
     async def snowflake_list_dynamic_tables(
@@ -58,7 +60,7 @@ def register_dynamic_table_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_describe_dynamic_table",
+        name="describe_dynamic_table",
         description="Describe dynamic table definition, target lag, warehouse, and query text.",
     )
     async def snowflake_describe_dynamic_table(
@@ -78,7 +80,7 @@ def register_dynamic_table_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_refresh_dynamic_table",
+        name="refresh_dynamic_table",
         description="Trigger an immediate manual refresh of a dynamic table.",
     )
     async def snowflake_refresh_dynamic_table(
@@ -100,7 +102,7 @@ def register_dynamic_table_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_resume_dynamic_table",
+        name="resume_dynamic_table",
         description="Resume scheduling and lag monitoring for a dynamic table.",
     )
     async def snowflake_resume_dynamic_table(
@@ -122,7 +124,7 @@ def register_dynamic_table_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_suspend_dynamic_table",
+        name="suspend_dynamic_table",
         description="Suspend automated refresh and lag evaluation for a dynamic table.",
     )
     async def snowflake_suspend_dynamic_table(
@@ -144,7 +146,7 @@ def register_dynamic_table_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_list_iceberg_tables",
+        name="list_iceberg_tables",
         description="List Apache Iceberg tables in the account, database, or schema.",
     )
     async def snowflake_list_iceberg_tables(
@@ -172,7 +174,7 @@ def register_dynamic_table_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_describe_iceberg_table",
+        name="describe_iceberg_table",
         description="Describe schema, catalog integration, and external volume of an Iceberg table.",
     )
     async def snowflake_describe_iceberg_table(
@@ -192,7 +194,7 @@ def register_dynamic_table_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_list_external_volumes",
+        name="list_external_volumes",
         description="List external cloud storage volumes configured for Apache Iceberg tables.",
     )
     async def snowflake_list_external_volumes(
@@ -209,7 +211,7 @@ def register_dynamic_table_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_list_catalog_integrations",
+        name="list_catalog_integrations",
         description="List catalog integrations (Polaris, AWS Glue, Object Storage) configured in Snowflake.",
     )
     async def snowflake_list_catalog_integrations(

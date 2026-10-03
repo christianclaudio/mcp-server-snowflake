@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from fastmcp import FastMCP
+
 from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal
 
 
@@ -26,11 +28,11 @@ def qualify_task_target(
     return ".".join(parts)
 
 
-def register_task_tools(mcp: Any, client: SnowflakeClient) -> None:
+def register_task_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     """Register Snowflake Task tools."""
 
     @mcp.tool(
-        name="snowflake_list_tasks",
+        name="list_tasks",
         description="List tasks in a database or schema with schedule, state, and predecessor info.",
     )
     async def snowflake_list_tasks(
@@ -58,7 +60,7 @@ def register_task_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_describe_task",
+        name="describe_task",
         description="Describe task definition, schedule, warehouse, and definition SQL.",
     )
     async def snowflake_describe_task(
@@ -78,7 +80,7 @@ def register_task_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_create_task",
+        name="create_task",
         description="Create a scheduled or serverless task in Snowflake.",
     )
     async def snowflake_create_task(
@@ -107,7 +109,7 @@ def register_task_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_drop_task",
+        name="drop_task",
         description="Drop a task in Snowflake. Requires confirmation.",
     )
     async def snowflake_drop_task(
@@ -135,7 +137,7 @@ def register_task_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_resume_task",
+        name="resume_task",
         description="Resume a suspended task.",
     )
     async def snowflake_resume_task(
@@ -157,7 +159,7 @@ def register_task_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_suspend_task",
+        name="suspend_task",
         description="Suspend an active scheduled task.",
     )
     async def snowflake_suspend_task(
@@ -179,7 +181,7 @@ def register_task_tools(mcp: Any, client: SnowflakeClient) -> None:
             return {"status": "error", "error": str(e)}
 
     @mcp.tool(
-        name="snowflake_execute_task",
+        name="execute_task",
         description="Trigger an immediate one-time execution of a task.",
     )
     async def snowflake_execute_task(

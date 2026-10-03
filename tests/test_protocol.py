@@ -102,7 +102,7 @@ async def test_dynamic_tools_listing(mock_snow_client: SnowflakeClient) -> None:
 async def test_dynamic_tool_call_dispatch(mock_snow_client: SnowflakeClient) -> None:
     """Verify tool dispatch via MCPServer call_tool abstraction."""
     srv = create_server(client=mock_snow_client)
-    res = await srv.call_tool("snowflake_query", {"query": "SELECT 1"})
+    res = await srv.call_tool("queries_query", {"query": "SELECT 1"})
     assert isinstance(res, CallToolResult)
     assert not res.is_error
     assert len(res.content) > 0
@@ -133,7 +133,7 @@ async def test_stateless_streamable_http_standalone_post(mock_snow_client: Snowf
                     "id": 1,
                     "method": "tools/call",
                     "params": {
-                        "name": "snowflake_query",
+                        "name": "queries_query",
                         "arguments": {"query": "SELECT 1"},
                         "_meta": meta,
                     },
@@ -143,7 +143,7 @@ async def test_stateless_streamable_http_standalone_post(mock_snow_client: Snowf
                     "Content-Type": "application/json",
                     "MCP-Protocol-Version": "2026-07-28",
                     "Mcp-Method": "tools/call",
-                    "Mcp-Name": "snowflake_query",
+                    "Mcp-Name": "queries_query",
                 },
             )
             assert res.status_code == 200
@@ -181,7 +181,7 @@ async def test_stateless_streamable_http_mutations_and_safety_gates(
                     "id": 10,
                     "method": "tools/call",
                     "params": {
-                        "name": "snowflake_drop_database",
+                        "name": "databases_drop_database",
                         "arguments": {"name": "DEMO_DB", "confirm": False},
                         "_meta": meta,
                     },
@@ -191,7 +191,7 @@ async def test_stateless_streamable_http_mutations_and_safety_gates(
                     "Content-Type": "application/json",
                     "MCP-Protocol-Version": "2026-07-28",
                     "Mcp-Method": "tools/call",
-                    "Mcp-Name": "snowflake_drop_database",
+                    "Mcp-Name": "databases_drop_database",
                 },
             )
             assert res_gate.status_code == 200
@@ -208,7 +208,7 @@ async def test_stateless_streamable_http_mutations_and_safety_gates(
                     "id": 11,
                     "method": "tools/call",
                     "params": {
-                        "name": "snowflake_drop_database",
+                        "name": "databases_drop_database",
                         "arguments": {"name": "DEMO_DB", "confirm": True},
                         "_meta": meta,
                     },
@@ -218,7 +218,7 @@ async def test_stateless_streamable_http_mutations_and_safety_gates(
                     "Content-Type": "application/json",
                     "MCP-Protocol-Version": "2026-07-28",
                     "Mcp-Method": "tools/call",
-                    "Mcp-Name": "snowflake_drop_database",
+                    "Mcp-Name": "databases_drop_database",
                 },
             )
             assert res_drop.status_code == 200
@@ -236,7 +236,7 @@ async def test_stateless_streamable_http_mutations_and_safety_gates(
                     "id": 12,
                     "method": "tools/call",
                     "params": {
-                        "name": "snowflake_drop_database",
+                        "name": "databases_drop_database",
                         "arguments": {"name": "DEMO_DB", "confirm": True},
                         "_meta": meta,
                     },
@@ -246,7 +246,7 @@ async def test_stateless_streamable_http_mutations_and_safety_gates(
                     "Content-Type": "application/json",
                     "MCP-Protocol-Version": "2026-07-28",
                     "Mcp-Method": "tools/call",
-                    "Mcp-Name": "snowflake_drop_database",
+                    "Mcp-Name": "databases_drop_database",
                 },
             )
             assert res_ro.status_code == 200
