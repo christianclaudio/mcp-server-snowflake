@@ -89,9 +89,24 @@ def test_list_available_connections_and_first_profile(tmp_path: Path, monkeypatc
     assert SnowflakeConfig.list_available_connections(str(good)) == ["prod", "note"]
     monkeypatch.delenv("SNOWFLAKE_CONNECTIONS_FILE", raising=False)
 
+    # A bad file is skipped, then the scanner tries SNOWFLAKE_HOME and, separately,
+    # ~/.snowflake/connections.toml. Point both at an empty directory so a real
+    # home profiles file cannot satisfy the assertion.
+    isolated_home = tmp_path / "isolated-snowflake-home"
+    isolated_home.mkdir()
+    monkeypatch.setenv("SNOWFLAKE_HOME", str(isolated_home))
+    original_expanduser = Path.expanduser
+
+    def _isolate_home_connections(self: Path) -> Path:
+        if self.as_posix() == "~/.snowflake/connections.toml":
+            return isolated_home / "connections.toml"
+        return original_expanduser(self)
+
+    monkeypatch.setattr(Path, "expanduser", _isolate_home_connections)
     bad = tmp_path / "bad.toml"
     bad.write_bytes(b"::: not toml")
     assert SnowflakeConfig.list_available_connections(str(bad)) == []
+    monkeypatch.setattr(Path, "expanduser", original_expanduser)
 
     cfg = SnowflakeConfig.from_env_or_config(config_path=str(good))
     assert cfg.connection_name == "prod"

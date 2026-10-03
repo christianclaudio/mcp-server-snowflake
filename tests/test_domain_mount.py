@@ -94,6 +94,34 @@ def test_local_name_and_tag_disables_hide_mounted_tools(mock_client: SnowflakeCl
     assert "alerts_describe_alert" in mcp._tool_manager._tools
 
 
+def test_child_tag_disable_does_not_hide_sibling_sharing_tag(mock_client: SnowflakeClient) -> None:
+    """A tag disabled on one mounted child does not hide a sibling that shares it.
+
+    Root tag disables still hide every mounted tool that carries the tag.
+    """
+    mcp = create_server(client=mock_client)
+    warehouses = _domain_server(mcp, "warehouses")
+    alerts = _domain_server(mcp, "alerts")
+    shared = "shared-visibility"
+
+    for server, local_name in ((warehouses, "list_warehouses"), (alerts, "list_alerts")):
+        for component in server._local_provider._components.values():  # type: ignore[attr-defined]
+            if getattr(component, "name", None) == local_name:
+                component.tags.add(shared)
+
+    alerts.disable(tags={shared})  # type: ignore[attr-defined]
+    listed = set(mcp._tool_manager._tools)
+    assert "alerts_list_alerts" not in listed
+    assert "warehouses_list_warehouses" in listed
+    assert "queries_query" in listed
+
+    mcp.disable(tags={shared})
+    listed = set(mcp._tool_manager._tools)
+    assert "alerts_list_alerts" not in listed
+    assert "warehouses_list_warehouses" not in listed
+    assert "queries_query" in listed
+
+
 def test_compat_skips_non_tools_and_blank_names(mock_client: SnowflakeClient) -> None:
     """Injected non-tools and blank names stay off the compatibility map."""
     mcp = create_server(client=mock_client)

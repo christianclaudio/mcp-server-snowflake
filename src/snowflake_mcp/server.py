@@ -176,27 +176,31 @@ class _ToolManagerCompat:
                 mounted.append((server, namespace))
         return mounted
 
-    def _disabled(self) -> tuple[set[str], set[str]]:
+    @staticmethod
+    def _server_disables(server: FastMCP) -> tuple[set[str], set[str]]:
+        """Names and tags disabled on this server's own visibility transforms."""
         disabled_names: set[str] = set()
         disabled_tags: set[str] = set()
-        servers: list[FastMCP] = [self._server]
-        servers.extend(server for server, _namespace in self._mounted_domains())
-        for server in servers:
-            for transform in server.transforms:
-                if getattr(transform, "_enabled", True) is False:
-                    t_names = getattr(transform, "names", None)
-                    if isinstance(t_names, (set, list)):
-                        disabled_names.update(t_names)
-                    t_tags = getattr(transform, "tags", None)
-                    if isinstance(t_tags, (set, list)):
-                        disabled_tags.update(t_tags)
+        for transform in server.transforms:
+            if getattr(transform, "_enabled", True) is False:
+                t_names = getattr(transform, "names", None)
+                if isinstance(t_names, (set, list)):
+                    disabled_names.update(t_names)
+                t_tags = getattr(transform, "tags", None)
+                if isinstance(t_tags, (set, list)):
+                    disabled_tags.update(t_tags)
         return disabled_names, disabled_tags
 
     @property
     def _tools(self) -> dict[str, Any]:
         tools: dict[str, Any] = {}
-        disabled_names, disabled_tags = self._disabled()
+        # Root visibility rules apply to every mounted child. A child rule applies
+        # only while listing that child, so a shared tag or name stays visible on siblings.
+        root_names, root_tags = self._server_disables(self._server)
         for server, namespace in self._mounted_domains():
+            child_names, child_tags = self._server_disables(server)
+            disabled_names = root_names | child_names
+            disabled_tags = root_tags | child_tags
             components = server._local_provider._components
             for key, component in components.items():
                 if not (str(key).startswith("tool:") or type(component).__name__.endswith("Tool")):
