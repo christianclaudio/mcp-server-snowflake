@@ -28,10 +28,10 @@ classifiers = [
 dependencies = [
     "mcp>=2.2.0",
     "fastmcp>=4.0.10",
-    "snowflake-connector-python>=4.7.5",
-    "snowflake-core>=1.13.1",
+    "snowflake-connector-python>=4.8.0",
+    "snowflake-core>=1.13.2",
     "pydantic>=2.13.5",
-    "cryptography>=50.0.1",
+    "cryptography>=50.0.2",
     "python-dotenv>=1.2.3",
     "tomli>=2.0.1; python_version < '3.11'",
 ]
@@ -43,7 +43,7 @@ dev = [
     "pytest-cov>=7.1.0",
     "httpx>=0.28.1",
     "mypy>=2.3.1",
-    "ruff>=0.16.8",
+    "ruff>=0.16.9",
     "build>=1.6.1",
     "twine>=7.0.0",
 ]
