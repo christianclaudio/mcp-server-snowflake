@@ -12,7 +12,8 @@
       "snowflake-core>=1.13.2",
       "pydantic>=2.13.5",
       "cryptography>=50.0.2",
-      "python-dotenv>=1.2.3"
+      "python-dotenv>=1.2.3",
+      "tomli>=2.0.1; python_version < '3.11'"
     ]
   },
   "deployment": {
