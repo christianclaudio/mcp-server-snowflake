@@ -13,7 +13,7 @@ This is `mcp-server-snowflake` — an Enterprise Model Context Protocol (MCP) se
 ## 🏗️ Key Paths
 
 - `src/snowflake_mcp/server.py` — `create_server` factory; mounts each domain module with `namespace=<domain>`.
-- `src/snowflake_mcp/tools/<domain>.py` — one module per domain (queries, databases, tables, warehouses, governance, cortex, recipes, …), each exposing `register_<domain>_tools(mcp, client)`.
+- `src/snowflake_mcp/tools/<domain>.py` — one module per domain (queries, databases, tables, warehouses, governance, cortex, recipes, …), each exposing `register_<name>_tools(mcp, client)`, where `<name>` is usually the singular of the module (for example `register_query_tools` in `queries.py`).
 - `src/snowflake_mcp/connection.py` — `SnowflakeClient` (DictCursor query executor, `snowflake.core.Root` bridge). `config.py` — multi-auth resolver (PAT, key-pair, OAuth, user/password, `connections.toml`). `cli.py` — stdio / streamable-http runner.
 - `scripts/check_tool_contract.py` — source of truth for the expected tool count and annotations. Do not hard-code tool counts elsewhere.
 - `scripts/check_conformance.sh` + `conformance-baseline.yml`, `scripts/check_snowflake_drift.py`, `scripts/determine_bump.py`.
@@ -30,7 +30,7 @@ This is `mcp-server-snowflake` — an Enterprise Model Context Protocol (MCP) se
    - Use `client.execute_query(sql, params)` on `SnowflakeClient` with SQL parameter bindings to prevent SQL injection.
    - For destructive operations (`DROP`, `TRUNCATE`, `ALTER`), require `confirm: bool = False`.
 2. **Register Tool in Domain Module**:
-   - Add the tool function inside `register_<domain>_tools(mcp, client)` with a bare local `name` (no `snowflake_` prefix and no domain prefix).
+   - Add the tool function inside `register_<name>_tools(mcp, client)`, where `<name>` is usually the singular of the module (for example `register_query_tools` in `queries.py`), with a bare local `name` (no `snowflake_` prefix and no domain prefix).
    - `create_server` mounts that module's FastMCP with `namespace=<domain>`. Clients see `{domain}_{name}` on one flat `tools/list`.
    - Read-only mode still registers every tool. Handlers reject mutations when `client.config.read_only` is set.
 3. **Pure Offline Testing**:
