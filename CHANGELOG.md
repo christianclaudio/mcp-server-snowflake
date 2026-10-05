@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.0.1] - 2026-10-05
+
+### Security
+- **FastMCP floor**: `pyproject.toml` and `fastmcp.json` require `fastmcp>=4.0.11`. `uv.lock` resolves FastMCP 4.0.11.
+
 ## [2.0.0] - 2026-10-03
 
 ### Breaking
