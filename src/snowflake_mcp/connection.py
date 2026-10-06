@@ -69,12 +69,27 @@ def enforce_read_only_sql(config: SnowflakeConfig, sql: str, *, tool: str) -> No
     )
 
 
+# Pure SYSTEM$ functions. Anything else that is called is refused, including
+# quoted identifiers such as "SYSTEM$CANCEL_ALL_QUERIES".
+_READ_ONLY_SYSTEM_FUNCTIONS = frozenset(
+    {
+        # https://docs.snowflake.com/en/sql-reference/functions/system_typeof
+        # "Returns a string representing the SQL data type associated with an expression."
+        "SYSTEM$TYPEOF",
+        # https://docs.snowflake.com/en/sql-reference/functions/system_clustering_information
+        # "Returns clustering information, including average clustering depth, for a table."
+        "SYSTEM$CLUSTERING_INFORMATION",
+    }
+)
+
+
 def is_sql_read_only(query: str) -> bool:
     """True only for one positively classified read-only statement.
 
     Allowed forms are ``SELECT`` (without ``INTO``), ``SHOW``, ``DESCRIBE`` /
     ``DESC``, ``EXPLAIN SELECT``, and ``WITH ... SELECT``. Strings, quoted
     identifiers, dollar quotes, and comments are not scanned for keywords.
+    A ``SYSTEM$`` call is refused unless it is on ``_READ_ONLY_SYSTEM_FUNCTIONS``.
     More than one non-empty statement is refused. Anything unrecognized is refused.
     """
     if not query or not query.strip():
@@ -85,7 +100,8 @@ def is_sql_read_only(query: str) -> bool:
         return False
     if len(groups) != 1:
         return False
-    return _classify(groups[0])
+    statement = groups[0]
+    return _classify(statement) and not _has_disallowed_system_call(statement)
 
 
 def _lex(sql: str) -> list[_Tok]:
@@ -109,10 +125,13 @@ def _lex(sql: str) -> list[_Tok]:
             index = end + 2
             continue
         if char == "'":
-            index = _skip_quoted(sql, index, "'")
+            index, _ = _read_quoted(sql, index, "'")
             continue
         if char == '"':
-            index = _skip_quoted(sql, index, '"')
+            index, ident = _read_quoted(sql, index, '"')
+            # Quoted SYSTEM$ names are calls, not ordinary identifiers.
+            if ident.upper().startswith("SYSTEM$"):
+                tokens.append(_Tok("word", ident.upper(), depth))
             continue
         if char == "$":
             tag = _dollar_opener(sql, index)
@@ -153,17 +172,32 @@ def _lex(sql: str) -> list[_Tok]:
     return tokens
 
 
-def _skip_quoted(sql: str, index: int, quote: str) -> int:
+def _read_quoted(sql: str, index: int, quote: str) -> tuple[int, str]:
     index += 1
     length = len(sql)
+    parts: list[str] = []
     while index < length:
         if sql[index] == quote:
             if index + 1 < length and sql[index + 1] == quote:
+                parts.append(quote)
                 index += 2
                 continue
-            return index + 1
+            return index + 1, "".join(parts)
+        parts.append(sql[index])
         index += 1
     raise _ScanError
+
+
+def _has_disallowed_system_call(tokens: list[_Tok]) -> bool:
+    """True when a non-allowlisted ``SYSTEM$`` function is called."""
+    for index, tok in enumerate(tokens):
+        if tok.kind != "word" or not tok.value.startswith("SYSTEM$"):
+            continue
+        if index + 1 >= len(tokens) or tokens[index + 1].kind != "lparen":
+            continue
+        if tok.value not in _READ_ONLY_SYSTEM_FUNCTIONS:
+            return True
+    return False
 
 
 def _dollar_opener(sql: str, index: int) -> str | None:

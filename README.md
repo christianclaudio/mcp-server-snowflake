@@ -63,7 +63,7 @@ flowchart TD
 
 > [!WARNING]
 > **Safety Guardrails**  
-> - **Read-Only Safety Mode:** Set `SNOWFLAKE_MCP_READONLY=1`, pass `--readonly`, or pass `--profile readonly` to disable DDL/DML. The profile sets the same read-only flag the gate reads. Caller SQL is refused unless it is one `SELECT`, `SHOW`, `DESCRIBE`, or `EXPLAIN SELECT`. This is a best-effort client-side safeguard. The real boundary is a Snowflake role with no write grants.  
+> - **Read-Only Safety Mode:** Set `SNOWFLAKE_MCP_READONLY=1`, pass `--readonly`, or pass `--profile readonly` to disable DDL/DML. The profile sets the same read-only flag the gate reads. Caller SQL is refused unless it is one `SELECT`, `SHOW`, `DESCRIBE`, or `EXPLAIN SELECT`. This is a best-effort client-side safeguard. User-defined and external functions called from SELECT are not inspected, which is why a Snowflake role with no write grants is the real boundary.  
 > - **Destructive Safety Gates:** Dropping databases, schemas, or tables requires explicit `confirm=True`.  
 > - **Query Limits:** Default execution limits prevent context window overflow (`SNOWFLAKE_MAX_ROWS=1000`, `SNOWFLAKE_QUERY_TIMEOUT=120`).
 

@@ -32,6 +32,17 @@ REFUSED = [
     "SELECT 1; -- hide\nDROP TABLE t",
     "SEL/*comment*/ECT 1",
     "\n  DeLeTe FROM t",
+    "SELECT SYSTEM$CANCEL_ALL_QUERIES(123)",
+    "SELECT SYSTEM$ABORT_SESSION(123)",
+    "select system$cancel_all_queries(123)",
+    "select system$abort_session(123)",
+    "SELECT SyStEm$CaNcEl_AlL_qUeRiEs(123)",
+    "SELECT SyStEm$AbOrT_sEsSiOn(123)",
+    'SELECT "SYSTEM$CANCEL_ALL_QUERIES"(123)',
+    'SELECT "SYSTEM$ABORT_SESSION"(123)',
+    'SELECT "system$cancel_all_queries"(123)',
+    'SELECT "System$Abort_Session"(123)',
+    "WITH c AS (SELECT SYSTEM$ABORT_SESSION(1)) SELECT * FROM c",
 ]
 
 ALLOWED = [
@@ -42,6 +53,10 @@ ALLOWED = [
     "SHOW TABLES",
     "DESCRIBE TABLE t",
     "EXPLAIN SELECT 1",
+    "SELECT SYSTEM$TYPEOF(1)",
+    "SELECT SYSTEM$CLUSTERING_INFORMATION('t1')",
+    "SELECT 'SYSTEM$ABORT_SESSION'",
+    "SELECT SYSTEM$TYPEOF",
 ]
 
 # Extra forms that keep the tokenizer's string, comment, and CTE paths covered.
