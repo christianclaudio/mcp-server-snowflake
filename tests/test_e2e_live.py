@@ -236,7 +236,12 @@ CORTEX_SKIP_REASON = "Cortex is not available on this account"
 _SAFE_REJECTION_MARKERS = ("does not exist", "not authorized", "insufficient privileges")
 # GET_QUERY_OPERATOR_STATS rejects a non-UUID query id with wording the global markers miss.
 _TOOL_REJECTION_MARKERS: dict[str, tuple[str, ...]] = {
-    "queries_get_query_operator_stats": ("invalid uuid", "invalid query id"),
+    "queries_get_query_operator_stats": (
+        "invalid uuid",
+        "invalid query id",
+        "invalid value",
+        "get_query_operator_stats",
+    ),
 }
 _CONFIRM_MARKERS = ("requires_confirmation", "denied in read-only", "read-only")
 _CORTEX_UNAVAILABLE_MARKERS = ("unknown function", "cortex not enabled", "not available")
@@ -439,6 +444,7 @@ async def test_dispatch_empty_success_and_operator_stats_rejection() -> None:
     for text in (
         '{"status": "error", "error": "100037 (22000): Invalid UUID: e2e-missing-query-id"}',
         '{"status": "error", "error": "Invalid query ID e2e-missing-query-id"}',
+        '{"status": "error", "error": "Invalid value [e2e-missing-query-id] for function \'get_query_operator_stats\'"}',
     ):
         mock_srv.call_tool.return_value = CallToolResult(
             content=[TextContent(type="text", text=text)],
