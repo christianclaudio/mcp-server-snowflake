@@ -182,16 +182,22 @@ def register_task_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="execute_task",
-        description="Trigger an immediate one-time execution of a task.",
+        description="Trigger an immediate one-time execution of a task. Requires confirmation.",
     )
     async def snowflake_execute_task(
         task_name: str,
         database: str | None = None,
         schema_name: str | None = None,
+        confirm: bool = False,
     ) -> dict[str, Any]:
         """Execute task immediately."""
         if client.config.read_only:
             return {"status": "error", "error": "Denied in read-only mode."}
+        if not confirm:
+            return {
+                "status": "requires_confirmation",
+                "message": f"Destructive: To execute task '{task_name}', set confirm=True.",
+            }
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name

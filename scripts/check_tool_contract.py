@@ -32,18 +32,30 @@ def verify_contract() -> int:
 
     print("\nAnnotation verification:")
     print(f"  ✓ Read-only annotations:  {ro_count} (expected 88)")
-    print(f"  ✓ Destructive annotations:{dest_count} (expected 14)")
-    print(f"  ✓ Idempotent annotations: {idem_count} (expected 15)")
+    print(f"  ✓ Destructive annotations:{dest_count} (expected 17)")
+    print(f"  ✓ Idempotent annotations: {idem_count} (expected 103)")
     print(f"  ✓ Unannotated tools:      {unannotated_count} (expected 0)")
 
     if ro_count != 88:
         errors.append(f"Expected 88 read-only tools, found {ro_count}")
-    if dest_count != 14:
-        errors.append(f"Expected 14 destructive tools, found {dest_count}")
-    if idem_count != 15:
-        errors.append(f"Expected 15 idempotent tools, found {idem_count}")
+    if dest_count != 17:
+        errors.append(f"Expected 17 destructive tools, found {dest_count}")
+    if idem_count != 103:
+        errors.append(f"Expected 103 idempotent tools, found {idem_count}")
     if unannotated_count != 0:
         errors.append(f"Expected 0 unannotated tools, found {unannotated_count}")
+
+    for name, tool in registered.items():
+        annotations = getattr(tool, "annotations", None)
+        if annotations is None:
+            errors.append(f"{name} has no annotations")
+            continue
+        if annotations.read_only_hint is None:
+            errors.append(f"{name} read_only_hint is unset")
+        if annotations.destructive_hint is None:
+            errors.append(f"{name} destructive_hint is unset")
+        if annotations.idempotent_hint is None:
+            errors.append(f"{name} idempotent_hint is unset")
 
     for required in (
         "queries_rollback_transaction",

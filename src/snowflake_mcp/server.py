@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 import logging
+import os
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 
 from fastmcp import FastMCP
-from fastmcp.exceptions import NotFoundError
 from fastmcp.tools import FunctionTool, Tool
-from mcp.server.mcpserver.exceptions import ToolError
 from mcp.types import CallToolResult, ToolAnnotations
 
+from snowflake_mcp import __version__
 from snowflake_mcp.config import SnowflakeConfig
 from snowflake_mcp.connection import SnowflakeClient
+from snowflake_mcp.middleware import ErrorHandlingMiddleware
 from snowflake_mcp.tools.alerts import register_alert_tools
 from snowflake_mcp.tools.compute_services import register_compute_service_tools
 from snowflake_mcp.tools.cortex import register_cortex_tools
@@ -35,10 +38,11 @@ from snowflake_mcp.tools.warehouses import register_warehouse_tools
 
 logger = logging.getLogger("snowflake_mcp")
 
-# MCP 2026-07-28 Behavioral Annotations
-_READ_ONLY = ToolAnnotations(read_only_hint=True, destructive_hint=False, open_world_hint=True)
-_WRITE_SAFE = ToolAnnotations(read_only_hint=False, destructive_hint=False, open_world_hint=True)
-_DESTRUCTIVE = ToolAnnotations(read_only_hint=False, destructive_hint=True, open_world_hint=True)
+# MCP 2026-07-28 Behavioral Annotations. Every hint is explicit.
+# Reads are idempotent. Writes are idempotent only when listed below.
+_READ_ONLY = ToolAnnotations(read_only_hint=True, destructive_hint=False, idempotent_hint=True, open_world_hint=True)
+_WRITE_SAFE = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=False, open_world_hint=True)
+_DESTRUCTIVE = ToolAnnotations(read_only_hint=False, destructive_hint=True, idempotent_hint=False, open_world_hint=True)
 _IDEMPOTENT = ToolAnnotations(read_only_hint=False, destructive_hint=False, idempotent_hint=True, open_world_hint=True)
 
 # Local names on each domain server. The mount namespace supplies the wire prefix.
@@ -76,6 +80,9 @@ _DESTRUCTIVE_NAMES = {
     "drop_role",
     "cancel_query",
     "rollback_transaction",
+    "execute_dml",
+    "execute_task",
+    "warehouse_scale_and_execute",
 }
 
 _IDEMPOTENT_NAMES = {
@@ -120,6 +127,11 @@ _DOMAIN_REGISTRARS: tuple[tuple[str, Any], ...] = (
 )
 
 DOMAIN_NAMES: tuple[str, ...] = tuple(name for name, _register in _DOMAIN_REGISTRARS)
+
+# ``full`` mounts every domain. ``readonly`` mounts every domain and then hides
+# mutating tools. A domain name mounts only that domain. The default flat
+# catalog is ``full`` (140 tools) with tool search off.
+VALID_PROFILES: frozenset[str] = frozenset({"full", "readonly", *DOMAIN_NAMES})
 
 if not hasattr(FunctionTool, "input_schema"):
     FunctionTool.input_schema = property(lambda self: self.parameters)  # type: ignore[attr-defined]
@@ -261,27 +273,68 @@ def _streamable_http_app(
     )
 
 
+def _profile_from_env(profile: str | None) -> str:
+    raw = profile if profile is not None else os.environ.get("SNOWFLAKE_MCP_PROFILE", "full")
+    active = raw.strip().lower()
+    if active not in VALID_PROFILES:
+        valid = ", ".join(sorted(VALID_PROFILES))
+        raise ValueError(f"Unknown SNOWFLAKE_MCP_PROFILE {raw!r}. Valid profiles: {valid}.")
+    return active
+
+
+def _tool_search_from_env(enable_tool_search: bool | None) -> bool:
+    if enable_tool_search is not None:
+        return enable_tool_search
+    return os.environ.get("SNOWFLAKE_MCP_ENABLE_TOOL_SEARCH", "").strip().lower() in {"1", "true", "yes"}
+
+
 def create_server(
     config: SnowflakeConfig | None = None,
     client: SnowflakeClient | None = None,
+    profile: str | None = None,
+    enable_tool_search: bool | None = None,
 ) -> FastMCP:
-    """Create and configure the complete FastMCP server for Snowflake."""
+    """Create and configure the complete FastMCP server for Snowflake.
+
+    The default profile ``full`` exposes one flat ``tools/list`` of all 140 tools.
+    ``RegexSearchTransform`` is opt-in via ``enable_tool_search`` or
+    ``SNOWFLAKE_MCP_ENABLE_TOOL_SEARCH``.
+    """
     snow_client = client or SnowflakeClient(config=config or SnowflakeConfig.from_env_or_config())
+    active_profile = _profile_from_env(profile)
+    use_tool_search = _tool_search_from_env(enable_tool_search)
+
+    @asynccontextmanager
+    async def _server_lifespan(_server: FastMCP[Any]) -> AsyncIterator[dict[str, Any]]:
+        """Close the Snowflake client when the server shuts down."""
+        logger.info("Starting Snowflake MCP server")
+        try:
+            yield {"client": snow_client}
+        finally:
+            logger.info("Shutting down Snowflake MCP server")
+            snow_client.close()
 
     mcp = FastMCP(
         "snowflake",
+        version=__version__,
         instructions=(
             "Enterprise MCP server for Snowflake data cloud and Cortex AI. Execute queries, manage "
             "databases, schemas, tables, warehouses, tasks, streams, dynamic tables, pipes, alerts, "
             "governance, SPCS services, procedures, UDFs, secrets, and Cortex AI."
         ),
+        lifespan=_server_lifespan,
         cache_ttl=3600,
         cache_scope="public",
     )
 
+    # Re-raise protocol errors. Redact everything else before it becomes a tool error.
+    mcp.add_middleware(ErrorHandlingMiddleware())
+
     # Domain namespaces are the wire prefix (queries_query, not snowflake_query).
     for namespace, register in _DOMAIN_REGISTRARS:
-        domain = FastMCP(namespace)
+        if active_profile not in ("full", "readonly", namespace):
+            continue
+        domain = FastMCP(namespace, version=__version__)
         register(domain, snow_client)
         _annotate_local_tools(domain)
         mcp.mount(domain, namespace=namespace)
@@ -289,16 +342,28 @@ def create_server(
     tool_mgr = _ToolManagerCompat(mcp)
     mcp._tool_manager = tool_mgr  # type: ignore[attr-defined]
 
+    if active_profile == "readonly":
+        for name, component in list(tool_mgr._tools.items()):
+            annotations = getattr(component, "annotations", None)
+            if not (annotations and annotations.read_only_hint):
+                tool_mgr.remove_tool(name)
+
+    # Opt-in. The default catalog stays the flat 140-tool tools/list.
+    if use_tool_search:
+        from fastmcp.server.transforms.search import RegexSearchTransform
+
+        mcp.add_transform(RegexSearchTransform())
+
     # Compatibility bridges
     mcp.streamable_http_app = _streamable_http_app.__get__(mcp, FastMCP)  # type: ignore[attr-defined]
 
     orig_call_tool = mcp.call_tool
 
     async def _call_tool_compat(name: str, arguments: dict[str, Any] | None = None, **kwargs: Any) -> Any:
-        try:
-            raw_res = await orig_call_tool(name, arguments or {}, **kwargs)
-        except NotFoundError as exc:
-            raise ToolError(f"Unknown tool: '{name}'") from exc
+        # NotFoundError, ValidationError, and MCPError propagate. The wire
+        # handler maps an unknown tool to its protocol result; wrapping it in
+        # ToolError becomes JSON-RPC -32603.
+        raw_res = await orig_call_tool(name, arguments or {}, **kwargs)
         if isinstance(raw_res, CallToolResult):
             return raw_res
         return CallToolResult(

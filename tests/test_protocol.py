@@ -285,7 +285,13 @@ def test_main_streamable_http_and_warning_branches(caplog: pytest.LogCaptureFixt
         mock_srv.return_value = mock_instance
         with pytest.deprecated_call(match="The 'sse' transport is deprecated in MCP Specification 2026-07-28"):
             main()
-        mock_instance.run.assert_called_once_with(transport="sse", host="127.0.0.1", port=8000)
+        mock_instance.run.assert_called_once_with(
+            transport="sse",
+            host="127.0.0.1",
+            port=8000,
+            host_origin_protection=True,
+            allowed_hosts=["127.0.0.1", "localhost", "127.0.0.1:8000", "localhost:8000"],
+        )
 
     # 3. Warning when passing --no-stateless or --no-json-response to non-streamable transport
     with (

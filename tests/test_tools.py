@@ -32,12 +32,12 @@ async def test_query_tools(mock_client: SnowflakeClient) -> None:
 
     # DML
     dml_tool = mcp._tool_manager._tools["queries_execute_dml"].fn
-    res_dml = await dml_tool("INSERT INTO test VALUES (1, 'Snowflake')")
+    res_dml = await dml_tool("INSERT INTO test VALUES (1, 'Snowflake')", confirm=True)
     assert res_dml["status"] == "success"
 
     # Cancel
     cancel_tool = mcp._tool_manager._tools["queries_cancel_query"].fn
-    res_cancel = await cancel_tool("q123")
+    res_cancel = await cancel_tool("q123", confirm=True)
     assert res_cancel["status"] == "success"
 
     # History
@@ -131,7 +131,7 @@ async def test_tasks_and_streams_tools(mock_client: SnowflakeClient) -> None:
     assert (await t_resume("TASK_1"))["status"] == "success"
 
     t_exec = mcp._tool_manager._tools["tasks_execute_task"].fn
-    assert (await t_exec("TASK_1"))["status"] == "success"
+    assert (await t_exec("TASK_1", confirm=True))["status"] == "success"
 
     st_list = mcp._tool_manager._tools["streams_list_streams"].fn
     assert (await st_list())["status"] == "success"

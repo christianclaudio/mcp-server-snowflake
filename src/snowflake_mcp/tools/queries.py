@@ -40,16 +40,22 @@ def register_query_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="execute_dml",
-        description="Execute a data modification SQL statement (INSERT, UPDATE, DELETE, MERGE, CREATE).",
+        description="Execute a data modification SQL statement (INSERT, UPDATE, DELETE, MERGE, CREATE). Requires confirmation.",
     )
     async def snowflake_execute_dml(
         statement: str,
+        confirm: bool = False,
     ) -> dict[str, Any]:
         """Execute a DML/DDL statement."""
         if client.config.read_only:
             return {
                 "error": "Operation denied: Server is running in read-only mode (SNOWFLAKE_MCP_READONLY=1).",
                 "status": "error",
+            }
+        if not confirm:
+            return {
+                "status": "requires_confirmation",
+                "message": "Destructive: To execute this DML statement, set confirm=True.",
             }
         try:
             res = client.execute_query(statement)
@@ -60,14 +66,20 @@ def register_query_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="cancel_query",
-        description="Cancel an active running Snowflake query by its Query ID.",
+        description="Cancel an active running Snowflake query by its Query ID. Requires confirmation.",
     )
     async def snowflake_cancel_query(
         query_id: str,
+        confirm: bool = False,
     ) -> dict[str, Any]:
         """Cancel a running query."""
         if client.config.read_only:
             return {"status": "error", "error": "Denied in read-only mode."}
+        if not confirm:
+            return {
+                "status": "requires_confirmation",
+                "message": f"Destructive: To cancel query '{query_id}', set confirm=True.",
+            }
         try:
             cancel_sql = f"SELECT SYSTEM$CANCEL_QUERY({quote_literal(query_id)})"
             res = client.execute_query(cancel_sql)
@@ -166,10 +178,17 @@ def register_query_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="rollback_transaction",
-        description="Rollback the current active transaction on the session.",
+        description="Rollback the current active transaction on the session. Requires confirmation.",
     )
-    async def snowflake_rollback_transaction() -> dict[str, Any]:
+    async def snowflake_rollback_transaction(confirm: bool = False) -> dict[str, Any]:
         """Rollback transaction."""
+        if client.config.read_only:
+            return {"status": "error", "error": "Denied in read-only mode."}
+        if not confirm:
+            return {
+                "status": "requires_confirmation",
+                "message": "Destructive: To roll back the current transaction, set confirm=True.",
+            }
         try:
             res = client.execute_query("ROLLBACK")
             return {"status": "success", "result": res.get("data")}

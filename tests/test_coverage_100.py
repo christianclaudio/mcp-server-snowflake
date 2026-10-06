@@ -205,7 +205,11 @@ async def test_tools_missing_branches() -> None:
     await tools["recipes_account_usage_summary"].fn()
     await tools["recipes_clone_table_recipe"].fn(source_table="SRC", target_table="TGT")
     await tools["recipes_warehouse_scale_and_execute"].fn(
-        warehouse_name="WH", target_size="LARGE", query="SELECT 1", restore_previous_size=True
+        warehouse_name="WH",
+        target_size="LARGE",
+        query="SELECT 1",
+        restore_previous_size=True,
+        confirm=True,
     )
 
     # account usage fallback
@@ -259,7 +263,13 @@ def test_cli_run_server() -> None:
                 mock_mcp = MagicMock()
                 mock_srv.return_value = mock_mcp
                 cli_main()
-                mock_mcp.run.assert_called_once_with(transport="sse", host="127.0.0.1", port=9000)
+                mock_mcp.run.assert_called_once_with(
+                    transport="sse",
+                    host="127.0.0.1",
+                    port=9000,
+                    host_origin_protection=True,
+                    allowed_hosts=["127.0.0.1", "localhost", "127.0.0.1:9000", "localhost:9000"],
+                )
 
     with patch("sys.argv", ["snowflake-mcp", "--init"]):
         with pytest.raises(SystemExit):

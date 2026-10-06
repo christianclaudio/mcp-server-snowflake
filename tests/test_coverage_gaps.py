@@ -231,7 +231,7 @@ async def test_list_connections_error_and_warehouse_restore(monkeypatch: pytest.
     listed = await tools["governance_list_connections"].fn()
     assert listed["status"] == "error"
 
-    scaled = await tools["recipes_warehouse_scale_and_execute"].fn("WH", "LARGE", "SELECT 1", True)
+    scaled = await tools["recipes_warehouse_scale_and_execute"].fn("WH", "LARGE", "SELECT 1", True, confirm=True)
     assert scaled["status"] == "success"
     assert scaled["restored_initial_size"] is False
     assert "restore failed" in scaled["restore_error"]

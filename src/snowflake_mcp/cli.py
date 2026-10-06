@@ -5,13 +5,14 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import signal
 import sys
 import warnings
 from typing import Any
 
 from snowflake_mcp.config import SnowflakeConfig
-from snowflake_mcp.server import create_server
+from snowflake_mcp.server import VALID_PROFILES, create_server
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("snowflake_mcp")
@@ -101,7 +102,22 @@ def main() -> None:
     parser.add_argument(
         "--readonly",
         action="store_true",
-        help="Run in strict read-only mode",
+        help="Run in strict read-only mode (tools stay registered; handlers reject mutations)",
+    )
+    parser.add_argument(
+        "--profile",
+        choices=sorted(VALID_PROFILES),
+        default=os.environ.get("SNOWFLAKE_MCP_PROFILE", "full"),
+        help=(
+            "Tool catalog profile. 'full' (default) lists all 140 tools. "
+            "'readonly' lists read-only tools only. A domain name lists that domain."
+        ),
+    )
+    parser.add_argument(
+        "--enable-tool-search",
+        action="store_true",
+        default=os.environ.get("SNOWFLAKE_MCP_ENABLE_TOOL_SEARCH", "").strip().lower() in {"1", "true", "yes"},
+        help="Opt in to RegexSearchTransform (search_tools + call_tool) instead of the flat tools/list.",
     )
     parser.add_argument(
         "--stateless",
@@ -145,7 +161,11 @@ def main() -> None:
     if args.readonly:
         config.read_only = True
 
-    mcp = create_server(config=config)
+    mcp = create_server(
+        config=config,
+        profile=args.profile,
+        enable_tool_search=args.enable_tool_search,
+    )
 
     if args.transport != "streamable-http":
         if not args.stateless:
@@ -172,6 +192,15 @@ def main() -> None:
     elif any(h.strip() == "*" for h in hosts):
         parser.error("Wildcard '*' is not permitted in --allowed-host; specify explicit hostnames.")
 
+    run_kwargs: dict[str, Any] = {
+        "host": args.host,
+        "port": args.port,
+        "host_origin_protection": True,
+        "allowed_hosts": hosts,
+    }
+    if getattr(args, "allowed_origins", None) is not None:
+        run_kwargs["allowed_origins"] = args.allowed_origins
+
     if args.transport == "sse":
         warnings.warn(
             "The 'sse' transport is deprecated in MCP Specification 2026-07-28 and will be removed "
@@ -179,20 +208,14 @@ def main() -> None:
             DeprecationWarning,
             stacklevel=2,
         )
-        mcp.run(transport="sse", host=args.host, port=args.port)
+        mcp.run(transport="sse", **run_kwargs)
     elif args.transport == "streamable-http":
-        run_kwargs: dict[str, Any] = {
-            "transport": "streamable-http",
-            "host": args.host,
-            "port": args.port,
-            "stateless_http": args.stateless,
-            "json_response": args.json_response,
-            "host_origin_protection": True,
-            "allowed_hosts": hosts,
-        }
-        if getattr(args, "allowed_origins", None) is not None:
-            run_kwargs["allowed_origins"] = args.allowed_origins
-        mcp.run(**run_kwargs)
+        mcp.run(
+            transport="streamable-http",
+            stateless_http=args.stateless,
+            json_response=args.json_response,
+            **run_kwargs,
+        )
     else:
         mcp.run(transport="stdio")
 

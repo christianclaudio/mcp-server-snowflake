@@ -121,17 +121,25 @@ def register_recipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="warehouse_scale_and_execute",
-        description="Composite recipe: Safely scale up a warehouse, run a heavy query, and optionally restore previous size.",
+        description="Composite recipe: Safely scale up a warehouse, run a heavy query, and optionally restore previous size. Requires confirmation.",
     )
     async def snowflake_warehouse_scale_and_execute(
         warehouse_name: str,
         target_size: str,
         query: str,
         restore_previous_size: bool = True,
+        confirm: bool = False,
     ) -> dict[str, Any]:
         """Scale warehouse, execute query, and restore."""
         if client.config.read_only:
             return {"status": "error", "error": "Denied in read-only mode."}
+        if not confirm:
+            return {
+                "status": "requires_confirmation",
+                "message": (
+                    f"Destructive: To scale warehouse '{warehouse_name}' and execute the query, set confirm=True."
+                ),
+            }
 
         norm_size = target_size.strip().upper()
         if norm_size not in VALID_WAREHOUSE_SIZES:

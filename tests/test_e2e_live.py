@@ -34,7 +34,16 @@ def _redact_secrets(text: str) -> str:
 
 SAFE_TOOL_FIXTURES: dict[str, dict[str, Any]] = {
     "queries_query": {"query": "SELECT 1"},
-    "queries_execute_dml": {"statement": "SELECT 1"},
+    "queries_execute_dml": {"statement": "SELECT 1", "confirm": False},
+    "queries_cancel_query": {"query_id": "e2e_probe", "confirm": False},
+    "queries_rollback_transaction": {"confirm": False},
+    "tasks_execute_task": {"task_name": "e2e_probe_task", "confirm": False},
+    "recipes_warehouse_scale_and_execute": {
+        "warehouse_name": "WH",
+        "target_size": "XL",
+        "query": "SELECT 1",
+        "confirm": False,
+    },
     "databases_drop_database": {"name": "e2e_probe_db", "confirm": False},
     "schemas_drop_schema": {"name": "e2e_probe_schema", "confirm": False},
     "tables_drop_table": {"table_name": "e2e_probe_tbl", "confirm": False},
