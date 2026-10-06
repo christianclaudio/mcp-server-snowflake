@@ -7,6 +7,7 @@ from typing import Any
 from fastmcp import FastMCP
 
 from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal
+from snowflake_mcp.errors import SafetyViolationError
 
 
 def qualify_dynamic_table_target(
@@ -90,7 +91,7 @@ def register_dynamic_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Manually refresh dynamic table."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
@@ -112,7 +113,7 @@ def register_dynamic_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Resume dynamic table."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
@@ -134,7 +135,7 @@ def register_dynamic_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Suspend dynamic table."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name

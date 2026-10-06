@@ -7,6 +7,7 @@ from typing import Any
 from fastmcp import FastMCP
 
 from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal
+from snowflake_mcp.errors import SafetyViolationError
 
 
 def register_database_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
@@ -54,7 +55,7 @@ def register_database_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Create a database."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         try:
             exists_clause = "IF NOT EXISTS " if if_not_exists else ""
             comment_clause = f" COMMENT = {quote_literal(comment)}" if comment else ""
@@ -79,7 +80,7 @@ def register_database_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Clone database zero-copy."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         try:
             sql = f"CREATE DATABASE {quote_ident(target_database)} CLONE {quote_ident(source_database)}"
             res = client.execute_query(sql)
@@ -102,12 +103,10 @@ def register_database_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Drop a database with confirmation gate."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         if not confirm:
-            return {
-                "status": "requires_confirmation",
-                "message": f"Destructive operation: To permanently drop database '{name}', set confirm=True.",
-            }
+            message = f"Destructive operation: To permanently drop database '{name}', set confirm=True."
+            raise SafetyViolationError(message, status="requires_confirmation")
         try:
             sql = f"DROP DATABASE IF EXISTS {quote_ident(name)}"
             res = client.execute_query(sql)
@@ -124,7 +123,7 @@ def register_database_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Undrop database."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         try:
             sql = f"UNDROP DATABASE {quote_ident(name)}"
             res = client.execute_query(sql)

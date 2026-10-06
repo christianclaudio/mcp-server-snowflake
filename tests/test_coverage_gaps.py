@@ -14,6 +14,7 @@ import pytest
 from snowflake_mcp.cli import main, run_init_wizard
 from snowflake_mcp.config import SnowflakeConfig
 from snowflake_mcp.connection import SnowflakeClient, is_sql_read_only, quote_ident, quote_literal
+from snowflake_mcp.errors import SafetyViolationError
 from snowflake_mcp.server import create_server
 from snowflake_mcp.tools.compute_services import qualify_compute_target
 from snowflake_mcp.tools.dynamic_tables import qualify_dynamic_table_target
@@ -28,7 +29,7 @@ def test_quote_and_sql_classification() -> None:
     with pytest.raises(ValueError, match="empty"):
         quote_ident("  ")
     assert quote_literal(None) == "NULL"
-    assert is_sql_read_only("/* comment only */") is True
+    assert is_sql_read_only("/* comment only */") is False
     assert is_sql_read_only("SELECT 1; DROP TABLE t") is False
     assert is_sql_read_only("WITH c AS (SELECT 1) SELECT * FROM c") is True
     assert is_sql_read_only("WITH c AS (SELECT 1) INSERT INTO t SELECT 1") is False
@@ -200,8 +201,8 @@ async def test_alert_destructive_sql_and_user_password_redaction() -> None:
     client.execute_query = MagicMock(side_effect=RuntimeError("rejected password s3cret"))  # type: ignore[method-assign]
     tools = create_server(client=client)._tool_manager._tools
 
-    gated = await tools["alerts_create_alert"].fn("A", "WH", "1 MIN", "SELECT 1", "DELETE FROM t", confirm=False)
-    assert gated["status"] == "requires_confirmation"
+    with pytest.raises(SafetyViolationError, match="confirm=True"):
+        await tools["alerts_create_alert"].fn("A", "WH", "1 MIN", "SELECT 1", "DELETE FROM t", confirm=False)
 
     created = await tools["governance_create_user"].fn(user_name="U", password="s3cret")
     assert created["status"] == "error"
@@ -231,7 +232,7 @@ async def test_list_connections_error_and_warehouse_restore(monkeypatch: pytest.
     listed = await tools["governance_list_connections"].fn()
     assert listed["status"] == "error"
 
-    scaled = await tools["recipes_warehouse_scale_and_execute"].fn("WH", "LARGE", "SELECT 1", True)
+    scaled = await tools["recipes_warehouse_scale_and_execute"].fn("WH", "LARGE", "SELECT 1", True, confirm=True)
     assert scaled["status"] == "success"
     assert scaled["restored_initial_size"] is False
     assert "restore failed" in scaled["restore_error"]

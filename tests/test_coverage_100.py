@@ -12,6 +12,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from snowflake_mcp.cli import main as cli_main
 from snowflake_mcp.config import SnowflakeConfig
 from snowflake_mcp.connection import SnowflakeClient
+from snowflake_mcp.errors import SafetyViolationError
 from snowflake_mcp.server import create_server
 
 
@@ -177,7 +178,8 @@ async def test_tools_missing_branches() -> None:
     await tools["stages_list_stage_files"].fn(stage_location="@my_stage", pattern=None)
     await tools["stages_drop_stage"].fn(stage_name="STG", database="DB", schema_name=None, confirm=True)
     await tools["stages_describe_stage"].fn(stage_name="STG", database="DB", schema_name=None)
-    await tools["stages_remove_stage_file"].fn(stage_file_path="my_stage/file.csv", confirm=False)
+    with pytest.raises(SafetyViolationError, match="confirm=True"):
+        await tools["stages_remove_stage_file"].fn(stage_file_path="my_stage/file.csv", confirm=False)
 
     # tags: no db/schema and db only
     await tools["tags_describe_tag"].fn(tag_name="TG", database="DB", schema_name=None)
@@ -205,7 +207,11 @@ async def test_tools_missing_branches() -> None:
     await tools["recipes_account_usage_summary"].fn()
     await tools["recipes_clone_table_recipe"].fn(source_table="SRC", target_table="TGT")
     await tools["recipes_warehouse_scale_and_execute"].fn(
-        warehouse_name="WH", target_size="LARGE", query="SELECT 1", restore_previous_size=True
+        warehouse_name="WH",
+        target_size="LARGE",
+        query="SELECT 1",
+        restore_previous_size=True,
+        confirm=True,
     )
 
     # account usage fallback
@@ -224,7 +230,8 @@ async def test_tools_missing_branches() -> None:
     client_ro = SnowflakeClient(config=cfg_ro)
     server_ro = create_server(client=client_ro)
     tools_ro = server_ro._tool_manager._tools
-    await tools_ro["queries_query"].fn(query="DROP TABLE my_table")
+    with pytest.raises(SafetyViolationError, match="queries_query"):
+        await tools_ro["queries_query"].fn(query="DROP TABLE my_table")
 
     # programmability: integration types valid, invalid and pattern
     await tools["programmability_list_integrations"].fn(integration_type="STORAGE", pattern="S3%")
@@ -259,7 +266,13 @@ def test_cli_run_server() -> None:
                 mock_mcp = MagicMock()
                 mock_srv.return_value = mock_mcp
                 cli_main()
-                mock_mcp.run.assert_called_once_with(transport="sse", host="127.0.0.1", port=9000)
+                mock_mcp.run.assert_called_once_with(
+                    transport="sse",
+                    host="127.0.0.1",
+                    port=9000,
+                    host_origin_protection=True,
+                    allowed_hosts=["127.0.0.1", "localhost", "127.0.0.1:9000", "localhost:9000"],
+                )
 
     with patch("sys.argv", ["snowflake-mcp", "--init"]):
         with pytest.raises(SystemExit):

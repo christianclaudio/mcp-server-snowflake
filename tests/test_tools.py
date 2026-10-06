@@ -4,6 +4,7 @@ import pytest
 
 from snowflake_mcp.config import SnowflakeConfig
 from snowflake_mcp.connection import SnowflakeClient
+from snowflake_mcp.errors import SafetyViolationError
 from snowflake_mcp.server import create_server
 
 
@@ -32,12 +33,12 @@ async def test_query_tools(mock_client: SnowflakeClient) -> None:
 
     # DML
     dml_tool = mcp._tool_manager._tools["queries_execute_dml"].fn
-    res_dml = await dml_tool("INSERT INTO test VALUES (1, 'Snowflake')")
+    res_dml = await dml_tool("INSERT INTO test VALUES (1, 'Snowflake')", confirm=True)
     assert res_dml["status"] == "success"
 
     # Cancel
     cancel_tool = mcp._tool_manager._tools["queries_cancel_query"].fn
-    res_cancel = await cancel_tool("q123")
+    res_cancel = await cancel_tool("q123", confirm=True)
     assert res_cancel["status"] == "success"
 
     # History
@@ -64,8 +65,8 @@ async def test_database_and_schema_tools(mock_client: SnowflakeClient) -> None:
     assert res_create["status"] == "success"
 
     db_drop = mcp._tool_manager._tools["databases_drop_database"].fn
-    res_gate = await db_drop("OLD_DB", confirm=False)
-    assert res_gate["status"] == "requires_confirmation"
+    with pytest.raises(SafetyViolationError, match="confirm=True"):
+        await db_drop("OLD_DB", confirm=False)
     res_drop = await db_drop("OLD_DB", confirm=True)
     assert res_drop["status"] == "success"
 
@@ -131,7 +132,7 @@ async def test_tasks_and_streams_tools(mock_client: SnowflakeClient) -> None:
     assert (await t_resume("TASK_1"))["status"] == "success"
 
     t_exec = mcp._tool_manager._tools["tasks_execute_task"].fn
-    assert (await t_exec("TASK_1"))["status"] == "success"
+    assert (await t_exec("TASK_1", confirm=True))["status"] == "success"
 
     st_list = mcp._tool_manager._tools["streams_list_streams"].fn
     assert (await st_list())["status"] == "success"

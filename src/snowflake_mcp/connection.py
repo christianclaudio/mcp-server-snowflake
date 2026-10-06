@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
+from dataclasses import dataclass
 from typing import Any
 
 import snowflake.connector
@@ -14,6 +16,7 @@ from snowflake.connector.cursor import DictCursor
 from snowflake.core import Root
 
 from snowflake_mcp.config import SnowflakeConfig
+from snowflake_mcp.errors import AuthenticationError, SafetyViolationError, map_connector_error
 
 logger = logging.getLogger("snowflake_mcp")
 
@@ -38,46 +41,332 @@ def quote_literal(val: Any) -> str:
     return f"'{s}'"
 
 
-def is_sql_read_only(query: str) -> bool:
-    """Classify if a SQL statement is strictly read-only."""
-    # Strip comments
-    q = re.sub(r"--.*?\n", "\n", query)
-    q = re.sub(r"/\*.*?\*/", "", q, flags=re.DOTALL).strip()
-    if not q:
+class _ScanError(Exception):
+    """The SQL text could not be tokenized safely."""
+
+
+@dataclass(frozen=True)
+class _Tok:
+    kind: str
+    value: str
+    depth: int
+
+
+def read_only_enabled(config: SnowflakeConfig) -> bool:
+    """True when the profile, ``--readonly``, or ``SNOWFLAKE_MCP_READONLY`` is on."""
+    if config.read_only:
         return True
+    flag = os.environ.get("SNOWFLAKE_MCP_READONLY", "").strip().lower()
+    return flag in {"1", "true", "yes"}
 
-    upper = q.upper()
-    tokens = upper.split()
 
-    mutating_keywords = (
-        "INSERT ",
-        "UPDATE ",
-        "DELETE ",
-        "MERGE ",
-        "DROP ",
-        "TRUNCATE ",
-        "ALTER ",
-        "CREATE ",
-        "CALL ",
-        "PUT ",
-        "REMOVE ",
-        "EXECUTE TASK",
-        "UNDROP ",
+def enforce_read_only_sql(config: SnowflakeConfig, sql: str, *, tool: str) -> None:
+    """Raise when read-only mode is on and ``sql`` is not one read-only statement.
+
+    Write-by-design inputs keep this check: ``queries_execute_dml``,
+    ``pipes_create_pipe`` ``copy_statement``, ``tasks_create_task``
+    ``sql_statement``, and ``alerts_create_alert`` ``condition_sql`` /
+    ``action_sql``. It does nothing while read-only mode is off.
+    """
+    if not read_only_enabled(config) or is_sql_read_only(sql):
+        return
+    raise SafetyViolationError(
+        f"Denied in read-only mode (SNOWFLAKE_MCP_READONLY=1); tool '{tool}' refused a non-read-only statement."
     )
 
-    first_word = tokens[0]
-    if first_word in ("SELECT", "SHOW", "DESCRIBE", "DESC", "EXPLAIN"):
-        if any(kw in upper for kw in mutating_keywords):
-            return False
-        return True
 
-    if first_word == "WITH":
-        # Check CTE query ending in SELECT
-        if any(kw in upper for kw in mutating_keywords):
-            return False
-        return "SELECT" in upper
+def enforce_caller_read_only_sql(sql: str, *, tool: str) -> None:
+    """Refuse SQL a read-only tool must not run, in every mode.
 
+    Used by ``queries_query``, ``queries_get_query_plan``, and the ``query``
+    arguments of ``recipes_warehouse_scale_and_execute`` and
+    ``recipes_export_query_to_stage``. The same classifier as
+    ``is_sql_read_only`` applies (``SYSTEM$`` allowlist, ``IDENTIFIER(`` call
+    position, and anything unclassifiable such as ``BEGIN``).
+    """
+    if is_sql_read_only(sql):
+        return
+    raise SafetyViolationError(
+        f"Refused non-read-only SQL; tool '{tool}' only runs statements classified as read-only. "
+        "Use queries_execute_dml for writes."
+    )
+
+
+# Pure SYSTEM$ functions. Anything else that is called is refused, including
+# quoted identifiers such as "SYSTEM$CANCEL_ALL_QUERIES".
+_READ_ONLY_SYSTEM_FUNCTIONS = frozenset(
+    {
+        # https://docs.snowflake.com/en/sql-reference/functions/system_typeof
+        # "Returns a string representing the SQL data type associated with an expression."
+        "SYSTEM$TYPEOF",
+        # https://docs.snowflake.com/en/sql-reference/functions/system_clustering_information
+        # "Returns clustering information, including average clustering depth, for a table."
+        "SYSTEM$CLUSTERING_INFORMATION",
+    }
+)
+
+
+def is_sql_read_only(query: str) -> bool:
+    """True only for one positively classified read-only statement.
+
+    Allowed forms are ``SELECT`` (without ``INTO``), ``SHOW``, ``DESCRIBE`` /
+    ``DESC``, ``EXPLAIN SELECT``, and ``WITH ... SELECT``. Strings, quoted
+    identifiers, dollar quotes, and comments are not scanned for keywords.
+    A ``SYSTEM$`` call is refused unless it is on ``_READ_ONLY_SYSTEM_FUNCTIONS``.
+    ``IDENTIFIER(...)`` in call position, and ``TABLE(IDENTIFIER(...))``, are refused.
+    More than one non-empty statement is refused. Anything unrecognized is refused.
+    """
+    if not query or not query.strip():
+        return False
+    try:
+        groups = _statement_groups(_lex(query))
+    except _ScanError:
+        return False
+    if len(groups) != 1:
+        return False
+    statement = groups[0]
+    if not _classify(statement):
+        return False
+    if _has_disallowed_system_call(statement) or _has_dynamic_identifier_call(statement):
+        return False
+    return True
+
+
+def _lex(sql: str) -> list[_Tok]:
+    tokens: list[_Tok] = []
+    index = 0
+    length = len(sql)
+    depth = 0
+    while index < length:
+        char = sql[index]
+        if char.isspace():
+            index += 1
+            continue
+        if char == "-" and index + 1 < length and sql[index + 1] == "-":
+            newline = sql.find("\n", index + 2)
+            index = length if newline < 0 else newline + 1
+            continue
+        if char == "/" and index + 1 < length and sql[index + 1] == "*":
+            end = sql.find("*/", index + 2)
+            if end < 0:
+                raise _ScanError
+            index = end + 2
+            continue
+        if char == "'":
+            index, _ = _read_quoted(sql, index, "'")
+            continue
+        if char == '"':
+            index, ident = _read_quoted(sql, index, '"')
+            # Quoted SYSTEM$ names are calls, not ordinary identifiers.
+            if ident.upper().startswith("SYSTEM$"):
+                tokens.append(_Tok("word", ident.upper(), depth))
+            continue
+        if char == "$":
+            tag = _dollar_opener(sql, index)
+            if tag is None:
+                index += 1
+                continue
+            close = sql.find(tag, index + len(tag))
+            if close < 0:
+                raise _ScanError
+            index = close + len(tag)
+            continue
+        if char == "(":
+            tokens.append(_Tok("lparen", "(", depth))
+            depth += 1
+            index += 1
+            continue
+        if char == ")":
+            depth = max(depth - 1, 0)
+            tokens.append(_Tok("rparen", ")", depth))
+            index += 1
+            continue
+        if char == ",":
+            tokens.append(_Tok("comma", ",", depth))
+            index += 1
+            continue
+        if char == ";":
+            tokens.append(_Tok("semi", ";", depth))
+            index += 1
+            continue
+        if char.isalpha() or char == "_":
+            end = index + 1
+            while end < length and (sql[end].isalnum() or sql[end] in "_$"):
+                end += 1
+            tokens.append(_Tok("word", sql[index:end].upper(), depth))
+            index = end
+            continue
+        index += 1
+    return tokens
+
+
+def _read_quoted(sql: str, index: int, quote: str) -> tuple[int, str]:
+    index += 1
+    length = len(sql)
+    parts: list[str] = []
+    while index < length:
+        if sql[index] == quote:
+            if index + 1 < length and sql[index + 1] == quote:
+                parts.append(quote)
+                index += 2
+                continue
+            return index + 1, "".join(parts)
+        parts.append(sql[index])
+        index += 1
+    raise _ScanError
+
+
+def _has_disallowed_system_call(tokens: list[_Tok]) -> bool:
+    """True when a non-allowlisted ``SYSTEM$`` function is called."""
+    for index, tok in enumerate(tokens):
+        if tok.kind != "word" or not tok.value.startswith("SYSTEM$"):
+            continue
+        if index + 1 >= len(tokens) or tokens[index + 1].kind != "lparen":
+            continue
+        if tok.value not in _READ_ONLY_SYSTEM_FUNCTIONS:
+            return True
     return False
+
+
+def _has_dynamic_identifier_call(tokens: list[_Tok]) -> bool:
+    """True for ``IDENTIFIER(...)(`` or ``TABLE(IDENTIFIER(...))``.
+
+    ``FROM IDENTIFIER('t')`` names an object and stays allowed. Whitespace and
+    comments are already gone, so the following ``(`` is the next token.
+    """
+    for index, tok in enumerate(tokens):
+        if tok.kind != "word":
+            continue
+        if tok.value == "IDENTIFIER" and _identifier_in_call_position(tokens, index):
+            return True
+        if tok.value == "TABLE" and _table_wraps_identifier(tokens, index):
+            return True
+    return False
+
+
+def _identifier_in_call_position(tokens: list[_Tok], index: int) -> bool:
+    """True when ``IDENTIFIER(...)`` is immediately invoked."""
+    if index + 1 >= len(tokens) or tokens[index + 1].kind != "lparen":
+        return False
+    after = _skip_parens(tokens, index + 1)
+    if after is None or after >= len(tokens):
+        return False
+    return tokens[after].kind == "lparen"
+
+
+def _table_wraps_identifier(tokens: list[_Tok], index: int) -> bool:
+    """True when ``TABLE``'s argument is an ``IDENTIFIER(...)`` call."""
+    if index + 1 >= len(tokens) or tokens[index + 1].kind != "lparen":
+        return False
+    inner = index + 2
+    if inner >= len(tokens) or not _is_word(tokens[inner], "IDENTIFIER"):
+        return False
+    return inner + 1 < len(tokens) and tokens[inner + 1].kind == "lparen"
+
+
+def _is_word(tok: _Tok, value: str) -> bool:
+    return tok.kind == "word" and tok.value == value
+
+
+def _dollar_opener(sql: str, index: int) -> str | None:
+    end = index + 1
+    while end < len(sql) and (sql[end].isalnum() or sql[end] == "_"):
+        end += 1
+    if end < len(sql) and sql[end] == "$":
+        return sql[index : end + 1]
+    return None
+
+
+def _statement_groups(tokens: list[_Tok]) -> list[list[_Tok]]:
+    groups: list[list[_Tok]] = []
+    current: list[_Tok] = []
+    for tok in tokens:
+        if tok.kind == "semi":
+            groups.append(current)
+            current = []
+            continue
+        current.append(tok)
+    groups.append(current)
+    return [group for group in groups if group]
+
+
+def _classify(tokens: list[_Tok]) -> bool:
+    if not tokens or tokens[0].kind != "word":
+        return False
+    keyword = tokens[0].value
+    if keyword == "SELECT":
+        return not _has_into(tokens)
+    if keyword in {"SHOW", "DESCRIBE", "DESC"}:
+        return True
+    if keyword == "EXPLAIN":
+        return _explain_ok(tokens[1:])
+    if keyword == "WITH":
+        return _keyword_after_cte(tokens) == "SELECT" and not _has_into(tokens)
+    return False
+
+
+def _explain_ok(tokens: list[_Tok]) -> bool:
+    if not tokens or tokens[0].kind != "word":
+        return False
+    if tokens[0].value == "SELECT":
+        return not _has_into(tokens)
+    if tokens[0].value == "WITH":
+        return _keyword_after_cte(tokens) == "SELECT" and not _has_into(tokens)
+    return False
+
+
+def _has_into(tokens: list[_Tok]) -> bool:
+    return any(tok.kind == "word" and tok.value == "INTO" for tok in tokens)
+
+
+def _is_depth0_word(tok: _Tok | None, value: str | None = None) -> bool:
+    if tok is None or tok.kind != "word" or tok.depth != 0:
+        return False
+    return value is None or tok.value == value
+
+
+def _skip_parens(tokens: list[_Tok], index: int) -> int | None:
+    depth = tokens[index].depth
+    index += 1
+    while index < len(tokens):
+        tok = tokens[index]
+        if tok.kind == "rparen" and tok.depth == depth:
+            return index + 1
+        index += 1
+    return None
+
+
+def _keyword_after_cte(tokens: list[_Tok]) -> str | None:
+    """Return the statement keyword that follows a top-level CTE list."""
+    index = 1
+    count = len(tokens)
+    if index < count and _is_depth0_word(tokens[index], "RECURSIVE"):
+        index += 1
+    while index < count:
+        if not _is_depth0_word(tokens[index]):
+            return None
+        index += 1
+        if index < count and tokens[index].kind == "lparen" and tokens[index].depth == 0:
+            skipped = _skip_parens(tokens, index)
+            if skipped is None:
+                return None
+            index = skipped
+        if index >= count or not _is_depth0_word(tokens[index], "AS"):
+            return None
+        index += 1
+        if index >= count or tokens[index].kind != "lparen" or tokens[index].depth != 0:
+            return None
+        skipped = _skip_parens(tokens, index)
+        if skipped is None:
+            return None
+        index = skipped
+        if index < count and tokens[index].kind == "comma" and tokens[index].depth == 0:
+            index += 1
+            continue
+        if index < count and _is_depth0_word(tokens[index]):
+            return tokens[index].value
+        return None
+    return None
 
 
 class SnowflakeClient:
@@ -130,7 +419,7 @@ class SnowflakeClient:
                     "Set `SNOWFLAKE_ACCOUNT` and `SNOWFLAKE_USER` environment variables or run `snowflake-mcp --init`."
                 )
             )
-            raise ValueError(f"Missing Snowflake credentials. {profiles_msg}")
+            raise AuthenticationError(f"Missing Snowflake credentials. {profiles_msg}")
 
         conn_params: dict[str, Any] = {
             "account": self.config.account,
@@ -168,7 +457,29 @@ class SnowflakeClient:
             conn_params["port"] = self.config.port
 
         self._conn = snowflake.connector.connect(**conn_params)
+        self._pin_secondary_roles_none(self._conn)
         return self._conn
+
+    def _pin_secondary_roles_none(self, conn: SnowflakeConnection) -> None:
+        """Drop inherited secondary roles before any tool SQL while read-only.
+
+        Snowflake defaults secondary roles to ALL, so a session can inherit
+        privileges from every role granted to the user. Fail closed: a failed
+        pin closes the connection and is not served.
+        """
+        if not read_only_enabled(self.config):
+            return
+        cursor = conn.cursor()
+        try:
+            cursor.execute("USE SECONDARY ROLES NONE")
+        except Exception as exc:
+            self._conn = None
+            conn.close()
+            raise SafetyViolationError(
+                "Read-only mode refused to start because USE SECONDARY ROLES NONE failed."
+            ) from exc
+        finally:
+            cursor.close()
 
     def get_root(self) -> Root:
         """Retrieve or create a snowflake.core.Root instance."""
@@ -218,6 +529,11 @@ class SnowflakeClient:
                 "data": normalized_rows,
                 "has_more": len(rows) == limit,
             }
+        except Exception as exc:
+            mapped = map_connector_error(exc)
+            if mapped is not None:
+                raise mapped from exc
+            raise
         finally:
             cursor.close()
 

@@ -2,8 +2,8 @@
 # ❄️ mcp-server-snowflake
 
 [![CI](https://github.com/christianclaudio/mcp-server-snowflake/actions/workflows/ci.yml/badge.svg)](https://github.com/christianclaudio/mcp-server-snowflake/actions/workflows/ci.yml)
-[![PyPI](https://img.shields.io/pypi/v/mcp-server-snowflake)](https://pypi.org/project/mcp-server-snowflake/)
-[![Python](https://img.shields.io/pypi/pyversions/mcp-server-snowflake)](https://pypi.org/project/mcp-server-snowflake/)
+[![GHCR](https://img.shields.io/badge/ghcr.io-mcp--server--snowflake-blue)](https://github.com/christianclaudio/mcp-server-snowflake/pkgs/container/mcp-server-snowflake)
+[![GitHub Release](https://img.shields.io/github/v/release/christianclaudio/mcp-server-snowflake)](https://github.com/christianclaudio/mcp-server-snowflake/releases)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen.svg)](https://github.com/christianclaudio/mcp-server-snowflake)
 [![CodeRabbit Reviews](https://img.shields.io/coderabbit/prs/github/christianclaudio/mcp-server-snowflake?labelColor=171717&color=FF570A&label=CodeRabbit+Reviews)](https://coderabbit.ai)
@@ -26,7 +26,7 @@ flowchart TD
 
     subgraph Protocol["MCP Protocol Boundary (Spec 2026-07-28)"]
         STDIO["stdio Transport"]
-        HTTP["Streamable HTTP Transport (SSE)"]
+        HTTP["Streamable HTTP Transport"]
     end
 
     subgraph Server["snowflake-mcp (FastMCP 4)"]
@@ -63,7 +63,8 @@ flowchart TD
 
 > [!WARNING]
 > **Safety Guardrails**  
-> - **Read-Only Safety Mode:** Set `SNOWFLAKE_MCP_READONLY=1` (or pass `--readonly`) to disable all DDL/DML mutation capabilities.  
+> - **Read-Only Safety Mode:** Set `SNOWFLAKE_MCP_READONLY=1`, pass `--readonly`, or pass `--profile readonly` to block mutating tools. The profile sets the same read-only flag the gate reads. On each new session, read-only mode runs `USE SECONDARY ROLES NONE` before any tool SQL and closes the connection if that pin fails. Write mode does not run that statement. Objects readable only through a secondary role's grants are not visible under `--readonly` until the read-only primary role is granted `SELECT` on them directly. Set `DEFAULT_SECONDARY_ROLES = ()` on the read-only user, or use a dedicated user that holds only that role. A programmatic access token for that user should set `ROLE_RESTRICTION` to the read-only role: Snowflake then uses that role for privilege evaluation, and secondary roles are not used, even if `DEFAULT_SECONDARY_ROLES` is `('ALL')` ([programmatic access tokens](https://docs.snowflake.com/en/user-guide/programmatic-access-tokens)).  
+> - **Caller SQL:** `queries_query`, `queries_get_query_plan`, and the `query` arguments of `recipes_warehouse_scale_and_execute` and `recipes_export_query_to_stage` refuse anything that is not one read-only statement, whether or not read-only mode is on. Allowed forms are one `SELECT` (no `INTO`), `SHOW`, `DESCRIBE`/`DESC`, or `EXPLAIN SELECT`. `SYSTEM$` calls are refused except `SYSTEM$TYPEOF` and `SYSTEM$CLUSTERING_INFORMATION`. `IDENTIFIER(...)` in call position and `TABLE(IDENTIFIER(...))` are refused. User-defined functions inside `SELECT` are not inspected.  
 > - **Destructive Safety Gates:** Dropping databases, schemas, or tables requires explicit `confirm=True`.  
 > - **Query Limits:** Default execution limits prevent context window overflow (`SNOWFLAKE_MAX_ROWS=1000`, `SNOWFLAKE_QUERY_TIMEOUT=120`).
 
@@ -91,11 +92,12 @@ flowchart TD
 ## 📦 Installation & Quickstart
 
 ```bash
-# Using uv (recommended)
-uv pip install mcp-server-snowflake
+# PyPI publication is pending dispute #11989.
+# Install from GitHub
+uvx --from git+https://github.com/christianclaudio/mcp-server-snowflake snowflake-mcp
 
-# Or standard pip
-pip install mcp-server-snowflake
+# Or run the GHCR image
+docker run -i --rm ghcr.io/christianclaudio/mcp-server-snowflake
 
 # Interactive setup wizard
 snowflake-mcp --init
@@ -103,10 +105,19 @@ snowflake-mcp --init
 # Run with a specific Snowflake CLI connection profile
 snowflake-mcp -c my_connection
 
-# Run in read-only mode
+# Run in read-only mode (every tool stays registered; handlers reject mutations)
 snowflake-mcp -c my_connection --readonly
 
-# Run with Docker
+# List one domain, or only read-only tools
+snowflake-mcp --profile cortex
+snowflake-mcp --profile readonly
+# `--profile readonly` hides mutating tools, sets the read-only flag, and pins USE SECONDARY ROLES NONE on each session.
+# Set DEFAULT_SECONDARY_ROLES = () on that user, or use a dedicated user that holds only the read-only role.
+
+# Opt in to regex tool search instead of the flat 140-tool tools/list
+snowflake-mcp --enable-tool-search
+
+# Build a local image (the published image is ghcr.io/christianclaudio/mcp-server-snowflake)
 docker build -t mcp-server-snowflake .
 docker run -i --rm mcp-server-snowflake
 ```
@@ -240,7 +251,7 @@ Add to `cline_mcp_settings.json`:
 </details>
 
 <details>
-<summary><b>🌐 Streamable HTTP Transport (SSE)</b></summary>
+<summary><b>🌐 Streamable HTTP Transport</b></summary>
 
 Launch `snowflake-mcp` as a long-running Streamable HTTP service:
 

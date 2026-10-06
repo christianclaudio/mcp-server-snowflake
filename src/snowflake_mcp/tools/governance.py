@@ -8,6 +8,7 @@ from fastmcp import FastMCP
 
 from snowflake_mcp.config import SnowflakeConfig
 from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal
+from snowflake_mcp.errors import SafetyViolationError
 
 
 def register_governance_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
@@ -113,7 +114,7 @@ def register_governance_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Create role."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         try:
             exists_clause = "IF NOT EXISTS " if if_not_exists else ""
             comm_clause = f" COMMENT = {quote_literal(comment)}" if comment else ""
@@ -133,12 +134,10 @@ def register_governance_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Drop role."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         if not confirm:
-            return {
-                "status": "requires_confirmation",
-                "message": f"Destructive: To drop role '{role_name}', set confirm=True.",
-            }
+            message = f"Destructive: To drop role '{role_name}', set confirm=True."
+            raise SafetyViolationError(message, status="requires_confirmation")
         try:
             sql = f"DROP ROLE IF EXISTS {quote_ident(role_name)}"
             res = client.execute_query(sql)
@@ -190,7 +189,7 @@ def register_governance_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Create user."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         try:
             exists_clause = "IF NOT EXISTS " if if_not_exists else ""
             pwd_clause = f" PASSWORD = {quote_literal(password)}" if password else ""

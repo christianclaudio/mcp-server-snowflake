@@ -7,6 +7,7 @@ from typing import Any
 from fastmcp import FastMCP
 
 from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal
+from snowflake_mcp.errors import SafetyViolationError
 
 
 def qualify_stream_target(
@@ -93,7 +94,7 @@ def register_stream_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Create stream."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
@@ -119,12 +120,10 @@ def register_stream_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Drop stream."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         if not confirm:
-            return {
-                "status": "requires_confirmation",
-                "message": f"Destructive: To drop stream '{stream_name}', set confirm=True.",
-            }
+            message = f"Destructive: To drop stream '{stream_name}', set confirm=True."
+            raise SafetyViolationError(message, status="requires_confirmation")
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name

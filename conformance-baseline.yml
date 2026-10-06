@@ -7,11 +7,12 @@
 # 2. Synthetic test fixtures defined by the conformance suite specification
 #    (e.g. test_audio_content, test://static-text, test_simple_prompt)
 #    which are not part of this production server domain schema.
+#
+# tools-call-simple-text and tools-call-error pass as of 2.1.0. Unknown tools
+# and tool failures are isError results, which the suite accepts.
 
 server:
   - completion-complete
-  - tools-call-simple-text
-  - tools-call-error
   - tools-call-image
   - tools-call-audio
   - tools-call-embedded-resource

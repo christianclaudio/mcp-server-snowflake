@@ -11,6 +11,7 @@ import pytest
 from snowflake_mcp.cli import main as cli_main
 from snowflake_mcp.config import SnowflakeConfig
 from snowflake_mcp.connection import SnowflakeClient
+from snowflake_mcp.errors import SafetyViolationError
 from snowflake_mcp.server import create_server
 
 
@@ -71,6 +72,8 @@ async def test_all_tools_success_and_error_branches(
             if param.default is not inspect.Parameter.empty:
                 # Use default or set confirm=True for destructive tools
                 args_kwargs[p_name] = True if "confirm" in p_name else param.default
+            elif p_name == "query":
+                args_kwargs[p_name] = "SELECT 1"
             elif p_name in ("size", "warehouse_size", "target_size"):
                 args_kwargs[p_name] = "X-SMALL"
             elif p_name in ("connection_name", "conn_name"):
@@ -115,7 +118,10 @@ async def test_all_tools_success_and_error_branches(
 
         # 3. Readonly execution
         fn_ro = tools_ro[name].fn
-        res_ro = await fn_ro(**args_kwargs)
+        try:
+            res_ro = await fn_ro(**args_kwargs)
+        except SafetyViolationError:
+            continue
         assert isinstance(res_ro, dict), f"Tool {name} readonly branch did not return dict: {res_ro}"
         assert (
             res_ro.get("status")
@@ -154,8 +160,8 @@ async def test_specific_branch_conditions(mock_client: SnowflakeClient) -> None:
     for t_name in gated_tools:
         sig = inspect.signature(tools[t_name].fn)
         dummy_args = {p: "TEST" if p != "confirm" else False for p in sig.parameters}
-        res = await tools[t_name].fn(**dummy_args)
-        assert res.get("status") == "requires_confirmation", f"Tool {t_name} failed gating"
+        with pytest.raises(SafetyViolationError, match="confirm=True"):
+            await tools[t_name].fn(**dummy_args)
 
     await tools["databases_list_databases"].fn(pattern="TEST%")
     await tools["schemas_list_schemas"].fn(database="TEST_DB", pattern="PUBLIC%")

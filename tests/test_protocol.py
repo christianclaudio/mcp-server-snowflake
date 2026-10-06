@@ -195,6 +195,7 @@ async def test_stateless_streamable_http_mutations_and_safety_gates(
                 },
             )
             assert res_gate.status_code == 200
+            assert res_gate.json()["result"]["isError"] is True
             gate_data = json.loads(res_gate.json()["result"]["content"][0]["text"])
             assert gate_data["status"] == "requires_confirmation"
             assert "confirm=True" in gate_data["message"]
@@ -222,6 +223,7 @@ async def test_stateless_streamable_http_mutations_and_safety_gates(
                 },
             )
             assert res_drop.status_code == 200
+            assert res_drop.json()["result"].get("isError", False) is False
             drop_data = json.loads(res_drop.json()["result"]["content"][0]["text"])
             assert drop_data["status"] == "success"
             mock_cursor.execute.assert_called_once()
@@ -250,6 +252,7 @@ async def test_stateless_streamable_http_mutations_and_safety_gates(
                 },
             )
             assert res_ro.status_code == 200
+            assert res_ro.json()["result"]["isError"] is True
             ro_data = json.loads(res_ro.json()["result"]["content"][0]["text"])
             assert ro_data["status"] == "error"
             assert "Denied in read-only mode" in ro_data["error"]
@@ -285,7 +288,13 @@ def test_main_streamable_http_and_warning_branches(caplog: pytest.LogCaptureFixt
         mock_srv.return_value = mock_instance
         with pytest.deprecated_call(match="The 'sse' transport is deprecated in MCP Specification 2026-07-28"):
             main()
-        mock_instance.run.assert_called_once_with(transport="sse", host="127.0.0.1", port=8000)
+        mock_instance.run.assert_called_once_with(
+            transport="sse",
+            host="127.0.0.1",
+            port=8000,
+            host_origin_protection=True,
+            allowed_hosts=["127.0.0.1", "localhost", "127.0.0.1:8000", "localhost:8000"],
+        )
 
     # 3. Warning when passing --no-stateless or --no-json-response to non-streamable transport
     with (

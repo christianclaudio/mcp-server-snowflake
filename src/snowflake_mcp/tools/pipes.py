@@ -6,7 +6,14 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal
+from snowflake_mcp.connection import (
+    SnowflakeClient,
+    enforce_read_only_sql,
+    quote_ident,
+    quote_literal,
+    read_only_enabled,
+)
+from snowflake_mcp.errors import SafetyViolationError
 
 
 def register_pipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
@@ -77,8 +84,9 @@ def register_pipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         if_not_exists: bool = True,
     ) -> dict[str, Any]:
         """Create pipe."""
-        if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+        enforce_read_only_sql(client.config, copy_statement, tool="pipes_create_pipe")
+        if read_only_enabled(client.config):
+            raise SafetyViolationError("Denied in read-only mode.")
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
@@ -107,12 +115,10 @@ def register_pipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Drop pipe."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         if not confirm:
-            return {
-                "status": "requires_confirmation",
-                "message": f"Destructive: To drop pipe '{pipe_name}', set confirm=True.",
-            }
+            message = f"Destructive: To drop pipe '{pipe_name}', set confirm=True."
+            raise SafetyViolationError(message, status="requires_confirmation")
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name

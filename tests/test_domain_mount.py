@@ -5,7 +5,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
-from mcp.server.mcpserver.exceptions import ToolError
+from fastmcp.exceptions import NotFoundError
 
 from snowflake_mcp.config import SnowflakeConfig
 from snowflake_mcp.connection import SnowflakeClient
@@ -151,9 +151,9 @@ def test_compat_skips_non_tools_and_blank_names(mock_client: SnowflakeClient) ->
 
 @pytest.mark.asyncio
 async def test_unknown_tool_and_module_getattr(mock_client: SnowflakeClient, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Unknown wire names raise ToolError, and the lazy mcp export stays lazy."""
+    """Unknown wire names re-raise NotFoundError, and the lazy mcp export stays lazy."""
     mcp = create_server(client=mock_client)
-    with pytest.raises(ToolError, match="Unknown tool"):
+    with pytest.raises(NotFoundError, match="Unknown tool"):
         await mcp.call_tool("snowflake_query", {})
 
     with pytest.raises(ValueError, match="allowed_hosts"):

@@ -7,7 +7,14 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal
+from snowflake_mcp.connection import (
+    SnowflakeClient,
+    enforce_caller_read_only_sql,
+    quote_ident,
+    quote_literal,
+    read_only_enabled,
+)
+from snowflake_mcp.errors import SafetyViolationError
 from snowflake_mcp.tools.tables import qualify_table_target
 from snowflake_mcp.tools.warehouses import VALID_WAREHOUSE_SIZES
 
@@ -121,17 +128,22 @@ def register_recipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="warehouse_scale_and_execute",
-        description="Composite recipe: Safely scale up a warehouse, run a heavy query, and optionally restore previous size.",
+        description="Composite recipe: Safely scale up a warehouse, run a heavy query, and optionally restore previous size. Requires confirmation.",
     )
     async def snowflake_warehouse_scale_and_execute(
         warehouse_name: str,
         target_size: str,
         query: str,
         restore_previous_size: bool = True,
+        confirm: bool = False,
     ) -> dict[str, Any]:
         """Scale warehouse, execute query, and restore."""
-        if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+        enforce_caller_read_only_sql(query, tool="recipes_warehouse_scale_and_execute")
+        if read_only_enabled(client.config):
+            raise SafetyViolationError("Denied in read-only mode.")
+        if not confirm:
+            message = f"Destructive: To scale warehouse '{warehouse_name}' and execute the query, set confirm=True."
+            raise SafetyViolationError(message, status="requires_confirmation")
 
         norm_size = target_size.strip().upper()
         if norm_size not in VALID_WAREHOUSE_SIZES:
@@ -185,7 +197,7 @@ def register_recipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Clone table with Time Travel."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
 
         if at_or_before:
             clean_tt = at_or_before.strip()
@@ -216,8 +228,9 @@ def register_recipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         header: bool = True,
     ) -> dict[str, Any]:
         """Unload query to stage."""
-        if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+        enforce_caller_read_only_sql(query, tool="recipes_export_query_to_stage")
+        if read_only_enabled(client.config):
+            raise SafetyViolationError("Denied in read-only mode.")
         try:
             target = stage_location if stage_location.startswith("@") else f"@{stage_location}"
             header_str = "TRUE" if header else "FALSE"

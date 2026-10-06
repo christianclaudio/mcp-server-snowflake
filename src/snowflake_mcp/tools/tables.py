@@ -7,6 +7,7 @@ from typing import Any
 from fastmcp import FastMCP
 
 from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal
+from snowflake_mcp.errors import SafetyViolationError
 
 VALID_DDL_OBJECT_TYPES = {
     "TABLE",
@@ -175,7 +176,7 @@ def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Create table."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
@@ -197,12 +198,10 @@ def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Drop table."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         if not confirm:
-            return {
-                "status": "requires_confirmation",
-                "message": f"Destructive: To drop '{table_name}', set confirm=True.",
-            }
+            message = f"Destructive: To drop '{table_name}', set confirm=True."
+            raise SafetyViolationError(message, status="requires_confirmation")
         try:
             target = qualify_table_target(table_name)
             sql = f"DROP TABLE IF EXISTS {target}"
@@ -220,7 +219,7 @@ def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Undrop table."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         try:
             target = qualify_table_target(table_name)
             sql = f"UNDROP TABLE {target}"
@@ -239,12 +238,10 @@ def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Truncate table."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         if not confirm:
-            return {
-                "status": "requires_confirmation",
-                "message": f"Destructive: To truncate '{table_name}', set confirm=True.",
-            }
+            message = f"Destructive: To truncate '{table_name}', set confirm=True."
+            raise SafetyViolationError(message, status="requires_confirmation")
         try:
             target = qualify_table_target(table_name)
             sql = f"TRUNCATE TABLE {target}"
@@ -263,7 +260,7 @@ def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Clone table zero-copy."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         try:
             src = qualify_table_target(source_table)
             tgt = qualify_table_target(target_table)
