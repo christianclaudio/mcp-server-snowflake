@@ -14,6 +14,7 @@ from snowflake.connector.cursor import DictCursor
 from snowflake.core import Root
 
 from snowflake_mcp.config import SnowflakeConfig
+from snowflake_mcp.errors import AuthenticationError, map_connector_error
 
 logger = logging.getLogger("snowflake_mcp")
 
@@ -130,7 +131,7 @@ class SnowflakeClient:
                     "Set `SNOWFLAKE_ACCOUNT` and `SNOWFLAKE_USER` environment variables or run `snowflake-mcp --init`."
                 )
             )
-            raise ValueError(f"Missing Snowflake credentials. {profiles_msg}")
+            raise AuthenticationError(f"Missing Snowflake credentials. {profiles_msg}")
 
         conn_params: dict[str, Any] = {
             "account": self.config.account,
@@ -218,6 +219,11 @@ class SnowflakeClient:
                 "data": normalized_rows,
                 "has_more": len(rows) == limit,
             }
+        except Exception as exc:
+            mapped = map_connector_error(exc)
+            if mapped is not None:
+                raise mapped from exc
+            raise
         finally:
             cursor.close()
 

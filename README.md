@@ -63,7 +63,7 @@ flowchart TD
 
 > [!WARNING]
 > **Safety Guardrails**  
-> - **Read-Only Safety Mode:** Set `SNOWFLAKE_MCP_READONLY=1` (or pass `--readonly`) to disable all DDL/DML mutation capabilities.  
+> - **Read-Only Safety Mode:** Set `SNOWFLAKE_MCP_READONLY=1` (or pass `--readonly`) to disable all DDL/DML mutation capabilities. The read-only gate refuses mutating tools before the handler runs, and each handler checks again.  
 > - **Destructive Safety Gates:** Dropping databases, schemas, or tables requires explicit `confirm=True`.  
 > - **Query Limits:** Default execution limits prevent context window overflow (`SNOWFLAKE_MAX_ROWS=1000`, `SNOWFLAKE_QUERY_TIMEOUT=120`).
 

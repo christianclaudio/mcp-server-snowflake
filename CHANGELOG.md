@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Protocol errors**: Unknown tools are no longer wrapped in `ToolError`. `NotFoundError` and other protocol errors propagate, so an unknown tool is a tool result with `isError` and `Unknown tool: '<name>'` instead of JSON-RPC `-32603`. `ErrorHandlingMiddleware` redacts handler failures and re-raises protocol errors unchanged.
 - **Secret redaction**: `redact_secrets` strips passwords, tokens, bearer credentials, private keys, and connection strings from error payloads and logs.
+- **Audit and read-only middleware**: `ParentAuditMiddleware` times requests, redacts exception arguments, and re-raises the same exception. `ReadOnlyGateMiddleware` blocks mutating tools while read-only mode is on. `SnowflakeMCPError` (`AuthenticationError`, `ResourceNotFoundError`, `RateLimitError`, `SafetyViolationError`) redacts messages at construction.
 - **Tool search**: Opt-in `RegexSearchTransform` via `--enable-tool-search` or `SNOWFLAKE_MCP_ENABLE_TOOL_SEARCH=1`. The default `tools/list` stays the flat 140-tool catalog.
 - **Profiles**: `--profile` (`SNOWFLAKE_MCP_PROFILE`) selects `full` (default), `readonly`, or a single domain. `--readonly` still registers every tool and rejects mutations in the handlers.
 - **Annotations**: Every tool sets `readOnlyHint`, `destructiveHint`, and `idempotentHint`. Read-only tools are idempotent. `queries_execute_dml`, `tasks_execute_task`, and `recipes_warehouse_scale_and_execute` are destructive.

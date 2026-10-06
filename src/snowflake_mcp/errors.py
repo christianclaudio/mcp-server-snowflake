@@ -1,14 +1,24 @@
-"""Credential redaction for Snowflake MCP error output and logs.
+"""Credential redaction and the Snowflake MCP exception hierarchy.
 
 Patterns cover passwords, tokens, bearer credentials, private keys, and
 connection strings. Replacement text is ``[REDACTED]``, matching the
-existing ``create_user`` guard.
+existing ``create_user`` guard. Exception messages are redacted at
+construction.
 """
 
 from __future__ import annotations
 
 import os
 import re
+from typing import Any
+
+from snowflake.connector.errors import (
+    ForbiddenError,
+    ProgrammingError,
+    RefreshTokenError,
+    TokenExpiredError,
+    TooManyRequests,
+)
 
 _ENV_SECRET_VARS = (
     "SNOWFLAKE_PASSWORD",
@@ -82,3 +92,48 @@ def redact_error_payload(value: object) -> object:
     if isinstance(value, list):
         return [redact_error_payload(item) for item in value]
     return value
+
+
+class SnowflakeMCPError(Exception):
+    """Base error. The message is redacted before it is stored or raised."""
+
+    def __init__(self, message: str, details: dict[str, Any] | None = None) -> None:
+        self.message = redact_secrets(message)
+        self.details = details or {}
+        super().__init__(self.message)
+
+
+class AuthenticationError(SnowflakeMCPError):
+    """401/403 or Snowflake authentication and token failures."""
+
+
+class ResourceNotFoundError(SnowflakeMCPError):
+    """A Snowflake object named by the caller does not exist."""
+
+
+class RateLimitError(SnowflakeMCPError):
+    """429 or warehouse/request throttling."""
+
+
+class SafetyViolationError(SnowflakeMCPError):
+    """Confirm-guard, read-only, or other destructive-gate violations."""
+
+
+_AUTH_ERRNOS = frozenset({250001, 390100, 390114, 390144})
+
+
+def map_connector_error(exc: BaseException) -> SnowflakeMCPError | None:
+    """Map a Snowflake connector failure onto the local hierarchy, when it fits."""
+    text = str(exc)
+    if isinstance(exc, (ForbiddenError, TokenExpiredError, RefreshTokenError)):
+        return AuthenticationError(text)
+    if isinstance(exc, TooManyRequests):
+        return RateLimitError(text)
+    if isinstance(exc, ProgrammingError):
+        lowered = text.lower()
+        if "does not exist" in lowered or "not found" in lowered or "404" in text:
+            return ResourceNotFoundError(text)
+        errno = getattr(exc, "errno", None)
+        if isinstance(errno, int) and errno in _AUTH_ERRNOS:
+            return AuthenticationError(text)
+    return None

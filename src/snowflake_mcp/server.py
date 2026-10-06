@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from collections.abc import AsyncIterator
@@ -10,12 +11,18 @@ from typing import Any
 
 from fastmcp import FastMCP
 from fastmcp.tools import FunctionTool, Tool
-from mcp.types import CallToolResult, ToolAnnotations
+from mcp.types import CallToolResult, TextContent, ToolAnnotations
 
 from snowflake_mcp import __version__
 from snowflake_mcp.config import SnowflakeConfig
 from snowflake_mcp.connection import SnowflakeClient
-from snowflake_mcp.middleware import ErrorHandlingMiddleware
+from snowflake_mcp.errors import SafetyViolationError
+from snowflake_mcp.middleware import (
+    ErrorHandlingMiddleware,
+    ParentAuditMiddleware,
+    ReadOnlyGateMiddleware,
+    record_mutating_tools,
+)
 from snowflake_mcp.tools.alerts import register_alert_tools
 from snowflake_mcp.tools.compute_services import register_compute_service_tools
 from snowflake_mcp.tools.cortex import register_cortex_tools
@@ -327,7 +334,11 @@ def create_server(
         cache_scope="public",
     )
 
-    # Re-raise protocol errors. Redact everything else before it becomes a tool error.
+    # Outermost first. FastMCP runs the first registered middleware on the outside.
+    # Audit re-raises the same exception. The read-only gate runs before handlers.
+    # The inner layer redacts tool-result payloads and still re-raises protocol errors.
+    mcp.add_middleware(ParentAuditMiddleware())
+    mcp.add_middleware(ReadOnlyGateMiddleware(snow_client.config))
     mcp.add_middleware(ErrorHandlingMiddleware())
 
     # Domain namespaces are the wire prefix (queries_query, not snowflake_query).
@@ -341,6 +352,7 @@ def create_server(
 
     tool_mgr = _ToolManagerCompat(mcp)
     mcp._tool_manager = tool_mgr  # type: ignore[attr-defined]
+    record_mutating_tools(tool_mgr._tools, DOMAIN_NAMES)
 
     if active_profile == "readonly":
         for name, component in list(tool_mgr._tools.items()):
@@ -362,8 +374,16 @@ def create_server(
     async def _call_tool_compat(name: str, arguments: dict[str, Any] | None = None, **kwargs: Any) -> Any:
         # NotFoundError, ValidationError, and MCPError propagate. The wire
         # handler maps an unknown tool to its protocol result; wrapping it in
-        # ToolError becomes JSON-RPC -32603.
-        raw_res = await orig_call_tool(name, arguments or {}, **kwargs)
+        # ToolError becomes JSON-RPC -32603. A read-only gate refusal is
+        # returned as the same error payload handlers already use.
+        try:
+            raw_res = await orig_call_tool(name, arguments or {}, **kwargs)
+        except SafetyViolationError as exc:
+            payload = {"status": "error", "error": str(exc)}
+            return CallToolResult(
+                content=[TextContent(type="text", text=json.dumps(payload))],
+                is_error=False,
+            )
         if isinstance(raw_res, CallToolResult):
             return raw_res
         return CallToolResult(
