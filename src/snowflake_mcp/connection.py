@@ -90,6 +90,7 @@ def is_sql_read_only(query: str) -> bool:
     ``DESC``, ``EXPLAIN SELECT``, and ``WITH ... SELECT``. Strings, quoted
     identifiers, dollar quotes, and comments are not scanned for keywords.
     A ``SYSTEM$`` call is refused unless it is on ``_READ_ONLY_SYSTEM_FUNCTIONS``.
+    ``IDENTIFIER(...)`` in call position, and ``TABLE(IDENTIFIER(...))``, are refused.
     More than one non-empty statement is refused. Anything unrecognized is refused.
     """
     if not query or not query.strip():
@@ -101,7 +102,11 @@ def is_sql_read_only(query: str) -> bool:
     if len(groups) != 1:
         return False
     statement = groups[0]
-    return _classify(statement) and not _has_disallowed_system_call(statement)
+    if not _classify(statement):
+        return False
+    if _has_disallowed_system_call(statement) or _has_dynamic_identifier_call(statement):
+        return False
+    return True
 
 
 def _lex(sql: str) -> list[_Tok]:
@@ -198,6 +203,46 @@ def _has_disallowed_system_call(tokens: list[_Tok]) -> bool:
         if tok.value not in _READ_ONLY_SYSTEM_FUNCTIONS:
             return True
     return False
+
+
+def _has_dynamic_identifier_call(tokens: list[_Tok]) -> bool:
+    """True for ``IDENTIFIER(...)(`` or ``TABLE(IDENTIFIER(...))``.
+
+    ``FROM IDENTIFIER('t')`` names an object and stays allowed. Whitespace and
+    comments are already gone, so the following ``(`` is the next token.
+    """
+    for index, tok in enumerate(tokens):
+        if tok.kind != "word":
+            continue
+        if tok.value == "IDENTIFIER" and _identifier_in_call_position(tokens, index):
+            return True
+        if tok.value == "TABLE" and _table_wraps_identifier(tokens, index):
+            return True
+    return False
+
+
+def _identifier_in_call_position(tokens: list[_Tok], index: int) -> bool:
+    """True when ``IDENTIFIER(...)`` is immediately invoked."""
+    if index + 1 >= len(tokens) or tokens[index + 1].kind != "lparen":
+        return False
+    after = _skip_parens(tokens, index + 1)
+    if after is None or after >= len(tokens):
+        return False
+    return tokens[after].kind == "lparen"
+
+
+def _table_wraps_identifier(tokens: list[_Tok], index: int) -> bool:
+    """True when ``TABLE``'s argument is an ``IDENTIFIER(...)`` call."""
+    if index + 1 >= len(tokens) or tokens[index + 1].kind != "lparen":
+        return False
+    inner = index + 2
+    if inner >= len(tokens) or not _is_word(tokens[inner], "IDENTIFIER"):
+        return False
+    return inner + 1 < len(tokens) and tokens[inner + 1].kind == "lparen"
+
+
+def _is_word(tok: _Tok, value: str) -> bool:
+    return tok.kind == "word" and tok.value == value
 
 
 def _dollar_opener(sql: str, index: int) -> str | None:

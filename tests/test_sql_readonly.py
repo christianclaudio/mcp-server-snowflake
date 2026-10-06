@@ -43,6 +43,12 @@ REFUSED = [
     'SELECT "system$cancel_all_queries"(123)',
     'SELECT "System$Abort_Session"(123)',
     "WITH c AS (SELECT SYSTEM$ABORT_SESSION(1)) SELECT * FROM c",
+    "SELECT IDENTIFIER('SYSTEM$ABORT_SESSION')(1)",
+    "SELECT IDENTIFIER('UPPER')('x')",
+    "SELECT IDENTIFIER('UPPER') /* c */ ('x')",
+    "SELECT * FROM TABLE(IDENTIFIER('my_udtf'))",
+    "select * from table(identifier('my_udtf'))",
+    "SELECT * FROM TABLE ( IDENTIFIER ( 'my_udtf' ) )",
 ]
 
 ALLOWED = [
@@ -57,6 +63,11 @@ ALLOWED = [
     "SELECT SYSTEM$CLUSTERING_INFORMATION('t1')",
     "SELECT 'SYSTEM$ABORT_SESSION'",
     "SELECT SYSTEM$TYPEOF",
+    "SELECT * FROM IDENTIFIER('t')",
+    "SELECT 'IDENTIFIER(x)(1)'",
+    "SELECT * FROM t JOIN IDENTIFIER($tbl)",
+    "SELECT IDENTIFIER FROM t",
+    "SELECT * FROM TABLE(FLATTEN(src))",
 ]
 
 # Extra forms that keep the tokenizer's string, comment, and CTE paths covered.
