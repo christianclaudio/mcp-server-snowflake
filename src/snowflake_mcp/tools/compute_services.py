@@ -7,6 +7,7 @@ from typing import Any
 from fastmcp import FastMCP
 
 from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal
+from snowflake_mcp.errors import SafetyViolationError
 
 
 def qualify_compute_target(
@@ -118,7 +119,7 @@ def register_compute_service_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
     ) -> dict[str, Any]:
         """Resume compute pool."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         try:
             sql = f"ALTER COMPUTE POOL {quote_ident(pool_name)} RESUME"
             res = client.execute_query(sql)
@@ -135,7 +136,7 @@ def register_compute_service_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
     ) -> dict[str, Any]:
         """Suspend compute pool."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         try:
             sql = f"ALTER COMPUTE POOL {quote_ident(pool_name)} SUSPEND"
             res = client.execute_query(sql)

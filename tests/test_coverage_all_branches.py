@@ -158,8 +158,8 @@ async def test_specific_branch_conditions(mock_client: SnowflakeClient) -> None:
     for t_name in gated_tools:
         sig = inspect.signature(tools[t_name].fn)
         dummy_args = {p: "TEST" if p != "confirm" else False for p in sig.parameters}
-        res = await tools[t_name].fn(**dummy_args)
-        assert res.get("status") == "requires_confirmation", f"Tool {t_name} failed gating"
+        with pytest.raises(SafetyViolationError, match="confirm=True"):
+            await tools[t_name].fn(**dummy_args)
 
     await tools["databases_list_databases"].fn(pattern="TEST%")
     await tools["schemas_list_schemas"].fn(database="TEST_DB", pattern="PUBLIC%")

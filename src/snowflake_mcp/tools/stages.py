@@ -7,6 +7,7 @@ from typing import Any
 from fastmcp import FastMCP
 
 from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal
+from snowflake_mcp.errors import SafetyViolationError
 
 
 def qualify_stage_target(
@@ -98,7 +99,7 @@ def register_stage_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Create stage."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
@@ -123,12 +124,10 @@ def register_stage_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Drop stage."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         if not confirm:
-            return {
-                "status": "requires_confirmation",
-                "message": f"Destructive: To drop stage '{stage_name}', set confirm=True.",
-            }
+            message = f"Destructive: To drop stage '{stage_name}', set confirm=True."
+            raise SafetyViolationError(message, status="requires_confirmation")
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
@@ -168,12 +167,10 @@ def register_stage_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Remove stage file."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         if not confirm:
-            return {
-                "status": "requires_confirmation",
-                "message": f"Destructive: To remove file '{stage_file_path}', set confirm=True.",
-            }
+            message = f"Destructive: To remove file '{stage_file_path}', set confirm=True."
+            raise SafetyViolationError(message, status="requires_confirmation")
         try:
             target = sanitize_stage_location(stage_file_path)
             sql = f"REMOVE {target}"

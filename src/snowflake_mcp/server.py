@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 from collections.abc import AsyncIterator
@@ -11,12 +10,11 @@ from typing import Any
 
 from fastmcp import FastMCP
 from fastmcp.tools import FunctionTool, Tool
-from mcp.types import CallToolResult, TextContent, ToolAnnotations
+from mcp.types import CallToolResult, ToolAnnotations
 
 from snowflake_mcp import __version__
 from snowflake_mcp.config import SnowflakeConfig
 from snowflake_mcp.connection import SnowflakeClient
-from snowflake_mcp.errors import SafetyViolationError
 from snowflake_mcp.middleware import (
     ErrorHandlingMiddleware,
     ParentAuditMiddleware,
@@ -379,19 +377,9 @@ def create_server(
     async def _call_tool_compat(name: str, arguments: dict[str, Any] | None = None, **kwargs: Any) -> Any:
         # NotFoundError, ValidationError, and MCPError propagate. The wire
         # handler maps an unknown tool to its protocol result; wrapping it in
-        # ToolError becomes JSON-RPC -32603. A read-only refusal, including one
-        # the mounted server wrapped, is returned as the handler error payload.
-        try:
-            raw_res = await orig_call_tool(name, arguments or {}, **kwargs)
-        except Exception as exc:
-            safety = _safety_violation(exc)
-            if safety is None:
-                raise
-            payload = {"status": "error", "error": str(safety)}
-            return CallToolResult(
-                content=[TextContent(type="text", text=json.dumps(payload))],
-                is_error=False,
-            )
+        # another ToolError becomes JSON-RPC -32603. SafetyViolationError is a
+        # ToolError, so FastMCP reports it with isError set.
+        raw_res = await orig_call_tool(name, arguments or {}, **kwargs)
         if isinstance(raw_res, CallToolResult):
             return raw_res
         return CallToolResult(
@@ -404,18 +392,6 @@ def create_server(
     mcp.call_tool = _call_tool_compat  # type: ignore[method-assign]
 
     return mcp
-
-
-def _safety_violation(exc: BaseException) -> SafetyViolationError | None:
-    """Return a read-only refusal wrapped by a mounted server, if there is one."""
-    current: BaseException | None = exc
-    seen: set[int] = set()
-    while current is not None and id(current) not in seen:
-        if isinstance(current, SafetyViolationError):
-            return current
-        seen.add(id(current))
-        current = current.__cause__
-    return None
 
 
 _default_mcp: FastMCP | None = None

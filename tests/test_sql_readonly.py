@@ -151,13 +151,15 @@ async def test_readonly_profile_sets_flag_and_hides_mutating_tools() -> None:
         await srv.call_tool("queries_execute_dml", {})
 
     client.execute_query.reset_mock()
-    refused = await srv.call_tool("queries_query", {"query": "DELETE FROM t"})
-    payload = json.loads(refused.content[0].text)
+    with pytest.raises(SafetyViolationError, match="queries_query") as refused:
+        await srv.call_tool("queries_query", {"query": "DELETE FROM t"})
+    payload = json.loads(str(refused.value))
     assert payload["status"] == "error"
     assert "queries_query" in payload["error"]
     client.execute_query.assert_not_called()
 
-    await srv.call_tool("queries_query", {"query": "SELECT 1"})
+    allowed = await srv.call_tool("queries_query", {"query": "SELECT 1"})
+    assert allowed.is_error is False
     client.execute_query.assert_called()
 
 
@@ -223,15 +225,12 @@ async def test_read_only_select_still_reaches_query_and_explain() -> None:
     assert explained.upper().startswith("EXPLAIN SELECT")
 
     client.execute_query.reset_mock()
-    denied = await tools["queries_execute_dml"].fn(statement="SELECT 1", confirm=True)
-    assert denied["status"] == "error"
-    assert "Operation denied" in denied["error"]
+    with pytest.raises(SafetyViolationError, match="Operation denied"):
+        await tools["queries_execute_dml"].fn(statement="SELECT 1", confirm=True)
 
-    exported = await tools["recipes_export_query_to_stage"].fn(query="SELECT 1", stage_location="stage")
-    assert exported["status"] == "error"
-    assert "Denied" in exported["error"]
+    with pytest.raises(SafetyViolationError, match="Denied in read-only mode"):
+        await tools["recipes_export_query_to_stage"].fn(query="SELECT 1", stage_location="stage")
 
-    piped = await tools["pipes_create_pipe"].fn(pipe_name="P", copy_statement="SELECT 1")
-    assert piped["status"] == "error"
-    assert "Denied" in piped["error"]
+    with pytest.raises(SafetyViolationError, match="Denied in read-only mode"):
+        await tools["pipes_create_pipe"].fn(pipe_name="P", copy_statement="SELECT 1")
     client.execute_query.assert_not_called()

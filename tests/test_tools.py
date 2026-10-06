@@ -4,6 +4,7 @@ import pytest
 
 from snowflake_mcp.config import SnowflakeConfig
 from snowflake_mcp.connection import SnowflakeClient
+from snowflake_mcp.errors import SafetyViolationError
 from snowflake_mcp.server import create_server
 
 
@@ -64,8 +65,8 @@ async def test_database_and_schema_tools(mock_client: SnowflakeClient) -> None:
     assert res_create["status"] == "success"
 
     db_drop = mcp._tool_manager._tools["databases_drop_database"].fn
-    res_gate = await db_drop("OLD_DB", confirm=False)
-    assert res_gate["status"] == "requires_confirmation"
+    with pytest.raises(SafetyViolationError, match="confirm=True"):
+        await db_drop("OLD_DB", confirm=False)
     res_drop = await db_drop("OLD_DB", confirm=True)
     assert res_drop["status"] == "success"
 

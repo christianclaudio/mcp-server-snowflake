@@ -317,14 +317,78 @@ async def test_every_tool_has_explicit_hints_and_destructive_confirm() -> None:
         fn = srv._tool_manager._tools[name].fn
         param = inspect.signature(fn).parameters["confirm"]
         assert param.default is False
-        refused = await fn(**_kwargs(fn, confirm=False))
-        assert refused["status"] == "requires_confirmation", name
-        assert "confirm=True" in refused["message"]
+        with pytest.raises(SafetyViolationError, match="confirm=True") as refused:
+            await fn(**_kwargs(fn, confirm=False))
+        assert json.loads(str(refused.value))["status"] == "requires_confirmation", name
         client.execute_query.reset_mock()  # type: ignore[attr-defined]
         proceeded = await fn(**_kwargs(fn, confirm=True))
         assert proceeded["status"] != "requires_confirmation", name
         assert proceeded["status"] == "success", name
         client.execute_query.assert_called()  # type: ignore[attr-defined]
+
+
+def _is_error(body: dict[str, Any]) -> bool:
+    return bool(body["result"].get("isError", False))
+
+
+@pytest.mark.asyncio
+async def test_safety_refusals_set_is_error() -> None:
+    """Each policy refusal is a tool error. A normal call stays isError false."""
+    client = _client()
+    client.config.read_only = True
+    srv = create_server(client=client)
+
+    blocked = await _post_tool(srv, "queries_execute_dml", {"statement": "DELETE FROM t", "confirm": True})
+    assert blocked["result"]["isError"] is True
+    blocked_payload = json.loads(blocked["result"]["content"][0]["text"])
+    assert blocked_payload["status"] == "error"
+    assert "queries_execute_dml" in blocked_payload["error"]
+
+    unsure = await _post_tool(srv, "queries_query", {"query": "BEGIN"})
+    assert unsure["result"]["isError"] is True
+    unsure_payload = json.loads(unsure["result"]["content"][0]["text"])
+    assert unsure_payload["status"] == "error"
+    assert "queries_query" in unsure_payload["error"]
+
+    identifier = await _post_tool(srv, "queries_query", {"query": "SELECT IDENTIFIER('UPPER')('x')"})
+    assert identifier["result"]["isError"] is True
+    assert "queries_query" in json.loads(identifier["result"]["content"][0]["text"])["error"]
+
+    table_identifier = await _post_tool(srv, "queries_query", {"query": "SELECT * FROM TABLE(IDENTIFIER('my_udtf'))"})
+    assert table_identifier["result"]["isError"] is True
+    assert "queries_query" in json.loads(table_identifier["result"]["content"][0]["text"])["error"]
+
+    abort_session = await _post_tool(srv, "queries_query", {"query": "SELECT SYSTEM$ABORT_SESSION(1)"})
+    assert abort_session["result"]["isError"] is True
+
+    cancel_all = await _post_tool(srv, "queries_query", {"query": "SELECT SYSTEM$CANCEL_ALL_QUERIES()"})
+    assert cancel_all["result"]["isError"] is True
+    client.execute_query.assert_not_called()  # type: ignore[attr-defined]
+
+    typeof = await _post_tool(srv, "queries_query", {"query": "SELECT SYSTEM$TYPEOF(1)"})
+    assert _is_error(typeof) is False
+    clustering = await _post_tool(srv, "queries_query", {"query": "SELECT SYSTEM$CLUSTERING_INFORMATION('DB.SCH.T')"})
+    assert _is_error(clustering) is False
+    selected = await _post_tool(srv, "queries_query", {"query": "SELECT 1"})
+    assert _is_error(selected) is False
+    assert client.execute_query.call_count == 3  # type: ignore[attr-defined]
+
+    writable = _client()
+    write_srv = create_server(client=writable)
+    drop = await _post_tool(write_srv, "databases_drop_database", {"name": "DEMO", "confirm": False})
+    assert drop["result"]["isError"] is True
+    drop_payload = json.loads(drop["result"]["content"][0]["text"])
+    assert drop_payload["status"] == "requires_confirmation"
+    assert "confirm=True" in drop_payload["message"]
+
+    cancel = await _post_tool(write_srv, "queries_cancel_query", {"query_id": "q1", "confirm": False})
+    assert cancel["result"]["isError"] is True
+    assert json.loads(cancel["result"]["content"][0]["text"])["status"] == "requires_confirmation"
+
+    rollback = await _post_tool(write_srv, "queries_rollback_transaction", {"confirm": False})
+    assert rollback["result"]["isError"] is True
+    assert json.loads(rollback["result"]["content"][0]["text"])["status"] == "requires_confirmation"
+    writable.execute_query.assert_not_called()  # type: ignore[attr-defined]
 
 
 @pytest.mark.asyncio

@@ -14,6 +14,7 @@ from snowflake_mcp.connection import (
     quote_literal,
     read_only_enabled,
 )
+from snowflake_mcp.errors import SafetyViolationError
 
 
 def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
@@ -90,13 +91,11 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         enforce_read_only_sql(client.config, condition_sql, tool="alerts_create_alert")
         enforce_read_only_sql(client.config, action_sql, tool="alerts_create_alert")
         if read_only_enabled(client.config):
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
 
         if not is_sql_read_only(action_sql) and not confirm:
-            return {
-                "status": "requires_confirmation",
-                "message": "Destructive action SQL in alert requires confirm=True.",
-            }
+            message = "Destructive action SQL in alert requires confirm=True."
+            raise SafetyViolationError(message, status="requires_confirmation")
 
         try:
             db = database or client.config.database
@@ -128,12 +127,10 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Drop alert."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         if not confirm:
-            return {
-                "status": "requires_confirmation",
-                "message": f"Destructive: To drop alert '{alert_name}', set confirm=True.",
-            }
+            message = f"Destructive: To drop alert '{alert_name}', set confirm=True."
+            raise SafetyViolationError(message, status="requires_confirmation")
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
@@ -159,7 +156,7 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Resume alert."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
@@ -185,7 +182,7 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Suspend alert."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name

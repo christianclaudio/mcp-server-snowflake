@@ -14,6 +14,7 @@ from snowflake_mcp.connection import (
     quote_literal,
     read_only_enabled,
 )
+from snowflake_mcp.errors import SafetyViolationError
 from snowflake_mcp.tools.tables import qualify_table_target
 from snowflake_mcp.tools.warehouses import VALID_WAREHOUSE_SIZES
 
@@ -139,14 +140,10 @@ def register_recipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         """Scale warehouse, execute query, and restore."""
         enforce_read_only_sql(client.config, query, tool="recipes_warehouse_scale_and_execute")
         if read_only_enabled(client.config):
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         if not confirm:
-            return {
-                "status": "requires_confirmation",
-                "message": (
-                    f"Destructive: To scale warehouse '{warehouse_name}' and execute the query, set confirm=True."
-                ),
-            }
+            message = f"Destructive: To scale warehouse '{warehouse_name}' and execute the query, set confirm=True."
+            raise SafetyViolationError(message, status="requires_confirmation")
 
         norm_size = target_size.strip().upper()
         if norm_size not in VALID_WAREHOUSE_SIZES:
@@ -200,7 +197,7 @@ def register_recipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Clone table with Time Travel."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
 
         if at_or_before:
             clean_tt = at_or_before.strip()
@@ -233,7 +230,7 @@ def register_recipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         """Unload query to stage."""
         enforce_read_only_sql(client.config, query, tool="recipes_export_query_to_stage")
         if read_only_enabled(client.config):
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         try:
             target = stage_location if stage_location.startswith("@") else f"@{stage_location}"
             header_str = "TRUE" if header else "FALSE"

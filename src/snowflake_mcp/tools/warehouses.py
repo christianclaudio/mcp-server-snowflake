@@ -7,6 +7,7 @@ from typing import Any
 from fastmcp import FastMCP
 
 from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal
+from snowflake_mcp.errors import SafetyViolationError
 
 VALID_WAREHOUSE_SIZES = {
     "XSMALL",
@@ -78,7 +79,7 @@ def register_warehouse_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Create warehouse."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         size_upper = warehouse_size.strip().upper()
         if size_upper not in VALID_WAREHOUSE_SIZES:
             return {"status": "error", "error": f"Invalid warehouse_size '{warehouse_size}'."}
@@ -106,12 +107,10 @@ def register_warehouse_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Drop warehouse."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         if not confirm:
-            return {
-                "status": "requires_confirmation",
-                "message": f"Destructive: To drop warehouse '{warehouse_name}', set confirm=True.",
-            }
+            message = f"Destructive: To drop warehouse '{warehouse_name}', set confirm=True."
+            raise SafetyViolationError(message, status="requires_confirmation")
         try:
             sql = f"DROP WAREHOUSE IF EXISTS {quote_ident(warehouse_name)}"
             res = client.execute_query(sql)
@@ -128,7 +127,7 @@ def register_warehouse_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Resume warehouse."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         try:
             sql = f"ALTER WAREHOUSE {quote_ident(warehouse_name)} RESUME IF SUSPENDED"
             res = client.execute_query(sql)
@@ -145,7 +144,7 @@ def register_warehouse_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Suspend warehouse."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         try:
             sql = f"ALTER WAREHOUSE {quote_ident(warehouse_name)} SUSPEND"
             res = client.execute_query(sql)
@@ -163,7 +162,7 @@ def register_warehouse_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Resize warehouse size."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         size_upper = size.strip().upper()
         if size_upper not in VALID_WAREHOUSE_SIZES:
             return {"status": "error", "error": f"Invalid warehouse size '{size}'."}

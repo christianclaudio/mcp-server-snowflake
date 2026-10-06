@@ -7,6 +7,7 @@ from typing import Any
 from fastmcp import FastMCP
 
 from snowflake_mcp.connection import SnowflakeClient
+from snowflake_mcp.errors import SafetyViolationError
 
 
 def register_schema_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
@@ -64,7 +65,7 @@ def register_schema_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Create a schema."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         try:
             db = database or client.config.database
             target = f'"{db}"."{name}"' if db else f'"{name}"'
@@ -87,7 +88,7 @@ def register_schema_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Clone schema zero-copy."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         try:
             db = database or client.config.database
             src = f'"{db}"."{source_schema}"' if db and "." not in source_schema else source_schema
@@ -109,12 +110,10 @@ def register_schema_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Drop a schema with confirmation gate."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         if not confirm:
-            return {
-                "status": "requires_confirmation",
-                "message": f"Destructive operation: To permanently drop schema '{name}', set confirm=True.",
-            }
+            message = f"Destructive operation: To permanently drop schema '{name}', set confirm=True."
+            raise SafetyViolationError(message, status="requires_confirmation")
         try:
             db = database or client.config.database
             target = f'"{db}"."{name}"' if db else f'"{name}"'
@@ -134,7 +133,7 @@ def register_schema_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Undrop schema."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         try:
             db = database or client.config.database
             target = f'"{db}"."{name}"' if db else f'"{name}"'

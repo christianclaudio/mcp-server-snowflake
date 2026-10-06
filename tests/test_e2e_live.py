@@ -13,6 +13,7 @@ from mcp.types import CallToolResult, TextContent
 
 from snowflake_mcp.config import SnowflakeConfig
 from snowflake_mcp.connection import SnowflakeClient
+from snowflake_mcp.errors import SafetyViolationError
 from snowflake_mcp.server import create_server
 
 _BEARER_PATTERN = re.compile(r"(?i)bearer\s+[A-Za-z0-9_\-\.]+")
@@ -93,6 +94,11 @@ async def dispatch_tool_call(srv: Any, tool_name: str, is_destructive: bool) -> 
         is_err = res.is_error
         status = "FAIL" if is_err else "PASS"
         return (status, is_err, None)
+    except SafetyViolationError as exc:
+        text = str(exc)
+        if "requires_confirmation" in text or "read-only" in text.lower() or "Denied" in text:
+            return ("PASS", True, None)
+        return ("FAIL", True, f"SafetyViolationError: {_redact_secrets(text)}")
     except Exception as exc:
         exc_type = type(exc).__name__
         sanitized = _redact_secrets(str(exc))
@@ -197,7 +203,7 @@ async def test_server_tools_with_mocked_cursor(mock_snowflake_client: SnowflakeC
     mock_cursor.execute.reset_mock()
     status, is_err, err = await dispatch_tool_call(srv, "databases_drop_database", is_destructive=True)
     assert status == "PASS"
-    assert not is_err
+    assert is_err
     assert err is None
     mock_cursor.execute.assert_not_called()
 
@@ -205,7 +211,7 @@ async def test_server_tools_with_mocked_cursor(mock_snowflake_client: SnowflakeC
     mock_snowflake_client.config.read_only = True
     status, is_err, err = await dispatch_tool_call(srv, "databases_drop_database", is_destructive=True)
     assert status == "PASS"
-    assert not is_err
+    assert is_err
     assert err is None
     mock_cursor.execute.assert_not_called()
 

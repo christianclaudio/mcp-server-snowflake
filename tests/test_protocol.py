@@ -195,6 +195,7 @@ async def test_stateless_streamable_http_mutations_and_safety_gates(
                 },
             )
             assert res_gate.status_code == 200
+            assert res_gate.json()["result"]["isError"] is True
             gate_data = json.loads(res_gate.json()["result"]["content"][0]["text"])
             assert gate_data["status"] == "requires_confirmation"
             assert "confirm=True" in gate_data["message"]
@@ -222,6 +223,7 @@ async def test_stateless_streamable_http_mutations_and_safety_gates(
                 },
             )
             assert res_drop.status_code == 200
+            assert res_drop.json()["result"].get("isError", False) is False
             drop_data = json.loads(res_drop.json()["result"]["content"][0]["text"])
             assert drop_data["status"] == "success"
             mock_cursor.execute.assert_called_once()
@@ -250,6 +252,7 @@ async def test_stateless_streamable_http_mutations_and_safety_gates(
                 },
             )
             assert res_ro.status_code == 200
+            assert res_ro.json()["result"]["isError"] is True
             ro_data = json.loads(res_ro.json()["result"]["content"][0]["text"])
             assert ro_data["status"] == "error"
             assert "Denied in read-only mode" in ro_data["error"]

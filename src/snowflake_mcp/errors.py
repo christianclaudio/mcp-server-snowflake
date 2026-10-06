@@ -8,10 +8,12 @@ construction.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from typing import Any
 
+from fastmcp.exceptions import ToolError
 from snowflake.connector.errors import (
     ForbiddenError,
     ProgrammingError,
@@ -115,8 +117,22 @@ class RateLimitError(SnowflakeMCPError):
     """429 or warehouse/request throttling."""
 
 
-class SafetyViolationError(SnowflakeMCPError):
-    """Confirm-guard, read-only, or other destructive-gate violations."""
+class SafetyViolationError(ToolError, SnowflakeMCPError):
+    """Confirm-guard, read-only, or other destructive-gate violations.
+
+    The exception text is the JSON payload clients already parse. FastMCP
+    reports a ``ToolError`` as a tool result with ``isError: true``.
+    """
+
+    def __init__(self, message: str, details: dict[str, Any] | None = None, *, status: str = "error") -> None:
+        redacted = redact_secrets(message)
+        self.message = redacted
+        self.details = details or {}
+        if status == "requires_confirmation":
+            self.payload: dict[str, Any] = {"status": status, "message": redacted}
+        else:
+            self.payload = {"status": "error", "error": redacted}
+        ToolError.__init__(self, json.dumps(self.payload))
 
 
 _AUTH_ERRNOS = frozenset({250001, 390100, 390114, 390144})

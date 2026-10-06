@@ -116,7 +116,7 @@ async def test_readonly_safety_guards() -> None:
         try:
             res = await tools[tool_name].fn(*args)
         except SafetyViolationError as exc:
-            assert "SNOWFLAKE_MCP_READONLY" in str(exc)
+            assert "read-only" in str(exc).lower() or "SNOWFLAKE_MCP_READONLY" in str(exc)
             continue
         assert res["status"] == "error", f"Tool {tool_name} should have failed in read-only mode"
         assert "Denied" in res.get("error", "") or "Operation denied" in res.get("error", "")

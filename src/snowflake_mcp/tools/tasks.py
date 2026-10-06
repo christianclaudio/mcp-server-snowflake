@@ -13,6 +13,7 @@ from snowflake_mcp.connection import (
     quote_literal,
     read_only_enabled,
 )
+from snowflake_mcp.errors import SafetyViolationError
 
 
 def qualify_task_target(
@@ -101,7 +102,7 @@ def register_task_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         """Create task."""
         enforce_read_only_sql(client.config, sql_statement, tool="tasks_create_task")
         if read_only_enabled(client.config):
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
@@ -127,12 +128,10 @@ def register_task_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Drop task."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         if not confirm:
-            return {
-                "status": "requires_confirmation",
-                "message": f"Destructive: To drop task '{task_name}', set confirm=True.",
-            }
+            message = f"Destructive: To drop task '{task_name}', set confirm=True."
+            raise SafetyViolationError(message, status="requires_confirmation")
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
@@ -154,7 +153,7 @@ def register_task_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Resume task."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
@@ -176,7 +175,7 @@ def register_task_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Suspend task."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
@@ -199,12 +198,10 @@ def register_task_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Execute task immediately."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         if not confirm:
-            return {
-                "status": "requires_confirmation",
-                "message": f"Destructive: To execute task '{task_name}', set confirm=True.",
-            }
+            message = f"Destructive: To execute task '{task_name}', set confirm=True."
+            raise SafetyViolationError(message, status="requires_confirmation")
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name

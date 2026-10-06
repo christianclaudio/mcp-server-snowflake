@@ -12,6 +12,7 @@ from snowflake_mcp.connection import (
     quote_literal,
     read_only_enabled,
 )
+from snowflake_mcp.errors import SafetyViolationError
 
 
 def register_query_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
@@ -46,15 +47,12 @@ def register_query_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         """Execute a DML/DDL statement."""
         enforce_read_only_sql(client.config, statement, tool="queries_execute_dml")
         if read_only_enabled(client.config):
-            return {
-                "error": "Operation denied: Server is running in read-only mode (SNOWFLAKE_MCP_READONLY=1).",
-                "status": "error",
-            }
+            raise SafetyViolationError(
+                "Operation denied: Server is running in read-only mode (SNOWFLAKE_MCP_READONLY=1)."
+            )
         if not confirm:
-            return {
-                "status": "requires_confirmation",
-                "message": "Destructive: To execute this DML statement, set confirm=True.",
-            }
+            message = "Destructive: To execute this DML statement, set confirm=True."
+            raise SafetyViolationError(message, status="requires_confirmation")
         try:
             res = client.execute_query(statement)
             res["status"] = "success"
@@ -72,12 +70,10 @@ def register_query_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Cancel a running query."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         if not confirm:
-            return {
-                "status": "requires_confirmation",
-                "message": f"Destructive: To cancel query '{query_id}', set confirm=True.",
-            }
+            message = f"Destructive: To cancel query '{query_id}', set confirm=True."
+            raise SafetyViolationError(message, status="requires_confirmation")
         try:
             cancel_sql = f"SELECT SYSTEM$CANCEL_QUERY({quote_literal(query_id)})"
             res = client.execute_query(cancel_sql)
@@ -154,7 +150,7 @@ def register_query_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     async def snowflake_begin_transaction() -> dict[str, Any]:
         """Begin transaction."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         try:
             res = client.execute_query("BEGIN")
             return {"status": "success", "result": res.get("data")}
@@ -168,7 +164,7 @@ def register_query_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     async def snowflake_commit_transaction() -> dict[str, Any]:
         """Commit transaction."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         try:
             res = client.execute_query("COMMIT")
             return {"status": "success", "result": res.get("data")}
@@ -182,12 +178,10 @@ def register_query_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     async def snowflake_rollback_transaction(confirm: bool = False) -> dict[str, Any]:
         """Rollback transaction."""
         if client.config.read_only:
-            return {"status": "error", "error": "Denied in read-only mode."}
+            raise SafetyViolationError("Denied in read-only mode.")
         if not confirm:
-            return {
-                "status": "requires_confirmation",
-                "message": "Destructive: To roll back the current transaction, set confirm=True.",
-            }
+            message = "Destructive: To roll back the current transaction, set confirm=True."
+            raise SafetyViolationError(message, status="requires_confirmation")
         try:
             res = client.execute_query("ROLLBACK")
             return {"status": "success", "result": res.get("data")}

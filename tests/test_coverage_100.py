@@ -178,7 +178,8 @@ async def test_tools_missing_branches() -> None:
     await tools["stages_list_stage_files"].fn(stage_location="@my_stage", pattern=None)
     await tools["stages_drop_stage"].fn(stage_name="STG", database="DB", schema_name=None, confirm=True)
     await tools["stages_describe_stage"].fn(stage_name="STG", database="DB", schema_name=None)
-    await tools["stages_remove_stage_file"].fn(stage_file_path="my_stage/file.csv", confirm=False)
+    with pytest.raises(SafetyViolationError, match="confirm=True"):
+        await tools["stages_remove_stage_file"].fn(stage_file_path="my_stage/file.csv", confirm=False)
 
     # tags: no db/schema and db only
     await tools["tags_describe_tag"].fn(tag_name="TG", database="DB", schema_name=None)

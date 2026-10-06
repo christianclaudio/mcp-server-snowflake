@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Read-only SQL**: `--profile readonly` sets `read_only` and arms `ReadOnlyGateMiddleware` from that same flag. Caller SQL is tokenized (quotes, dollar blocks, comments, and `;` splits) and refused unless it is one `SELECT`, `SHOW`, `DESCRIBE`, or `EXPLAIN SELECT`. `SYSTEM$` calls are refused except `SYSTEM$TYPEOF` and `SYSTEM$CLUSTERING_INFORMATION`. `IDENTIFIER(...)(...)` and `TABLE(IDENTIFIER(...))` are refused. User-defined functions inside SELECT are not inspected. Read-only mode is a client-side safeguard; a Snowflake role with no write grants is the real boundary.
 
 ### Changed
+- Safety refusals now report `isError: true` per the MCP spec; clients that inspected the payload on a successful result must check `isError`.
 - **Server version**: `FastMCP` is constructed with `version=__version__`. SSE transport uses the same host-origin protection as Streamable HTTP.
 - **Package version**: 2.1.0.
 - **Conformance baseline**: `tools-call-simple-text` and `tools-call-error` are no longer expected failures.

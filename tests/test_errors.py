@@ -8,7 +8,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from fastmcp.exceptions import NotFoundError
+from fastmcp.exceptions import NotFoundError, ToolError
 from fastmcp.server.middleware import MiddlewareContext
 from snowflake.connector.errors import ForbiddenError, ProgrammingError, TooManyRequests
 
@@ -125,6 +125,13 @@ def test_hierarchy_subclasses_and_redacts_at_construction() -> None:
     assert isinstance(missing, SnowflakeMCPError)
     assert isinstance(limited, SnowflakeMCPError)
     assert isinstance(blocked, SnowflakeMCPError)
+    assert isinstance(blocked, ToolError)
+    assert json.loads(str(blocked)) == {"status": "error", "error": "confirm required"}
+    confirm = SafetyViolationError("set confirm=True", status="requires_confirmation")
+    assert json.loads(str(confirm)) == {
+        "status": "requires_confirmation",
+        "message": "set confirm=True",
+    }
 
 
 def test_map_connector_error_auth_rate_limit_and_missing_object() -> None:
@@ -228,15 +235,16 @@ async def test_read_only_gate_blocks_writes_and_allows_reads() -> None:
     )
     srv = create_server(client=client)
 
-    refused = await srv.call_tool("queries_execute_dml", {"statement": "DELETE FROM t", "confirm": True})
-    text = refused.content[0].text
-    payload = json.loads(text)
+    with pytest.raises(SafetyViolationError, match="queries_execute_dml") as refused:
+        await srv.call_tool("queries_execute_dml", {"statement": "DELETE FROM t", "confirm": True})
+    payload = json.loads(str(refused.value))
     assert payload["status"] == "error"
     assert "SNOWFLAKE_MCP_READONLY=1" in payload["error"]
     assert "queries_execute_dml" in payload["error"]
     client.execute_query.assert_not_called()  # type: ignore[attr-defined]
 
     allowed = await srv.call_tool("queries_query", {"query": "SELECT 1"})
+    assert allowed.is_error is False
     assert "SELECT" in allowed.content[0].text or "success" in allowed.content[0].text
     client.execute_query.assert_called()  # type: ignore[attr-defined]
 
