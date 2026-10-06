@@ -54,6 +54,7 @@ The default `tools/list` is one flat catalog of all 140 tools. `RegexSearchTrans
 3. **Pure Offline Testing**:
    - Add unit tests in `tests/` mocking `SnowflakeClient`.
    - Zero live network calls during tests. Live checks stay behind `@pytest.mark.e2e`.
+   - Live e2e `expect` mismatches follow **Live e2e expect policy** in `TESTING.md` (also under Safety & Protocol Rules below). Fix harness markers or fixture expects in the same PR.
 4. **Update Tool Contract**:
    - Update the expected tool count and annotation counts in `scripts/check_tool_contract.py` (the `contract` job and step names in `.github/workflows/ci.yml` also state the count).
 
@@ -61,6 +62,7 @@ The default `tools/list` is one flat catalog of all 140 tools. `RegexSearchTrans
 
 ## 🛡️ Safety & Protocol Rules
 
+- **Live e2e expect policy**: Fixture `expect` values (`success`, `rejected`, `confirm`, `cortex`), soft-empty describe/lineage tools, and rejection markers are specified in `TESTING.md` under **Live e2e expect policy**. When live e2e fails on an expect mismatch, fix harness markers or fixture expects in the same PR. Do not reclassify product behavior in chat without evidence from the `TOOL_FIXTURES` table in `tests/test_e2e_live.py`.
 - **Strict Read-Only Mode**: When `SNOWFLAKE_MCP_READONLY=1`, `--readonly`, or `--profile readonly` is active, all mutating operations are blocked. `--profile readonly` sets `client.config.read_only`, which is the same flag the gate reads. `ReadOnlyGateMiddleware` raises `SafetyViolationError` before the handler runs. Read-only mode also runs `USE SECONDARY ROLES NONE` on each new session, before any tool SQL, and fails closed (the connection is closed and not served) if that pin fails. Write mode does not run the statement. Set `DEFAULT_SECONDARY_ROLES = ()` on the read-only user, or use a dedicated user that holds only the read-only role. Objects readable only through a secondary role's grants need `SELECT` granted to the primary role directly. `queries_query`, `queries_get_query_plan`, and the `query` arguments of `recipes_warehouse_scale_and_execute` and `recipes_export_query_to_stage` refuse non-read-only SQL in every mode. Write-by-design inputs (`queries_execute_dml`, `tasks_create_task` `sql_statement`, `alerts_create_alert` `condition_sql`/`action_sql`, `pipes_create_pipe` `copy_statement`) are classified only while read-only mode is on. User-defined functions inside `SELECT` are not inspected.
 - **Profiles**: `SNOWFLAKE_MCP_PROFILE` or `--profile` selects `full` (default, 140 tools), `readonly` (read-only tools only, and `read_only=True`), or one domain.
 - **Confirmation Gating**: Every tool with `destructiveHint` requires explicit `confirm=True` before it runs. That includes drop/truncate, `execute_dml`, `execute_task`, `warehouse_scale_and_execute`, `cancel_query`, and `rollback_transaction`.

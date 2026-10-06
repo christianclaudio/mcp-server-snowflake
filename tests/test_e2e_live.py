@@ -1,4 +1,8 @@
-"""End-to-end live testing across all dynamically discovered MCP tools."""
+"""End-to-end live testing across all dynamically discovered MCP tools.
+
+Fixture ``expect`` values and marker lists are the live-harness policy in
+TESTING.md ("Live e2e expect policy").
+"""
 
 from __future__ import annotations
 
@@ -233,6 +237,7 @@ TOOL_FIXTURES: dict[str, tuple[dict[str, Any], str]] = {
 EXPLICIT_TOOL_SKIPS: dict[str, str] = {}
 
 CORTEX_SKIP_REASON = "Cortex is not available on this account"
+# Expect policy (success | rejected | confirm | cortex): TESTING.md "Live e2e expect policy".
 _SAFE_REJECTION_MARKERS = ("does not exist", "not authorized", "insufficient privileges")
 # GET_QUERY_OPERATOR_STATS rejects a non-UUID query id with wording the global markers miss.
 _TOOL_REJECTION_MARKERS: dict[str, tuple[str, ...]] = {
@@ -414,6 +419,7 @@ async def test_dispatch_tool_call_offline(monkeypatch: pytest.MonkeyPatch) -> No
     assert "Expected CallToolResult" in (err or "")
 
 
+# Soft-empty missing-name results stay expect "success". See TESTING.md.
 _EMPTY_SUCCESS_TOOLS = (
     "warehouses_describe_warehouse",
     "governance_describe_role",

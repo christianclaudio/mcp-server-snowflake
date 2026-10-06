@@ -63,10 +63,41 @@ flowchart TD
 
 > [!WARNING]
 > **Safety Guardrails**  
-> - **Read-Only Safety Mode:** Set `SNOWFLAKE_MCP_READONLY=1`, pass `--readonly`, or pass `--profile readonly` to block mutating tools. The profile sets the same read-only flag the gate reads. On each new session, read-only mode runs `USE SECONDARY ROLES NONE` before any tool SQL and closes the connection if that pin fails. Write mode does not run that statement. Objects readable only through a secondary role's grants are not visible under `--readonly` until the read-only primary role is granted `SELECT` on them directly. Set `DEFAULT_SECONDARY_ROLES = ()` on the read-only user, or use a dedicated user that holds only that role. A programmatic access token for that user should set `ROLE_RESTRICTION` to the read-only role: Snowflake then uses that role for privilege evaluation, and secondary roles are not used, even if `DEFAULT_SECONDARY_ROLES` is `('ALL')` ([programmatic access tokens](https://docs.snowflake.com/en/user-guide/programmatic-access-tokens)).  
+> - **Read-Only Safety Mode:** Set `SNOWFLAKE_MCP_READONLY=1`, pass `--readonly`, or pass `--profile readonly` to block mutating tools. The profile sets the same read-only flag the gate reads. On each new session, read-only mode runs `USE SECONDARY ROLES NONE` before any tool SQL and closes the connection if that pin fails. Write mode does not run that statement. Objects readable only through a secondary role's grants are not visible under `--readonly` until the read-only primary role is granted `SELECT` on them directly. Set `DEFAULT_SECONDARY_ROLES = ()` on the read-only user, or use a dedicated user that holds only that role. Prefer a programmatic access token with `ROLE_RESTRICTION` set to the read-only role so Snowflake evaluates privileges under that role ([programmatic access tokens](https://docs.snowflake.com/en/user-guide/programmatic-access-tokens)). `ROLE_RESTRICTION` does not replace the session pin. See FAQ / Troubleshooting.  
 > - **Caller SQL:** `queries_query`, `queries_get_query_plan`, and the `query` arguments of `recipes_warehouse_scale_and_execute` and `recipes_export_query_to_stage` refuse anything that is not one read-only statement, whether or not read-only mode is on. Allowed forms are one `SELECT` (no `INTO`), `SHOW`, `DESCRIBE`/`DESC`, or `EXPLAIN SELECT`. `SYSTEM$` calls are refused except `SYSTEM$TYPEOF` and `SYSTEM$CLUSTERING_INFORMATION`. `IDENTIFIER(...)` in call position and `TABLE(IDENTIFIER(...))` are refused. User-defined functions inside `SELECT` are not inspected.  
 > - **Destructive Safety Gates:** Dropping databases, schemas, or tables requires explicit `confirm=True`.  
 > - **Query Limits:** Default execution limits prevent context window overflow (`SNOWFLAKE_MAX_ROWS=1000`, `SNOWFLAKE_QUERY_TIMEOUT=120`).
+
+---
+
+## ❓ FAQ / Troubleshooting
+
+### Read-only secondary-roles pin
+
+In read-only mode (`--readonly`, `--profile readonly`, or `SNOWFLAKE_MCP_READONLY=1`), each new session runs `USE SECONDARY ROLES NONE` before any tool SQL. If that pin fails, the server fails closed: the connection is closed and not served. Write mode does not run the statement.
+
+Objects readable only through a secondary role's grants need `SELECT` granted on the primary role (the read-only role) directly. Set `DEFAULT_SECONDARY_ROLES = ()` on the read-only user, or use a dedicated user that holds only that role.
+
+### Empty success vs a rejected missing object
+
+Some describe and lineage tools return an empty success for a missing name. That result is the tool behavior. The live harness records it as `expect: success`. An empty success here is not a harness bug:
+
+- `warehouses_describe_warehouse`
+- `governance_describe_role`
+- `tags_describe_tag`
+- `horizon_get_object_lineage`
+
+`warehouses_describe_warehouse`, `governance_describe_role`, and `tags_describe_tag` run `SHOW ... LIKE` and return `status: success` with empty details when nothing matches. `horizon_get_object_lineage` returns `status: success` when its `OBJECT_DEPENDENCIES` query succeeds, with empty upstream and downstream lists when the named object is absent.
+
+`horizon_get_column_lineage` returns `status: success` when its `SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY` query succeeds. That query does not filter on the supplied table or column name, so the payload can still contain recent access-history rows when that name is missing. The live harness still uses `expect: success` because the call succeeds. That is harness policy, not an empty-payload claim.
+
+Most other missing-object describe tools still reject: the handler returns `status: error`, and the live harness records `expect: rejected`. The fixture table and marker lists are in [TESTING.md](TESTING.md) under **Live e2e expect policy**.
+
+### Programmatic access tokens and `ROLE_RESTRICTION`
+
+Prefer `ROLE_RESTRICTION` on a programmatic access token set to the read-only role, so Snowflake evaluates privileges under that role ([programmatic access tokens](https://docs.snowflake.com/en/user-guide/programmatic-access-tokens)).
+
+`ROLE_RESTRICTION` does not replace the session pin. Read-only mode still runs `USE SECONDARY ROLES NONE` on every new session. Live checks showed an unrestricted programmatic access token can still surface secondary roles until that statement runs.
 
 ---
 
