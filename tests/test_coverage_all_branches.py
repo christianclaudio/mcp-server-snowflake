@@ -72,6 +72,8 @@ async def test_all_tools_success_and_error_branches(
             if param.default is not inspect.Parameter.empty:
                 # Use default or set confirm=True for destructive tools
                 args_kwargs[p_name] = True if "confirm" in p_name else param.default
+            elif p_name == "query":
+                args_kwargs[p_name] = "SELECT 1"
             elif p_name in ("size", "warehouse_size", "target_size"):
                 args_kwargs[p_name] = "X-SMALL"
             elif p_name in ("connection_name", "conn_name"):

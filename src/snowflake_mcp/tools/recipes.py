@@ -9,7 +9,7 @@ from fastmcp import FastMCP
 
 from snowflake_mcp.connection import (
     SnowflakeClient,
-    enforce_read_only_sql,
+    enforce_caller_read_only_sql,
     quote_ident,
     quote_literal,
     read_only_enabled,
@@ -138,7 +138,7 @@ def register_recipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         confirm: bool = False,
     ) -> dict[str, Any]:
         """Scale warehouse, execute query, and restore."""
-        enforce_read_only_sql(client.config, query, tool="recipes_warehouse_scale_and_execute")
+        enforce_caller_read_only_sql(query, tool="recipes_warehouse_scale_and_execute")
         if read_only_enabled(client.config):
             raise SafetyViolationError("Denied in read-only mode.")
         if not confirm:
@@ -228,7 +228,7 @@ def register_recipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         header: bool = True,
     ) -> dict[str, Any]:
         """Unload query to stage."""
-        enforce_read_only_sql(client.config, query, tool="recipes_export_query_to_stage")
+        enforce_caller_read_only_sql(query, tool="recipes_export_query_to_stage")
         if read_only_enabled(client.config):
             raise SafetyViolationError("Denied in read-only mode.")
         try:

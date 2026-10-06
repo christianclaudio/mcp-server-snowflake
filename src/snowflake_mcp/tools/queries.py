@@ -8,6 +8,7 @@ from fastmcp import FastMCP
 
 from snowflake_mcp.connection import (
     SnowflakeClient,
+    enforce_caller_read_only_sql,
     enforce_read_only_sql,
     quote_literal,
     read_only_enabled,
@@ -27,7 +28,7 @@ def register_query_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         max_rows: int | None = 100,
     ) -> dict[str, Any]:
         """Execute a read-only SQL query."""
-        enforce_read_only_sql(client.config, query, tool="queries_query")
+        enforce_caller_read_only_sql(query, tool="queries_query")
 
         try:
             res = client.execute_query(query, max_rows=max_rows)
@@ -120,7 +121,7 @@ def register_query_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         query: str,
     ) -> dict[str, Any]:
         """Get query explain plan."""
-        enforce_read_only_sql(client.config, query, tool="queries_get_query_plan")
+        enforce_caller_read_only_sql(query, tool="queries_get_query_plan")
         try:
             sql = f"EXPLAIN {query}"
             res = client.execute_query(sql)

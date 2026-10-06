@@ -10,10 +10,9 @@
   "version": "2.1.0",
   "packages": [
     {
-      "registryType": "pypi",
-      "identifier": "mcp-server-snowflake",
+      "registryType": "oci",
+      "identifier": "ghcr.io/christianclaudio/mcp-server-snowflake:2.1.0",
       "version": "2.1.0",
-      "runtimeHint": "uvx",
       "transport": {
         "type": "stdio"
       },

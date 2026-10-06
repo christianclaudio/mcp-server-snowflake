@@ -61,11 +61,34 @@ def read_only_enabled(config: SnowflakeConfig) -> bool:
 
 
 def enforce_read_only_sql(config: SnowflakeConfig, sql: str, *, tool: str) -> None:
-    """Raise when read-only mode is on and ``sql`` is not one read-only statement."""
+    """Raise when read-only mode is on and ``sql`` is not one read-only statement.
+
+    Write-by-design inputs keep this check: ``queries_execute_dml``,
+    ``pipes_create_pipe`` ``copy_statement``, ``tasks_create_task``
+    ``sql_statement``, and ``alerts_create_alert`` ``condition_sql`` /
+    ``action_sql``. It does nothing while read-only mode is off.
+    """
     if not read_only_enabled(config) or is_sql_read_only(sql):
         return
     raise SafetyViolationError(
         f"Denied in read-only mode (SNOWFLAKE_MCP_READONLY=1); tool '{tool}' refused a non-read-only statement."
+    )
+
+
+def enforce_caller_read_only_sql(sql: str, *, tool: str) -> None:
+    """Refuse SQL a read-only tool must not run, in every mode.
+
+    Used by ``queries_query``, ``queries_get_query_plan``, and the ``query``
+    arguments of ``recipes_warehouse_scale_and_execute`` and
+    ``recipes_export_query_to_stage``. The same classifier as
+    ``is_sql_read_only`` applies (``SYSTEM$`` allowlist, ``IDENTIFIER(`` call
+    position, and anything unclassifiable such as ``BEGIN``).
+    """
+    if is_sql_read_only(sql):
+        return
+    raise SafetyViolationError(
+        f"Refused non-read-only SQL; tool '{tool}' only runs statements classified as read-only. "
+        "Use queries_execute_dml for writes."
     )
 
 
@@ -434,7 +457,29 @@ class SnowflakeClient:
             conn_params["port"] = self.config.port
 
         self._conn = snowflake.connector.connect(**conn_params)
+        self._pin_secondary_roles_none(self._conn)
         return self._conn
+
+    def _pin_secondary_roles_none(self, conn: SnowflakeConnection) -> None:
+        """Drop inherited secondary roles before any tool SQL while read-only.
+
+        Snowflake defaults secondary roles to ALL, so a session can inherit
+        privileges from every role granted to the user. Fail closed: a failed
+        pin closes the connection and is not served.
+        """
+        if not read_only_enabled(self.config):
+            return
+        cursor = conn.cursor()
+        try:
+            cursor.execute("USE SECONDARY ROLES NONE")
+        except Exception as exc:
+            self._conn = None
+            conn.close()
+            raise SafetyViolationError(
+                "Read-only mode refused to start because USE SECONDARY ROLES NONE failed."
+            ) from exc
+        finally:
+            cursor.close()
 
     def get_root(self) -> Root:
         """Retrieve or create a snowflake.core.Root instance."""
