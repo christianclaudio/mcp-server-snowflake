@@ -17,8 +17,13 @@ from mcp.types import CallToolResult, TextContent
 from snowflake_mcp import __version__
 from snowflake_mcp.config import SnowflakeConfig
 from snowflake_mcp.connection import SnowflakeClient
-from snowflake_mcp.errors import redact_secrets
-from snowflake_mcp.middleware import ErrorHandlingMiddleware, _redacted_exception, redact_tool_result
+from snowflake_mcp.errors import SafetyViolationError, redact_secrets
+from snowflake_mcp.middleware import (
+    ErrorHandlingMiddleware,
+    ReadOnlyGateMiddleware,
+    _redacted_exception,
+    redact_tool_result,
+)
 from snowflake_mcp.server import create_server
 
 
@@ -266,11 +271,19 @@ async def test_default_catalog_is_flat_and_tool_search_is_opt_in() -> None:
     assert all(name.startswith("cortex_") for name in cortex_names)
     assert len(cortex_names) < 140
 
-    readonly = create_server(client=_client(), profile="readonly")
+    readonly_client = _client()
+    readonly = create_server(client=readonly_client, profile="readonly")
+    assert readonly_client.config.read_only is True
+    gate = next(item for item in readonly.middleware if isinstance(item, ReadOnlyGateMiddleware))
+    assert gate._read_only_enabled()
     readonly_tools = await readonly.list_tools()
     assert readonly_tools
     assert len(readonly_tools) < 140
     assert all(tool.annotations and tool.annotations.read_only_hint for tool in readonly_tools)
+    with pytest.raises(NotFoundError, match="Unknown tool"):
+        await readonly.call_tool("queries_execute_dml", {})
+    with pytest.raises(SafetyViolationError, match="queries_query"):
+        await readonly._tool_manager._tools["queries_query"].fn(query="DELETE FROM t")
 
     with pytest.raises(ValueError, match="Unknown SNOWFLAKE_MCP_PROFILE"):
         create_server(client=_client(), profile="not-a-profile")

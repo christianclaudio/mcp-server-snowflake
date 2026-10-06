@@ -28,7 +28,7 @@ def test_quote_and_sql_classification() -> None:
     with pytest.raises(ValueError, match="empty"):
         quote_ident("  ")
     assert quote_literal(None) == "NULL"
-    assert is_sql_read_only("/* comment only */") is True
+    assert is_sql_read_only("/* comment only */") is False
     assert is_sql_read_only("SELECT 1; DROP TABLE t") is False
     assert is_sql_read_only("WITH c AS (SELECT 1) SELECT * FROM c") is True
     assert is_sql_read_only("WITH c AS (SELECT 1) INSERT INTO t SELECT 1") is False

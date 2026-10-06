@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
+from dataclasses import dataclass
 from typing import Any
 
 import snowflake.connector
@@ -14,7 +16,7 @@ from snowflake.connector.cursor import DictCursor
 from snowflake.core import Root
 
 from snowflake_mcp.config import SnowflakeConfig
-from snowflake_mcp.errors import AuthenticationError, map_connector_error
+from snowflake_mcp.errors import AuthenticationError, SafetyViolationError, map_connector_error
 
 logger = logging.getLogger("snowflake_mcp")
 
@@ -39,46 +41,230 @@ def quote_literal(val: Any) -> str:
     return f"'{s}'"
 
 
-def is_sql_read_only(query: str) -> bool:
-    """Classify if a SQL statement is strictly read-only."""
-    # Strip comments
-    q = re.sub(r"--.*?\n", "\n", query)
-    q = re.sub(r"/\*.*?\*/", "", q, flags=re.DOTALL).strip()
-    if not q:
+class _ScanError(Exception):
+    """The SQL text could not be tokenized safely."""
+
+
+@dataclass(frozen=True)
+class _Tok:
+    kind: str
+    value: str
+    depth: int
+
+
+def read_only_enabled(config: SnowflakeConfig) -> bool:
+    """True when the profile, ``--readonly``, or ``SNOWFLAKE_MCP_READONLY`` is on."""
+    if config.read_only:
         return True
+    flag = os.environ.get("SNOWFLAKE_MCP_READONLY", "").strip().lower()
+    return flag in {"1", "true", "yes"}
 
-    upper = q.upper()
-    tokens = upper.split()
 
-    mutating_keywords = (
-        "INSERT ",
-        "UPDATE ",
-        "DELETE ",
-        "MERGE ",
-        "DROP ",
-        "TRUNCATE ",
-        "ALTER ",
-        "CREATE ",
-        "CALL ",
-        "PUT ",
-        "REMOVE ",
-        "EXECUTE TASK",
-        "UNDROP ",
+def enforce_read_only_sql(config: SnowflakeConfig, sql: str, *, tool: str) -> None:
+    """Raise when read-only mode is on and ``sql`` is not one read-only statement."""
+    if not read_only_enabled(config) or is_sql_read_only(sql):
+        return
+    raise SafetyViolationError(
+        f"Denied in read-only mode (SNOWFLAKE_MCP_READONLY=1); tool '{tool}' refused a non-read-only statement."
     )
 
-    first_word = tokens[0]
-    if first_word in ("SELECT", "SHOW", "DESCRIBE", "DESC", "EXPLAIN"):
-        if any(kw in upper for kw in mutating_keywords):
-            return False
+
+def is_sql_read_only(query: str) -> bool:
+    """True only for one positively classified read-only statement.
+
+    Allowed forms are ``SELECT`` (without ``INTO``), ``SHOW``, ``DESCRIBE`` /
+    ``DESC``, ``EXPLAIN SELECT``, and ``WITH ... SELECT``. Strings, quoted
+    identifiers, dollar quotes, and comments are not scanned for keywords.
+    More than one non-empty statement is refused. Anything unrecognized is refused.
+    """
+    if not query or not query.strip():
+        return False
+    try:
+        groups = _statement_groups(_lex(query))
+    except _ScanError:
+        return False
+    if len(groups) != 1:
+        return False
+    return _classify(groups[0])
+
+
+def _lex(sql: str) -> list[_Tok]:
+    tokens: list[_Tok] = []
+    index = 0
+    length = len(sql)
+    depth = 0
+    while index < length:
+        char = sql[index]
+        if char.isspace():
+            index += 1
+            continue
+        if char == "-" and index + 1 < length and sql[index + 1] == "-":
+            newline = sql.find("\n", index + 2)
+            index = length if newline < 0 else newline + 1
+            continue
+        if char == "/" and index + 1 < length and sql[index + 1] == "*":
+            end = sql.find("*/", index + 2)
+            if end < 0:
+                raise _ScanError
+            index = end + 2
+            continue
+        if char == "'":
+            index = _skip_quoted(sql, index, "'")
+            continue
+        if char == '"':
+            index = _skip_quoted(sql, index, '"')
+            continue
+        if char == "$":
+            tag = _dollar_opener(sql, index)
+            if tag is None:
+                index += 1
+                continue
+            close = sql.find(tag, index + len(tag))
+            if close < 0:
+                raise _ScanError
+            index = close + len(tag)
+            continue
+        if char == "(":
+            tokens.append(_Tok("lparen", "(", depth))
+            depth += 1
+            index += 1
+            continue
+        if char == ")":
+            depth = max(depth - 1, 0)
+            tokens.append(_Tok("rparen", ")", depth))
+            index += 1
+            continue
+        if char == ",":
+            tokens.append(_Tok("comma", ",", depth))
+            index += 1
+            continue
+        if char == ";":
+            tokens.append(_Tok("semi", ";", depth))
+            index += 1
+            continue
+        if char.isalpha() or char == "_":
+            end = index + 1
+            while end < length and (sql[end].isalnum() or sql[end] in "_$"):
+                end += 1
+            tokens.append(_Tok("word", sql[index:end].upper(), depth))
+            index = end
+            continue
+        index += 1
+    return tokens
+
+
+def _skip_quoted(sql: str, index: int, quote: str) -> int:
+    index += 1
+    length = len(sql)
+    while index < length:
+        if sql[index] == quote:
+            if index + 1 < length and sql[index + 1] == quote:
+                index += 2
+                continue
+            return index + 1
+        index += 1
+    raise _ScanError
+
+
+def _dollar_opener(sql: str, index: int) -> str | None:
+    end = index + 1
+    while end < len(sql) and (sql[end].isalnum() or sql[end] == "_"):
+        end += 1
+    if end < len(sql) and sql[end] == "$":
+        return sql[index : end + 1]
+    return None
+
+
+def _statement_groups(tokens: list[_Tok]) -> list[list[_Tok]]:
+    groups: list[list[_Tok]] = []
+    current: list[_Tok] = []
+    for tok in tokens:
+        if tok.kind == "semi":
+            groups.append(current)
+            current = []
+            continue
+        current.append(tok)
+    groups.append(current)
+    return [group for group in groups if group]
+
+
+def _classify(tokens: list[_Tok]) -> bool:
+    if not tokens or tokens[0].kind != "word":
+        return False
+    keyword = tokens[0].value
+    if keyword == "SELECT":
+        return not _has_into(tokens)
+    if keyword in {"SHOW", "DESCRIBE", "DESC"}:
         return True
-
-    if first_word == "WITH":
-        # Check CTE query ending in SELECT
-        if any(kw in upper for kw in mutating_keywords):
-            return False
-        return "SELECT" in upper
-
+    if keyword == "EXPLAIN":
+        return _explain_ok(tokens[1:])
+    if keyword == "WITH":
+        return _keyword_after_cte(tokens) == "SELECT" and not _has_into(tokens)
     return False
+
+
+def _explain_ok(tokens: list[_Tok]) -> bool:
+    if not tokens or tokens[0].kind != "word":
+        return False
+    if tokens[0].value == "SELECT":
+        return not _has_into(tokens)
+    if tokens[0].value == "WITH":
+        return _keyword_after_cte(tokens) == "SELECT" and not _has_into(tokens)
+    return False
+
+
+def _has_into(tokens: list[_Tok]) -> bool:
+    return any(tok.kind == "word" and tok.value == "INTO" for tok in tokens)
+
+
+def _is_depth0_word(tok: _Tok | None, value: str | None = None) -> bool:
+    if tok is None or tok.kind != "word" or tok.depth != 0:
+        return False
+    return value is None or tok.value == value
+
+
+def _skip_parens(tokens: list[_Tok], index: int) -> int | None:
+    depth = tokens[index].depth
+    index += 1
+    while index < len(tokens):
+        tok = tokens[index]
+        if tok.kind == "rparen" and tok.depth == depth:
+            return index + 1
+        index += 1
+    return None
+
+
+def _keyword_after_cte(tokens: list[_Tok]) -> str | None:
+    """Return the statement keyword that follows a top-level CTE list."""
+    index = 1
+    count = len(tokens)
+    if index < count and _is_depth0_word(tokens[index], "RECURSIVE"):
+        index += 1
+    while index < count:
+        if not _is_depth0_word(tokens[index]):
+            return None
+        index += 1
+        if index < count and tokens[index].kind == "lparen" and tokens[index].depth == 0:
+            skipped = _skip_parens(tokens, index)
+            if skipped is None:
+                return None
+            index = skipped
+        if index >= count or not _is_depth0_word(tokens[index], "AS"):
+            return None
+        index += 1
+        if index >= count or tokens[index].kind != "lparen" or tokens[index].depth != 0:
+            return None
+        skipped = _skip_parens(tokens, index)
+        if skipped is None:
+            return None
+        index = skipped
+        if index < count and tokens[index].kind == "comma" and tokens[index].depth == 0:
+            index += 1
+            continue
+        if index < count and _is_depth0_word(tokens[index]):
+            return tokens[index].value
+        return None
+    return None
 
 
 class SnowflakeClient:

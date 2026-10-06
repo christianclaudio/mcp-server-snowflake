@@ -8,9 +8,11 @@ from fastmcp import FastMCP
 
 from snowflake_mcp.connection import (
     SnowflakeClient,
+    enforce_read_only_sql,
     is_sql_read_only,
     quote_ident,
     quote_literal,
+    read_only_enabled,
 )
 
 
@@ -85,7 +87,9 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         confirm: bool = False,
     ) -> dict[str, Any]:
         """Create alert."""
-        if client.config.read_only:
+        enforce_read_only_sql(client.config, condition_sql, tool="alerts_create_alert")
+        enforce_read_only_sql(client.config, action_sql, tool="alerts_create_alert")
+        if read_only_enabled(client.config):
             return {"status": "error", "error": "Denied in read-only mode."}
 
         if not is_sql_read_only(action_sql) and not confirm:

@@ -310,6 +310,9 @@ def create_server(
     snow_client = client or SnowflakeClient(config=config or SnowflakeConfig.from_env_or_config())
     active_profile = _profile_from_env(profile)
     use_tool_search = _tool_search_from_env(enable_tool_search)
+    # The profile and SNOWFLAKE_MCP_READONLY share one flag. The gate reads it.
+    if active_profile == "readonly":
+        snow_client.config.read_only = True
 
     @asynccontextmanager
     async def _server_lifespan(_server: FastMCP[Any]) -> AsyncIterator[dict[str, Any]]:
@@ -338,7 +341,8 @@ def create_server(
     # Audit re-raises the same exception. The read-only gate runs before handlers.
     # The inner layer redacts tool-result payloads and still re-raises protocol errors.
     mcp.add_middleware(ParentAuditMiddleware())
-    mcp.add_middleware(ReadOnlyGateMiddleware(snow_client.config))
+    read_only_gate = ReadOnlyGateMiddleware(snow_client.config)
+    mcp.add_middleware(read_only_gate)
     mcp.add_middleware(ErrorHandlingMiddleware())
 
     # Domain namespaces are the wire prefix (queries_query, not snowflake_query).
@@ -358,6 +362,7 @@ def create_server(
         for name, component in list(tool_mgr._tools.items()):
             annotations = getattr(component, "annotations", None)
             if not (annotations and annotations.read_only_hint):
+                read_only_gate.conceal(name)
                 tool_mgr.remove_tool(name)
 
     # Opt-in. The default catalog stays the flat 140-tool tools/list.
@@ -374,12 +379,15 @@ def create_server(
     async def _call_tool_compat(name: str, arguments: dict[str, Any] | None = None, **kwargs: Any) -> Any:
         # NotFoundError, ValidationError, and MCPError propagate. The wire
         # handler maps an unknown tool to its protocol result; wrapping it in
-        # ToolError becomes JSON-RPC -32603. A read-only gate refusal is
-        # returned as the same error payload handlers already use.
+        # ToolError becomes JSON-RPC -32603. A read-only refusal, including one
+        # the mounted server wrapped, is returned as the handler error payload.
         try:
             raw_res = await orig_call_tool(name, arguments or {}, **kwargs)
-        except SafetyViolationError as exc:
-            payload = {"status": "error", "error": str(exc)}
+        except Exception as exc:
+            safety = _safety_violation(exc)
+            if safety is None:
+                raise
+            payload = {"status": "error", "error": str(safety)}
             return CallToolResult(
                 content=[TextContent(type="text", text=json.dumps(payload))],
                 is_error=False,
@@ -396,6 +404,18 @@ def create_server(
     mcp.call_tool = _call_tool_compat  # type: ignore[method-assign]
 
     return mcp
+
+
+def _safety_violation(exc: BaseException) -> SafetyViolationError | None:
+    """Return a read-only refusal wrapped by a mounted server, if there is one."""
+    current: BaseException | None = exc
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        if isinstance(current, SafetyViolationError):
+            return current
+        seen.add(id(current))
+        current = current.__cause__
+    return None
 
 
 _default_mcp: FastMCP | None = None

@@ -8,8 +8,9 @@ from fastmcp import FastMCP
 
 from snowflake_mcp.connection import (
     SnowflakeClient,
-    is_sql_read_only,
+    enforce_read_only_sql,
     quote_literal,
+    read_only_enabled,
 )
 
 
@@ -25,11 +26,7 @@ def register_query_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         max_rows: int | None = 100,
     ) -> dict[str, Any]:
         """Execute a read-only SQL query."""
-        if client.config.read_only and not is_sql_read_only(query):
-            return {
-                "error": "Operation denied: Server is running in read-only mode (SNOWFLAKE_MCP_READONLY=1).",
-                "status": "error",
-            }
+        enforce_read_only_sql(client.config, query, tool="queries_query")
 
         try:
             res = client.execute_query(query, max_rows=max_rows)
@@ -47,7 +44,8 @@ def register_query_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         confirm: bool = False,
     ) -> dict[str, Any]:
         """Execute a DML/DDL statement."""
-        if client.config.read_only:
+        enforce_read_only_sql(client.config, statement, tool="queries_execute_dml")
+        if read_only_enabled(client.config):
             return {
                 "error": "Operation denied: Server is running in read-only mode (SNOWFLAKE_MCP_READONLY=1).",
                 "status": "error",
@@ -126,6 +124,7 @@ def register_query_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         query: str,
     ) -> dict[str, Any]:
         """Get query explain plan."""
+        enforce_read_only_sql(client.config, query, tool="queries_get_query_plan")
         try:
             sql = f"EXPLAIN {query}"
             res = client.execute_query(sql)

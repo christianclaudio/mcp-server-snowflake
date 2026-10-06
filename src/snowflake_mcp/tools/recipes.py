@@ -7,7 +7,13 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal
+from snowflake_mcp.connection import (
+    SnowflakeClient,
+    enforce_read_only_sql,
+    quote_ident,
+    quote_literal,
+    read_only_enabled,
+)
 from snowflake_mcp.tools.tables import qualify_table_target
 from snowflake_mcp.tools.warehouses import VALID_WAREHOUSE_SIZES
 
@@ -131,7 +137,8 @@ def register_recipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         confirm: bool = False,
     ) -> dict[str, Any]:
         """Scale warehouse, execute query, and restore."""
-        if client.config.read_only:
+        enforce_read_only_sql(client.config, query, tool="recipes_warehouse_scale_and_execute")
+        if read_only_enabled(client.config):
             return {"status": "error", "error": "Denied in read-only mode."}
         if not confirm:
             return {
@@ -224,7 +231,8 @@ def register_recipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         header: bool = True,
     ) -> dict[str, Any]:
         """Unload query to stage."""
-        if client.config.read_only:
+        enforce_read_only_sql(client.config, query, tool="recipes_export_query_to_stage")
+        if read_only_enabled(client.config):
             return {"status": "error", "error": "Denied in read-only mode."}
         try:
             target = stage_location if stage_location.startswith("@") else f"@{stage_location}"

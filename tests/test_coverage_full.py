@@ -5,6 +5,7 @@ import pytest
 from snowflake_mcp.cli import main
 from snowflake_mcp.config import SnowflakeConfig
 from snowflake_mcp.connection import SnowflakeClient
+from snowflake_mcp.errors import SafetyViolationError
 from snowflake_mcp.server import create_server
 
 
@@ -112,7 +113,11 @@ async def test_readonly_safety_guards() -> None:
     ]
 
     for tool_name, args in mutating_tools:
-        res = await tools[tool_name].fn(*args)
+        try:
+            res = await tools[tool_name].fn(*args)
+        except SafetyViolationError as exc:
+            assert "SNOWFLAKE_MCP_READONLY" in str(exc)
+            continue
         assert res["status"] == "error", f"Tool {tool_name} should have failed in read-only mode"
         assert "Denied" in res.get("error", "") or "Operation denied" in res.get("error", "")
 

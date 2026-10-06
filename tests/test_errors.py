@@ -290,4 +290,4 @@ def test_mutating_set_covers_every_non_readonly_tool() -> None:
             missing.append(name)
     assert not read_only_leaks
     assert not missing
-    assert len(MUTATING_TOOLS) >= 52
+    assert len(MUTATING_TOOLS) == 104

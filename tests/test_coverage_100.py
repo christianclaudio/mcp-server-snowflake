@@ -12,6 +12,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from snowflake_mcp.cli import main as cli_main
 from snowflake_mcp.config import SnowflakeConfig
 from snowflake_mcp.connection import SnowflakeClient
+from snowflake_mcp.errors import SafetyViolationError
 from snowflake_mcp.server import create_server
 
 
@@ -228,7 +229,8 @@ async def test_tools_missing_branches() -> None:
     client_ro = SnowflakeClient(config=cfg_ro)
     server_ro = create_server(client=client_ro)
     tools_ro = server_ro._tool_manager._tools
-    await tools_ro["queries_query"].fn(query="DROP TABLE my_table")
+    with pytest.raises(SafetyViolationError, match="queries_query"):
+        await tools_ro["queries_query"].fn(query="DROP TABLE my_table")
 
     # programmability: integration types valid, invalid and pattern
     await tools["programmability_list_integrations"].fn(integration_type="STORAGE", pattern="S3%")

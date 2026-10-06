@@ -6,7 +6,13 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal
+from snowflake_mcp.connection import (
+    SnowflakeClient,
+    enforce_read_only_sql,
+    quote_ident,
+    quote_literal,
+    read_only_enabled,
+)
 
 
 def register_pipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
@@ -77,7 +83,8 @@ def register_pipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         if_not_exists: bool = True,
     ) -> dict[str, Any]:
         """Create pipe."""
-        if client.config.read_only:
+        enforce_read_only_sql(client.config, copy_statement, tool="pipes_create_pipe")
+        if read_only_enabled(client.config):
             return {"status": "error", "error": "Denied in read-only mode."}
         try:
             db = database or client.config.database

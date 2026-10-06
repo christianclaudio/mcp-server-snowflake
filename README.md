@@ -63,7 +63,7 @@ flowchart TD
 
 > [!WARNING]
 > **Safety Guardrails**  
-> - **Read-Only Safety Mode:** Set `SNOWFLAKE_MCP_READONLY=1` (or pass `--readonly`) to disable all DDL/DML mutation capabilities. The read-only gate refuses mutating tools before the handler runs, and each handler checks again.  
+> - **Read-Only Safety Mode:** Set `SNOWFLAKE_MCP_READONLY=1`, pass `--readonly`, or pass `--profile readonly` to disable DDL/DML. The profile sets the same read-only flag the gate reads. Caller SQL is refused unless it is one `SELECT`, `SHOW`, `DESCRIBE`, or `EXPLAIN SELECT`. This is a best-effort client-side safeguard. The real boundary is a Snowflake role with no write grants.  
 > - **Destructive Safety Gates:** Dropping databases, schemas, or tables requires explicit `confirm=True`.  
 > - **Query Limits:** Default execution limits prevent context window overflow (`SNOWFLAKE_MAX_ROWS=1000`, `SNOWFLAKE_QUERY_TIMEOUT=120`).
 
@@ -109,6 +109,7 @@ snowflake-mcp -c my_connection --readonly
 # List one domain, or only read-only tools
 snowflake-mcp --profile cortex
 snowflake-mcp --profile readonly
+# `--profile readonly` hides mutating tools and sets the read-only flag. A Snowflake role with no write grants is the real boundary.
 
 # Opt in to regex tool search instead of the flat 140-tool tools/list
 snowflake-mcp --enable-tool-search

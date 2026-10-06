@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import time
 from collections.abc import Iterable, Mapping
 from typing import Any
@@ -24,6 +23,7 @@ from mcp.types import CallToolResult, TextContent
 from pydantic import ValidationError as PydanticValidationError
 
 from snowflake_mcp.config import SnowflakeConfig
+from snowflake_mcp.connection import read_only_enabled
 from snowflake_mcp.errors import SafetyViolationError, redact_error_payload, redact_secrets
 
 logger = logging.getLogger("snowflake_mcp")
@@ -162,16 +162,22 @@ class ParentAuditMiddleware(Middleware):
 
 
 class ReadOnlyGateMiddleware(Middleware):
-    """Block mutating tools/call requests while read-only mode is on."""
+    """Block mutating tools/call requests while read-only mode is on.
+
+    ``conceal`` records tools the active profile removed. Those names stay in
+    ``MUTATING_TOOLS`` but must surface as unknown tools, not as a read-only denial.
+    """
 
     def __init__(self, config: SnowflakeConfig) -> None:
         self._config = config
+        self._concealed: set[str] = set()
+
+    def conceal(self, name: str) -> None:
+        """Remember a tool this profile removed from the catalog."""
+        self._concealed.add(name)
 
     def _read_only_enabled(self) -> bool:
-        if self._config.read_only:
-            return True
-        flag = os.environ.get("SNOWFLAKE_MCP_READONLY", "").strip().lower()
-        return flag in {"1", "true", "yes"}
+        return read_only_enabled(self._config)
 
     async def on_message(
         self,
@@ -181,7 +187,7 @@ class ReadOnlyGateMiddleware(Middleware):
         if self._read_only_enabled() and getattr(context, "method", None) == "tools/call":
             message = getattr(context, "message", None)
             tool_name = getattr(message, "name", None) if message is not None else None
-            if isinstance(tool_name, str) and tool_name in MUTATING_TOOLS:
+            if isinstance(tool_name, str) and tool_name in MUTATING_TOOLS and tool_name not in self._concealed:
                 raise SafetyViolationError(
                     f"Denied in read-only mode (SNOWFLAKE_MCP_READONLY=1); tool '{tool_name}' blocked."
                 )
