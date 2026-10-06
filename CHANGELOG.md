@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **Server version**: `FastMCP` is constructed with `version=__version__`. SSE transport uses the same host-origin protection as Streamable HTTP.
 - **Package version**: 2.1.0.
+- **Conformance baseline**: `tools-call-simple-text` and `tools-call-error` are no longer expected failures.
 
 ## [2.0.1] - 2026-10-05
 
