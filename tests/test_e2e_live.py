@@ -88,7 +88,7 @@ TOOL_FIXTURES: dict[str, tuple[dict[str, Any], str]] = {
     "dynamic_tables_suspend_dynamic_table": ({"table_name": "E2E_MCP_MISSING_OBJECT"}, "confirm"),
     "governance_create_role": ({"role_name": "E2E_MCP_MISSING_OBJECT"}, "confirm"),
     "governance_create_user": ({"user_name": "E2E_MCP_MISSING_OBJECT"}, "confirm"),
-    "governance_describe_role": ({"role_name": "E2E_MCP_MISSING_OBJECT"}, "rejected"),
+    "governance_describe_role": ({"role_name": "E2E_MCP_MISSING_OBJECT"}, "success"),
     "governance_describe_user": ({"user_name": "E2E_MCP_MISSING_OBJECT"}, "rejected"),
     "governance_drop_role": ({"role_name": "E2E_MCP_MISSING_OBJECT", "confirm": False}, "confirm"),
     "governance_get_current_context": ({}, "success"),
@@ -100,8 +100,8 @@ TOOL_FIXTURES: dict[str, tuple[dict[str, Any], str]] = {
     "governance_use_connection": ({"connection_name": "e2e_missing_profile"}, "confirm"),
     "horizon_describe_masking_policy": ({"policy_name": "E2E_MCP_MISSING_OBJECT"}, "rejected"),
     "horizon_describe_row_access_policy": ({"policy_name": "E2E_MCP_MISSING_OBJECT"}, "rejected"),
-    "horizon_get_column_lineage": ({"table_name": "E2E_MCP_MISSING_OBJECT", "column_name": "ID"}, "rejected"),
-    "horizon_get_object_lineage": ({"object_name": "E2E_MCP_MISSING_OBJECT"}, "rejected"),
+    "horizon_get_column_lineage": ({"table_name": "E2E_MCP_MISSING_OBJECT", "column_name": "ID"}, "success"),
+    "horizon_get_object_lineage": ({"object_name": "E2E_MCP_MISSING_OBJECT"}, "success"),
     "horizon_list_masking_policies": ({}, "success"),
     "horizon_list_row_access_policies": ({}, "success"),
     "network_describe_network_policy": ({"policy_name": "E2E_MCP_MISSING_OBJECT"}, "rejected"),
@@ -205,7 +205,7 @@ TOOL_FIXTURES: dict[str, tuple[dict[str, Any], str]] = {
     "tables_sample_table": ({"table_name": "E2E_MCP_MISSING_OBJECT"}, "rejected"),
     "tables_truncate_table": ({"table_name": "E2E_MCP_MISSING_OBJECT", "confirm": False}, "confirm"),
     "tables_undrop_table": ({"table_name": "E2E_MCP_MISSING_OBJECT"}, "confirm"),
-    "tags_describe_tag": ({"tag_name": "E2E_MCP_MISSING_OBJECT"}, "rejected"),
+    "tags_describe_tag": ({"tag_name": "E2E_MCP_MISSING_OBJECT"}, "success"),
     "tags_get_object_tag_references": ({"object_name": "E2E_MCP_MISSING_OBJECT"}, "rejected"),
     "tags_list_tags": ({}, "success"),
     "tags_set_object_tag": (
@@ -220,7 +220,7 @@ TOOL_FIXTURES: dict[str, tuple[dict[str, Any], str]] = {
     "tasks_resume_task": ({"task_name": "E2E_MCP_MISSING_OBJECT"}, "confirm"),
     "tasks_suspend_task": ({"task_name": "E2E_MCP_MISSING_OBJECT"}, "confirm"),
     "warehouses_create_warehouse": ({"warehouse_name": "E2E_MCP_MISSING_OBJECT"}, "confirm"),
-    "warehouses_describe_warehouse": ({"warehouse_name": "E2E_MCP_MISSING_OBJECT"}, "rejected"),
+    "warehouses_describe_warehouse": ({"warehouse_name": "E2E_MCP_MISSING_OBJECT"}, "success"),
     "warehouses_drop_warehouse": ({"warehouse_name": "E2E_MCP_MISSING_OBJECT", "confirm": False}, "confirm"),
     "warehouses_get_warehouse_load_history": ({"warehouse_name": "E2E_MCP_MISSING_OBJECT"}, "rejected"),
     "warehouses_list_warehouses": ({}, "success"),
@@ -234,6 +234,10 @@ EXPLICIT_TOOL_SKIPS: dict[str, str] = {}
 
 CORTEX_SKIP_REASON = "Cortex is not available on this account"
 _SAFE_REJECTION_MARKERS = ("does not exist", "not authorized", "insufficient privileges")
+# GET_QUERY_OPERATOR_STATS rejects a non-UUID query id with wording the global markers miss.
+_TOOL_REJECTION_MARKERS: dict[str, tuple[str, ...]] = {
+    "queries_get_query_operator_stats": ("invalid uuid", "invalid query id"),
+}
 _CONFIRM_MARKERS = ("requires_confirmation", "denied in read-only", "read-only")
 _CORTEX_UNAVAILABLE_MARKERS = ("unknown function", "cortex not enabled", "not available")
 
@@ -241,6 +245,10 @@ _CORTEX_UNAVAILABLE_MARKERS = ("unknown function", "cortex not enabled", "not av
 def _contains_any(text: str, markers: tuple[str, ...]) -> bool:
     lowered = text.lower()
     return any(marker in lowered for marker in markers)
+
+
+def _rejection_markers(tool_name: str) -> tuple[str, ...]:
+    return _SAFE_REJECTION_MARKERS + _TOOL_REJECTION_MARKERS.get(tool_name, ())
 
 
 def _cortex_skip_requested() -> bool:
@@ -271,7 +279,7 @@ async def dispatch_tool_call(srv: Any, tool_name: str, is_destructive: bool) -> 
         message = str(exc)
         if expect == "confirm" and _contains_any(message, _CONFIRM_MARKERS):
             return ("PASS", True, None)
-        if expect == "rejected" and _contains_any(message, _SAFE_REJECTION_MARKERS):
+        if expect == "rejected" and _contains_any(message, _rejection_markers(tool_name)):
             return ("PASS", True, None)
         if expect == "cortex" and _contains_any(message, _SAFE_REJECTION_MARKERS):
             return ("PASS", True, None)
@@ -282,7 +290,7 @@ async def dispatch_tool_call(srv: Any, tool_name: str, is_destructive: bool) -> 
         message = str(exc)
         if expect == "cortex" and _contains_any(message, _CORTEX_UNAVAILABLE_MARKERS):
             return ("SKIP", True, CORTEX_SKIP_REASON)
-        if expect == "rejected" and _contains_any(message, _SAFE_REJECTION_MARKERS):
+        if expect == "rejected" and _contains_any(message, _rejection_markers(tool_name)):
             return ("PASS", True, None)
         if expect == "cortex" and _contains_any(message, _SAFE_REJECTION_MARKERS):
             return ("PASS", True, None)
@@ -302,7 +310,7 @@ async def dispatch_tool_call(srv: Any, tool_name: str, is_destructive: bool) -> 
             f"Destructive safety gate bypassed for {tool_name}: unexpected success response",
         )
     if expect == "rejected":
-        if _contains_any(body, _SAFE_REJECTION_MARKERS):
+        if _contains_any(body, _rejection_markers(tool_name)):
             return ("PASS", bool(res.is_error), None)
         if res.is_error:
             return ("FAIL", True, _redact_secrets(body) or None)
@@ -401,6 +409,58 @@ async def test_dispatch_tool_call_offline(monkeypatch: pytest.MonkeyPatch) -> No
     assert "Expected CallToolResult" in (err or "")
 
 
+_EMPTY_SUCCESS_TOOLS = (
+    "warehouses_describe_warehouse",
+    "governance_describe_role",
+    "tags_describe_tag",
+    "horizon_get_object_lineage",
+    "horizon_get_column_lineage",
+)
+
+
+@pytest.mark.asyncio
+async def test_dispatch_empty_success_and_operator_stats_rejection() -> None:
+    """Missing-object describe/lineage calls are empty successes; operator stats is a rejection."""
+    mock_srv = AsyncMock()
+    empty = CallToolResult(
+        content=[TextContent(type="text", text='{"status": "success", "details": null}')],
+        is_error=False,
+    )
+    for name in _EMPTY_SUCCESS_TOOLS:
+        assert TOOL_FIXTURES[name][1] == "success"
+        mock_srv.call_tool.return_value = empty
+        status, is_err, err = await dispatch_tool_call(mock_srv, name, is_destructive=False)
+        assert status == "PASS", name
+        assert not is_err
+        assert err is None
+        mock_srv.call_tool.assert_awaited_with(name, TOOL_FIXTURES[name][0])
+
+    assert TOOL_FIXTURES["queries_get_query_operator_stats"][1] == "rejected"
+    for text in (
+        '{"status": "error", "error": "100037 (22000): Invalid UUID: e2e-missing-query-id"}',
+        '{"status": "error", "error": "Invalid query ID e2e-missing-query-id"}',
+    ):
+        mock_srv.call_tool.return_value = CallToolResult(
+            content=[TextContent(type="text", text=text)],
+            is_error=False,
+        )
+        status, is_err, err = await dispatch_tool_call(
+            mock_srv, "queries_get_query_operator_stats", is_destructive=False
+        )
+        assert status == "PASS"
+        assert not is_err
+        assert err is None
+
+    mock_srv.call_tool.return_value = CallToolResult(
+        content=[TextContent(type="text", text='{"status": "error", "error": "warehouse suspended"}')],
+        is_error=False,
+    )
+    status, is_err, err = await dispatch_tool_call(mock_srv, "queries_get_query_operator_stats", is_destructive=False)
+    assert status == "FAIL"
+    assert is_err
+    assert "Expected a safe rejection" in (err or "")
+
+
 @pytest.mark.asyncio
 async def test_server_tools_with_mocked_cursor(mock_snowflake_client: SnowflakeClient) -> None:
     """Exercise create_server() tools through connection and cursor objects."""
@@ -448,7 +508,7 @@ async def test_fixture_catalog_matches_server_tools(mock_snowflake_client: Snowf
             assert arguments["confirm"] is False
         if expect == "cortex":
             assert CORTEX_SKIP_REASON.strip()
-    assert counts == {"success": 40, "rejected": 40, "confirm": 52, "cortex": 8}
+    assert counts == {"success": 45, "rejected": 35, "confirm": 52, "cortex": 8}
     assert TOOL_FIXTURES["queries_query"] == ({"query": "SELECT 1"}, "success")
     assert TOOL_FIXTURES["databases_drop_database"] == (
         {"name": "e2e_probe_db", "confirm": False},
