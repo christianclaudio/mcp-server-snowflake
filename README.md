@@ -103,8 +103,15 @@ snowflake-mcp --init
 # Run with a specific Snowflake CLI connection profile
 snowflake-mcp -c my_connection
 
-# Run in read-only mode
+# Run in read-only mode (every tool stays registered; handlers reject mutations)
 snowflake-mcp -c my_connection --readonly
+
+# List one domain, or only read-only tools
+snowflake-mcp --profile cortex
+snowflake-mcp --profile readonly
+
+# Opt in to regex tool search instead of the flat 140-tool tools/list
+snowflake-mcp --enable-tool-search
 
 # Run with Docker
 docker build -t mcp-server-snowflake .

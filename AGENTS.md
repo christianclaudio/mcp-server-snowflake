@@ -1,3 +1,15 @@
+---
+vcs:
+  system: github
+  remote: https://github.com/christianclaudio/mcp-server-snowflake
+  owner: christianclaudio
+  repo: mcp-server-snowflake
+  default_branch: main
+  branch_policy: pr_only
+  merge_method: squash
+  delete_branch_on_merge: true
+---
+
 # AGENTS.md
 
 Instructions for AI coding agents (Antigravity, Claude Code, Copilot, Cursor, Windsurf) working on this repository.
@@ -6,15 +18,19 @@ Instructions for AI coding agents (Antigravity, Claude Code, Copilot, Cursor, Wi
 
 ## 🎯 Project Overview
 
-This is `mcp-server-snowflake` — an Enterprise Model Context Protocol (MCP) server exposing Snowflake's Data Cloud and Cortex AI as MCP tools (the expected tool set lives in `scripts/check_tool_contract.py`). It runs over stdio or streamable HTTP and is consumed by AI clients (Claude Desktop, VS Code, Antigravity, Cursor, etc.).
+This is `mcp-server-snowflake` — an Enterprise Model Context Protocol (MCP) server exposing Snowflake's Data Cloud and Cortex AI as MCP tools (the expected tool set lives in `scripts/check_tool_contract.py`). It runs over stdio, streamable HTTP, or the deprecated SSE transport, and is consumed by AI clients (Claude Desktop, VS Code, Antigravity, Cursor, etc.).
+
+The default `tools/list` is one flat catalog of all 140 tools. `RegexSearchTransform` (`search_tools` + `call_tool`) is opt-in via `--enable-tool-search` or `SNOWFLAKE_MCP_ENABLE_TOOL_SEARCH=1`.
 
 ---
 
 ## 🏗️ Key Paths
 
-- `src/snowflake_mcp/server.py` — `create_server` factory; mounts each domain module with `namespace=<domain>`.
+- `src/snowflake_mcp/server.py` — `create_server` factory; mounts each domain module with `namespace=<domain>`; stamps `readOnlyHint`, `destructiveHint`, and `idempotentHint` in `_annotate_local_tools`; applies `--profile` and opt-in tool search.
+- `src/snowflake_mcp/middleware.py` — `ErrorHandlingMiddleware`. Re-raises protocol errors (`NotFoundError`, `DisabledError`, `ValidationError`, `MCPError`) unchanged and redacts every other failure.
+- `src/snowflake_mcp/errors.py` — `redact_secrets` / `redact_error_payload`. Strips passwords, tokens, bearer credentials, private keys, and connection strings. Replacement text is `[REDACTED]`.
 - `src/snowflake_mcp/tools/<domain>.py` — one module per domain (queries, databases, tables, warehouses, governance, cortex, recipes, …), each exposing `register_<name>_tools(mcp, client)`, where `<name>` is usually the singular of the module (for example `register_query_tools` in `queries.py`).
-- `src/snowflake_mcp/connection.py` — `SnowflakeClient` (DictCursor query executor, `snowflake.core.Root` bridge). `config.py` — multi-auth resolver (PAT, key-pair, OAuth, user/password, `connections.toml`). `cli.py` — stdio / streamable-http runner.
+- `src/snowflake_mcp/connection.py` — `SnowflakeClient` (DictCursor query executor, `snowflake.core.Root` bridge). `config.py` — multi-auth resolver (PAT, key-pair, OAuth, user/password, `connections.toml`). `cli.py` — stdio / streamable-http / SSE runner (`--profile`, `--enable-tool-search`, host-origin protection on both network transports).
 - `scripts/check_tool_contract.py` — source of truth for the expected tool count and annotations. Do not hard-code tool counts elsewhere.
 - `scripts/check_conformance.sh` + `conformance-baseline.yml`, `scripts/check_snowflake_drift.py`, `scripts/determine_bump.py`.
 - `tests/` — offline unit, mocked, and protocol tests; live checks in `test_e2e_live.py` behind `@pytest.mark.e2e`.
@@ -28,26 +44,33 @@ This is `mcp-server-snowflake` — an Enterprise Model Context Protocol (MCP) se
 1. **Implement Domain Handler in `src/snowflake_mcp/tools/<domain>.py`**:
    - Write strongly-typed function with exhaustive docstring.
    - Use `client.execute_query(sql, params)` on `SnowflakeClient` with SQL parameter bindings to prevent SQL injection.
-   - For destructive operations (`DROP`, `TRUNCATE`, `ALTER`), require `confirm: bool = False`.
+   - For destructive operations (`DROP`, `TRUNCATE`, `ALTER`, DML, task execution, warehouse scale-and-execute, query cancel, transaction rollback), require `confirm: bool = False`.
 2. **Register Tool in Domain Module**:
    - Add the tool function inside `register_<name>_tools(mcp, client)`, where `<name>` is usually the singular of the module (for example `register_query_tools` in `queries.py`), with a bare local `name` (no `snowflake_` prefix and no domain prefix).
-   - `create_server` mounts that module's FastMCP with `namespace=<domain>`. Clients see `{domain}_{name}` on one flat `tools/list`.
-   - Read-only mode still registers every tool. Handlers reject mutations when `client.config.read_only` is set.
+   - `create_server` mounts that module's FastMCP with `namespace=<domain>`. Clients see `{domain}_{name}` on one flat `tools/list` unless tool search is enabled.
+   - `--readonly` / `SNOWFLAKE_MCP_READONLY=1` still registers every tool. Handlers reject mutations when `client.config.read_only` is set.
+   - `--profile readonly` is a catalog filter: mutating tools are removed from `tools/list`. A domain name (`--profile cortex`) mounts only that domain. The default profile is `full`.
+   - Add the local name to `_DESTRUCTIVE_NAMES`, `_IDEMPOTENT_NAMES`, or the read-only sets in `server.py` so all three hints are explicit. Read-only tools are idempotent.
 3. **Pure Offline Testing**:
    - Add unit tests in `tests/` mocking `SnowflakeClient`.
    - Zero live network calls during tests. Live checks stay behind `@pytest.mark.e2e`.
 4. **Update Tool Contract**:
-   - Update the expected tool count in `scripts/check_tool_contract.py` (the `contract` job and step names in `.github/workflows/ci.yml` also state the count).
+   - Update the expected tool count and annotation counts in `scripts/check_tool_contract.py` (the `contract` job and step names in `.github/workflows/ci.yml` also state the count).
 
 ---
 
 ## 🛡️ Safety & Protocol Rules
 
-- **Strict Read-Only Mode**: When `SNOWFLAKE_MCP_READONLY=1` or `--readonly` is active, all mutating operations are blocked.
-- **Confirmation Gating**: Destructive drop/truncate actions require explicit `confirm=True`.
-- **Secret Redaction**: Never expose tokens, passwords, or private keys in logs or errors.
+- **Strict Read-Only Mode**: When `SNOWFLAKE_MCP_READONLY=1` or `--readonly` is active, all mutating operations are blocked. The tools stay registered.
+- **Profiles**: `SNOWFLAKE_MCP_PROFILE` or `--profile` selects `full` (default, 140 tools), `readonly` (read-only tools only), or one domain.
+- **Confirmation Gating**: Every tool with `destructiveHint` requires explicit `confirm=True` before it runs. That includes drop/truncate, `execute_dml`, `execute_task`, `warehouse_scale_and_execute`, `cancel_query`, and `rollback_transaction`.
+- **Protocol Errors**: Do not wrap `NotFoundError` or other protocol errors in `ToolError`. `ErrorHandlingMiddleware` re-raises them so an unknown tool is a tool result with `isError` and `Unknown tool: '<name>'`, not JSON-RPC `-32603`.
+- **Secret Redaction**: `redact_secrets` and `ErrorHandlingMiddleware` strip tokens, passwords, private keys, bearer credentials, and connection strings from error payloads and logs. Handler `str(e)` values are redacted on the way out. Do not log exception tracebacks that still contain secrets.
+- **Tool Search**: Leave `RegexSearchTransform` off unless the operator passes `--enable-tool-search` or sets `SNOWFLAKE_MCP_ENABLE_TOOL_SEARCH`.
+- **Host Protection**: Streamable HTTP and SSE both run with `host_origin_protection=True` and an explicit `allowed_hosts` list. Wildcard bind addresses require `--allowed-host`.
 - **Multi-Stage Non-Root Containers**: `Dockerfile` runs as non-root `USER mcp` with `ENTRYPOINT ["snowflake-mcp"]`.
-- **Registry Description Constraint**: `server.json` description strictly $\le$ 100 characters.
+- **Registry Description Constraint**: `server.json` description strictly ≤ 100 characters.
+- **Changesets**: Open a pull request. `main` accepts squash merges only (`allow_merge_commit` and `allow_rebase_merge` are off). Do not create tags or releases unless the maintainer asks.
 
 ---
 

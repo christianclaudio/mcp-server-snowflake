@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.1.0] - 2026-10-06
+
+### Added
+- **Protocol errors**: Unknown tools are no longer wrapped in `ToolError`. `NotFoundError` and other protocol errors propagate, so an unknown tool is a tool result with `isError` and `Unknown tool: '<name>'` instead of JSON-RPC `-32603`. `ErrorHandlingMiddleware` redacts handler failures and re-raises protocol errors unchanged.
+- **Secret redaction**: `redact_secrets` strips passwords, tokens, bearer credentials, private keys, and connection strings from error payloads and logs.
+- **Tool search**: Opt-in `RegexSearchTransform` via `--enable-tool-search` or `SNOWFLAKE_MCP_ENABLE_TOOL_SEARCH=1`. The default `tools/list` stays the flat 140-tool catalog.
+- **Profiles**: `--profile` (`SNOWFLAKE_MCP_PROFILE`) selects `full` (default), `readonly`, or a single domain. `--readonly` still registers every tool and rejects mutations in the handlers.
+- **Annotations**: Every tool sets `readOnlyHint`, `destructiveHint`, and `idempotentHint`. Read-only tools are idempotent. `queries_execute_dml`, `tasks_execute_task`, and `recipes_warehouse_scale_and_execute` are destructive.
+- **Confirm gates**: `queries_cancel_query`, `queries_rollback_transaction`, and the three destructive tools above require `confirm=True`.
+
+### Changed
+- **Server version**: `FastMCP` is constructed with `version=__version__`. SSE transport uses the same host-origin protection as Streamable HTTP.
+- **Package version**: 2.1.0.
+
 ## [2.0.1] - 2026-10-05
 
 ### Security
