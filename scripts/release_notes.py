@@ -33,8 +33,8 @@ Sections:
   (``<!-- This is an auto-generated comment: release notes by coderabbit.ai -->``)
   ends the message: it and everything after it are ignored, so a footer just before
   it is still the final paragraph. Lines inside fenced code blocks are never tokens,
-  headings or the marker; a fence closes only on a matching character whose
-  run length is at least the opening length (nested or mixed fences stay closed).
+  headings or the marker. Fences follow the CommonMark rules for top-level blocks
+  (see ``FenceState``); fences inside block quotes or list items are not modeled.
   A ``type!:`` commit with no footer is listed with a warning, because its
   migration steps are missing.
 * **Changes**: every commit subject (the squash title) with its short SHA, newest
@@ -64,10 +64,9 @@ _RECORD_SEP = "\x1e"
 
 BREAKING_TOKEN = re.compile(r"^BREAKING[ -]CHANGE:(?:[ \t]|$)")
 BANG_SUBJECT = re.compile(r"^[A-Za-z]+(?:\([^)\n]*\))?!:")
-# Opening/closing fence line (CommonMark-style). Closing must use the same
-# character with length >= the opening run; a shorter or different-character
-# fence inside stays content and must not flip ``in_fence``.
-FENCE_LINE = re.compile(r"^([ ]{0,3})(`{3,}|~{3,})(.*)$")
+# A possible fence line: up to 3 spaces of indentation, a run of 3+ backticks or
+# tildes, then the rest of the line (the info string on an opening fence).
+FENCE_LINE = re.compile(r"^[ ]{0,3}(`{3,}|~{3,})(.*)$")
 HEADING = re.compile(r"^[ ]{0,3}#{1,6}(?:[ \t]|$)")
 # CodeRabbit appends its walkthrough to the PR body (and so to the squash message) after
 # this line. Everything from the marker on is generated text, never a footer.
@@ -128,6 +127,45 @@ def normalize_newlines(text: str) -> str:
     return text.replace("\r\n", "\n").replace("\r", "\n")
 
 
+class FenceState:
+    """CommonMark fenced code block state for top-level lines (CommonMark 0.31.2, 4.5).
+
+    * An opening fence is up to 3 spaces of indentation, then at least three backticks
+      or three tildes. A backtick fence's info string may not contain a backtick, so
+      an inline-code line such as ```` ```code``` ```` opens nothing; a tilde fence's
+      info string may.
+    * The block closes only on a line with up to 3 spaces of indentation, a run of the
+      same character at least as long as the opening run, and nothing after it but
+      spaces or tabs. Any other line, including a shorter run, the other character or
+      a fence with an info string, is content.
+    * An unclosed fence runs to the end of the message.
+
+    Containers are not modeled: a fence on a ``>``-prefixed block quote line is not
+    recognized, and a fence indented for a list item counts as top level.
+    """
+
+    def __init__(self) -> None:
+        self.char: str | None = None
+        self.length = 0
+
+    def feed(self, line: str) -> bool:
+        """Consume ``line``; True if it is an opening fence, fenced content or a closing fence."""
+        match = FENCE_LINE.match(line)
+        if self.char is None:
+            if match is None:
+                return False
+            run, info = match.group(1), match.group(2)
+            if run[0] == "`" and "`" in info:
+                return False
+            self.char, self.length = run[0], len(run)
+            return True
+        if match is not None:
+            run, rest = match.group(1), match.group(2)
+            if run[0] == self.char and len(run) >= self.length and rest.strip(" \t") == "":
+                self.char, self.length = None, 0
+        return True
+
+
 def extract_breaking_footers(message: str) -> tuple[str, ...]:
     """Return every ``BREAKING CHANGE:`` footer in ``message``, verbatim.
 
@@ -137,43 +175,39 @@ def extract_breaking_footers(message: str) -> tuple[str, ...]:
     the token means the token was body text, so that block is discarded. The CodeRabbit
     marker line (``CODERABBIT_MARKER``) outside a fence is a hard end of the message: it
     and everything after it are ignored. Quoted inside a fenced code block it is text.
-    Fenced blocks close only on a matching fence character whose run length is at least
-    the opening length (CommonMark-style), so nested or mixed fences cannot flip the
-    fence state early and expose a quoted ``BREAKING CHANGE:`` as a real footer.
+
+    Fenced code blocks follow ``FenceState`` (CommonMark rules for top-level blocks):
+    nested, mixed, shorter or info-string fences cannot end a block early, and an
+    inline-code line such as ```` ```code``` ```` cannot open one, so neither can hide
+    a real footer or expose a quoted one. Limitation: only top-level blocks are
+    modeled. Fences inside block quotes are not recognized, a fence indented for a
+    list item counts as top level, and HTML blocks are not tracked.
+
+    Tokens, trailer keys and the marker must start at column 0: an indented
+    ``BREAKING CHANGE:`` line is never a footer. Headings may be indented up to 3
+    spaces, as in CommonMark.
     """
     lines = normalize_newlines(message).split("\n")[1:]
     footers: list[list[str]] = []
     current: list[str] | None = None
-    fence_char: str | None = None
-    fence_len = 0
+    fence = FenceState()
     for line in lines:
-        fence = FENCE_LINE.match(line)
-        if fence is not None:
-            marker = fence.group(2)
-            char, length = marker[0], len(marker)
-            info = fence.group(3)
-            if fence_char is None:
-                # Opening fence: info string is allowed (e.g. ```text).
-                fence_char, fence_len = char, length
-            elif char == fence_char and length >= fence_len and info.strip() == "":
-                # Closing fence: same character, length >= opening, no info string.
-                fence_char, fence_len = None, 0
-            # Else: nested/shorter/mismatched fence — stay inside the open block.
-        elif fence_char is None and line.strip() == CODERABBIT_MARKER:
-            break
-        elif fence_char is None and BREAKING_TOKEN.match(line):
-            current = [line]
-            footers.append(current)
-            continue
-        elif fence_char is None and TRAILER_LINE.match(line):
-            current = None
-            continue
-        elif fence_char is None and HEADING.match(line):
-            # A Markdown section after the token: it was body text, not the final footer.
-            if current is not None:
-                footers.remove(current)
-            current = None
-            continue
+        if not fence.feed(line):
+            if line.strip() == CODERABBIT_MARKER:
+                break
+            if BREAKING_TOKEN.match(line):
+                current = [line]
+                footers.append(current)
+                continue
+            if TRAILER_LINE.match(line):
+                current = None
+                continue
+            if HEADING.match(line):
+                # A Markdown section after the token: it was body text, not the final footer.
+                if current is not None:
+                    footers.remove(current)
+                current = None
+                continue
         if current is not None:
             current.append(line)
     return tuple("\n".join(block).rstrip() for block in footers)
