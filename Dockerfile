@@ -25,6 +25,9 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # ─── Stage 2: Runtime ─────────────────────────────────────────────────────────
 FROM python:3.12-slim AS runtime
 
+# MCP Registry ownership check for the OCI package: must equal server.json "name".
+LABEL io.modelcontextprotocol.server.name="io.github.christianclaudio/snowflake"
+
 # Security: run as non-root
 RUN useradd --create-home --shell /bin/bash mcp
 USER mcp
