@@ -61,7 +61,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 - **Claim scrub**: Changelog tool names match registered `@mcp.tool` names. `AGENTS.md` no longer documents a phantom `errors.py`, a connection-pool API, a dynamic User-Agent header, or a stale `mcp>=2.1.1` floor. The drift-monitor docstring now states the 140-tool contract.
 
 ### Removed
-- **`docs/`**: Removed the in-repo tree, including `docs/COOKBOOK.md`. The cookbook lives only on mcp-server-template.
+- **`docs/`**: Removed the in-repo tree, including `docs/COOKBOOK.md`. The cookbook lives only in the template repository.
 
 ## [1.1.6] - 2026-09-12
 

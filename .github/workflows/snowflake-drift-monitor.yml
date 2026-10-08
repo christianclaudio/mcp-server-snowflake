@@ -36,13 +36,17 @@ jobs:
       - name: Run Drift Check
         id: drift-check
         run: |
+          # Capture the exit code explicitly: under the default `bash -e` a failing
+          # command would end the step before DRIFT_STATUS is written.
+          set +e
           uv run python scripts/check_snowflake_drift.py > drift_results.txt 2>&1
-          echo "DRIFT_STATUS=$?" >> $GITHUB_ENV
-        continue-on-error: true
+          status=$?
+          set -e
+          echo "DRIFT_STATUS=${status}" >> "$GITHUB_ENV"
 
       - name: Create Issue on Failure
         if: env.DRIFT_STATUS != '0'
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
         with:
           script: |
             const fs = require('fs');
@@ -70,5 +74,5 @@ jobs:
               repo: context.repo.repo,
               title: issueTitle,
               body: issueBody,
-              labels: ['maintenance', 'drift']
+              labels: ['maintenance', 'drift', 'forge-todo']
             });
