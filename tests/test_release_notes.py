@@ -146,6 +146,33 @@ def test_non_footers_are_ignored(msg: str) -> None:
     assert extract_breaking_footers(msg) == ()
 
 
+def test_nested_longer_outer_fence_keeps_breaking_quoted() -> None:
+    """Four-backtick outer wrapping a three-backtick block must not flip early."""
+    msg = "docs: x\n\n````outer\n```\nBREAKING CHANGE: quoted inside nested fences\n```\n````\n"
+    assert extract_breaking_footers(msg) == ()
+
+
+def test_mismatched_fence_character_does_not_close() -> None:
+    """A tilde close cannot end a backtick fence (and vice versa)."""
+    msg = (
+        "docs: x\n\n"
+        "```\n"
+        "BREAKING CHANGE: still inside backtick fence\n"
+        "~~~\n"
+        "still fenced\n"
+        "```\n"
+        "\n"
+        "BREAKING CHANGE: the real footer.\n"
+    )
+    assert extract_breaking_footers(msg) == ("BREAKING CHANGE: the real footer.",)
+
+
+def test_shorter_closing_fence_does_not_close() -> None:
+    """Closing run must be at least as long as the opening run."""
+    msg = "docs: x\n\n`````\nBREAKING CHANGE: still inside five-backtick fence\n```\nstill fenced\n`````\n"
+    assert extract_breaking_footers(msg) == ()
+
+
 def test_trailer_keys_are_case_insensitive() -> None:
     msg = "feat!: x\n\nBREAKING CHANGE: a\nco-authored-by: B <b@example.com>\ntail"
     assert extract_breaking_footers(msg) == ("BREAKING CHANGE: a",)
@@ -231,6 +258,50 @@ def test_explicit_from_and_non_version_tags(repo: Repo) -> None:
     notes = build_notes(from_ref="release-candidate")
     assert "feat: b" in notes
     assert "feat: a" not in notes
+
+
+def test_previous_tag_skips_non_exact_semver_tags(repo: Repo) -> None:
+    repo.commit("chore: init")
+    repo.tag("v1.2.2")
+    fix_a = repo.commit("fix: a")
+    repo.tag("v1.2.3.post1")
+    fix_b = repo.commit("fix: b")
+    repo.tag("v1.2.4-rc1")
+    repo.commit("fix: c")
+    assert previous_tag("HEAD") == "v1.2.2"
+    notes = build_notes()
+    assert f"- fix: a (`{fix_a[:7]}`)" in notes
+    assert f"- fix: b (`{fix_b[:7]}`)" in notes
+    assert "chore: init" not in notes
+    assert notes.endswith("Range: `v1.2.2..HEAD`\n")
+
+
+def test_exact_tag_wins_over_a_suffixed_tag_on_the_same_commit(repo: Repo) -> None:
+    repo.commit("chore: init")
+    repo.tag("v1.2.3")
+    repo.tag("v1.2.3.post1")
+    repo.commit("fix: a")
+    assert previous_tag("HEAD") == "v1.2.3"
+
+
+def test_only_non_exact_tags_means_no_previous_tag(repo: Repo) -> None:
+    repo.commit("chore: init")
+    repo.tag("v1.2.3.post1")
+    repo.commit("fix: a")
+    assert previous_tag("HEAD") is None
+
+
+def test_explicit_from_non_exact_tag_is_honored(repo: Repo) -> None:
+    """``--from`` is the maintainer's choice, so a non-exact tag is used as given."""
+    repo.commit("chore: init")
+    repo.tag("v1.2.2")
+    repo.commit("fix: a")
+    repo.tag("v1.2.3.post1")
+    fix_b = repo.commit("fix: b")
+    notes = build_notes(from_ref="v1.2.3.post1")
+    assert f"- fix: b (`{fix_b[:7]}`)" in notes
+    assert "fix: a" not in notes
+    assert notes.endswith("Range: `v1.2.3.post1..HEAD`\n")
 
 
 def test_root_commit_as_to(repo: Repo) -> None:

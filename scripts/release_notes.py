@@ -5,9 +5,13 @@ Usage::
 
     python scripts/release_notes.py [--to REF] [--from TAG]
 
-``--to`` defaults to ``HEAD``. ``--from`` defaults to the newest ``v*`` tag reachable
-from the first parent of ``--to``, so ``--to v1.3.1`` never picks ``v1.3.1`` itself.
-With no earlier tag the notes cover all history up to ``--to``. Markdown goes to
+``--to`` defaults to ``HEAD``. ``--from`` defaults to the newest exact ``vX.Y.Z`` tag
+reachable from the first parent of ``--to``, so ``--to v1.3.1`` never picks ``v1.3.1``
+itself. Tags that only start like a version (``v1.2.3.post1``, ``v2.0.0-rc1``) are
+skipped and the search keeps walking back to the newest exact ``vX.Y.Z`` tag. An
+explicit ``--from`` is honored as given, even when it is not an exact ``vX.Y.Z`` tag,
+because the maintainer chose it. With no earlier tag the notes cover all history up to
+``--to``. Markdown goes to
 stdout; errors go to stderr with exit status 1. A shallow clone is refused, because
 missing history and tags would silently change the range: check out with
 ``fetch-depth: 0``.
@@ -29,8 +33,10 @@ Sections:
   (``<!-- This is an auto-generated comment: release notes by coderabbit.ai -->``)
   ends the message: it and everything after it are ignored, so a footer just before
   it is still the final paragraph. Lines inside fenced code blocks are never tokens,
-  headings or the marker. A ``type!:`` commit with no footer is listed with a warning,
-  because its migration steps are missing.
+  headings or the marker; a fence closes only on a matching character whose
+  run length is at least the opening length (nested or mixed fences stay closed).
+  A ``type!:`` commit with no footer is listed with a warning, because its
+  migration steps are missing.
 * **Changes**: every commit subject (the squash title) with its short SHA, newest
   first, following first parents only.
 
@@ -48,6 +54,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 TAG_GLOB = "v[0-9]*"
+# ``TAG_GLOB`` is only a prefilter for ``git describe``: it also matches ``v1.2.3.post1``.
+# The default range starts at a tag that matches this exactly.
+SEMVER_TAG = re.compile(r"v[0-9]+\.[0-9]+\.[0-9]+")
 SHORT_SHA_LEN = 7
 
 _FIELD_SEP = "\x1f"
@@ -55,7 +64,10 @@ _RECORD_SEP = "\x1e"
 
 BREAKING_TOKEN = re.compile(r"^BREAKING[ -]CHANGE:(?:[ \t]|$)")
 BANG_SUBJECT = re.compile(r"^[A-Za-z]+(?:\([^)\n]*\))?!:")
-FENCE = re.compile(r"^[ ]{0,3}(?:```|~~~)")
+# Opening/closing fence line (CommonMark-style). Closing must use the same
+# character with length >= the opening run; a shorter or different-character
+# fence inside stays content and must not flip ``in_fence``.
+FENCE_LINE = re.compile(r"^([ ]{0,3})(`{3,}|~{3,})(.*)$")
 HEADING = re.compile(r"^[ ]{0,3}#{1,6}(?:[ \t]|$)")
 # CodeRabbit appends its walkthrough to the PR body (and so to the squash message) after
 # this line. Everything from the marker on is generated text, never a footer.
@@ -125,24 +137,38 @@ def extract_breaking_footers(message: str) -> tuple[str, ...]:
     the token means the token was body text, so that block is discarded. The CodeRabbit
     marker line (``CODERABBIT_MARKER``) outside a fence is a hard end of the message: it
     and everything after it are ignored. Quoted inside a fenced code block it is text.
+    Fenced blocks close only on a matching fence character whose run length is at least
+    the opening length (CommonMark-style), so nested or mixed fences cannot flip the
+    fence state early and expose a quoted ``BREAKING CHANGE:`` as a real footer.
     """
     lines = normalize_newlines(message).split("\n")[1:]
     footers: list[list[str]] = []
     current: list[str] | None = None
-    in_fence = False
+    fence_char: str | None = None
+    fence_len = 0
     for line in lines:
-        if FENCE.match(line):
-            in_fence = not in_fence
-        elif not in_fence and line.strip() == CODERABBIT_MARKER:
+        fence = FENCE_LINE.match(line)
+        if fence is not None:
+            marker = fence.group(2)
+            char, length = marker[0], len(marker)
+            info = fence.group(3)
+            if fence_char is None:
+                # Opening fence: info string is allowed (e.g. ```text).
+                fence_char, fence_len = char, length
+            elif char == fence_char and length >= fence_len and info.strip() == "":
+                # Closing fence: same character, length >= opening, no info string.
+                fence_char, fence_len = None, 0
+            # Else: nested/shorter/mismatched fence — stay inside the open block.
+        elif fence_char is None and line.strip() == CODERABBIT_MARKER:
             break
-        elif not in_fence and BREAKING_TOKEN.match(line):
+        elif fence_char is None and BREAKING_TOKEN.match(line):
             current = [line]
             footers.append(current)
             continue
-        elif not in_fence and TRAILER_LINE.match(line):
+        elif fence_char is None and TRAILER_LINE.match(line):
             current = None
             continue
-        elif not in_fence and HEADING.match(line):
+        elif fence_char is None and HEADING.match(line):
             # A Markdown section after the token: it was body text, not the final footer.
             if current is not None:
                 footers.remove(current)
@@ -178,18 +204,27 @@ def resolve_commit(ref: str, repo: Path | None = None) -> str:
 
 
 def previous_tag(to: str, repo: Path | None = None) -> str | None:
-    """Newest ``v*`` tag reachable from the first parent of ``to``; None if there is none."""
+    """Newest exact ``vX.Y.Z`` tag reachable from the first parent of ``to``, or None.
+
+    ``git describe`` finds the nearest ``TAG_GLOB`` tag; one that is not an exact
+    ``vX.Y.Z`` (``SEMVER_TAG``), such as ``v1.2.3.post1``, is excluded and the search
+    repeats, so it keeps walking back to the newest exact release tag.
+    """
     parents = _git(["rev-list", "--parents", "-n", "1", resolve_commit(to, repo)], repo).split()
     if len(parents) < 2:
         return None
-    try:
-        tag = _git(
-            ["describe", "--tags", "--abbrev=0", "--first-parent", "--match", TAG_GLOB, parents[1]],
-            repo,
-        )
-    except ReleaseNotesError:
-        return None
-    return tag.strip()
+    excluded: list[str] = []
+    while True:
+        args = ["describe", "--tags", "--abbrev=0", "--first-parent", "--match", TAG_GLOB]
+        for skipped in excluded:
+            args += ["--exclude", skipped]
+        try:
+            tag = _git([*args, parents[1]], repo).strip()
+        except ReleaseNotesError:
+            return None
+        if SEMVER_TAG.fullmatch(tag):
+            return tag
+        excluded.append(tag)
 
 
 def list_commits(from_ref: str | None, to: str, repo: Path | None = None) -> list[Commit]:
@@ -263,14 +298,15 @@ def build_notes(to: str = "HEAD", from_ref: str | None = None, repo: Path | None
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Print GitHub Release notes (Markdown) for the commits since the previous v* tag.",
+        description="Print GitHub Release notes (Markdown) for the commits since the previous vX.Y.Z tag.",
     )
     parser.add_argument("--to", default="HEAD", help="last commit or tag to include (HEAD)")
     parser.add_argument(
         "--from",
         dest="from_ref",
         default=None,
-        help="exclusive start tag (default: previous v* tag reachable from --to)",
+        help="exclusive start ref, honored as given (default: newest exact vX.Y.Z tag "
+        "reachable from the first parent of --to)",
     )
     args = parser.parse_args(argv)
     try:
