@@ -57,17 +57,28 @@ jobs:
               console.error(err);
             }
             
-            const issueTitle = "⚠️ Alert: Snowflake API / SDK Drift Detected";
-            const issueBody = `### Snowflake Drift Monitor Alert
-            
-            The scheduled weekly Snowflake SDK & API drift scan detected new SDK releases or schema contract updates.
-            
-            #### Scan Output:
-            \`\`\`text
-            ${driftOutput}
-            \`\`\`
-            
-            _Automated check run by GitHub Actions._`;
+            const status = process.env.DRIFT_STATUS;
+            const drift = status === '1';
+            const issueTitle = drift
+              ? "Snowflake drift: registered tool count no longer matches the 140-tool contract"
+              : `Snowflake drift monitor failed (exit ${status})`;
+            const summary = drift
+              ? "The scheduled weekly drift scan found that the server no longer registers exactly 140 tools. The latest Snowflake SDK versions on PyPI are listed for reference only; they never fail the check."
+              : "The scheduled weekly drift scan could not finish (install or script error), so there is no drift result.";
+            const issueBody = [
+              "### Snowflake Drift Monitor",
+              "",
+              summary,
+              "",
+              "#### Scan Output",
+              "```text",
+              driftOutput,
+              "```",
+              "",
+              drift
+                ? "Please inspect the output, then fix the tool registration under `src/snowflake_mcp/` or update the contract in `scripts/check_snowflake_drift.py` and the contract tests together."
+                : "Fix the failing step shown in the output, then re-run the workflow.",
+            ].join("\n");
 
             await github.rest.issues.create({
               owner: context.repo.owner,
