@@ -58,7 +58,9 @@ jobs:
             }
             
             const status = process.env.DRIFT_STATUS;
-            const drift = status === '1';
+            // An uncaught exception also exits 1, so drift needs the line the script
+            // prints only right before `return 1`.
+            const drift = status === '1' && driftOutput.includes('❌ Drift Error');
             const issueTitle = drift
               ? "Snowflake drift: registered tool count no longer matches the 140-tool contract"
               : `Snowflake drift monitor failed (exit ${status})`;
