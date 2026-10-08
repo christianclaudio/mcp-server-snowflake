@@ -20,11 +20,10 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install build tooling & dependencies
+      - name: Install build tooling
         run: |
           python -m pip install --upgrade pip
           pip install build twine cyclonedx-bom
-          pip install .
 
       - name: Build
         run: python -m build
@@ -49,7 +48,12 @@ jobs:
         run: twine check dist/*
 
       - name: Generate CycloneDX SBOM
-        run: cyclonedx-py environment -o sbom.cdx.json
+        run: |
+          # Describe only what ships: a clean venv with the built wheel and its
+          # runtime dependencies (no pip, no build tooling from the runner).
+          python -m venv --without-pip "$RUNNER_TEMP/sbom-env"
+          python -m pip --python "$RUNNER_TEMP/sbom-env/bin/python" install dist/*.whl
+          cyclonedx-py environment "$RUNNER_TEMP/sbom-env" -o sbom.cdx.json
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         with:
