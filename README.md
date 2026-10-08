@@ -310,7 +310,7 @@ uv run mypy src/
 # 3. Unit and mocked test suite
 uv run pytest
 
-# 4. AST Tool contract verification (140 tools)
+# 4. Tool contract verification (builds the server; 140 tools)
 uv run python scripts/check_tool_contract.py
 
 # 5. MCP protocol conformance suite (Spec 2026-07-28)

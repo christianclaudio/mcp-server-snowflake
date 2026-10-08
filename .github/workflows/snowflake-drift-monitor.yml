@@ -65,8 +65,8 @@ jobs:
               ? "Snowflake drift: registered tool count no longer matches the 140-tool contract"
               : `Snowflake drift monitor failed (exit ${status})`;
             const summary = drift
-              ? "The scheduled weekly drift scan found that the server no longer registers exactly 140 tools. The latest Snowflake SDK versions on PyPI are listed for reference only; they never fail the check."
-              : "The scheduled weekly drift scan could not finish (install or script error), so there is no drift result.";
+              ? "The drift scan found that the server no longer registers exactly 140 tools. The latest Snowflake SDK versions on PyPI are listed for reference only; they never fail the check."
+              : `The drift scan could not finish: the drift script exited ${status} before it reported a tool count, so there is no drift result.`;
             const issueBody = [
               "### Snowflake Drift Monitor",
               "",
@@ -78,7 +78,7 @@ jobs:
               "```",
               "",
               drift
-                ? "Please inspect the output, then fix the tool registration under `src/snowflake_mcp/` or update the contract in `scripts/check_snowflake_drift.py` and the contract tests together."
+                ? "Inspect the output. If the tool count changed by mistake, fix the registration under `src/snowflake_mcp/`. If the change is intended, update the expected count in `scripts/check_tool_contract.py`, `scripts/check_snowflake_drift.py` and the `contract` job name in `.github/workflows/ci.yml` together."
                 : "Fix the failing step shown in the output, then re-run the workflow.",
             ].join("\n");
 

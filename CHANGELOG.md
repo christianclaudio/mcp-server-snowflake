@@ -5,7 +5,7 @@
 
 All notable changes through 1.2.0 are documented in this file. The `2.1.0`, `2.0.1` and `2.0.0` entries were pending at the freeze: none of them was tagged or published, so all three ship in the first release after 1.2.0, whose version comes from its tag.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and release tags follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
@@ -33,7 +33,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ### Changed
 - **Server version**: `FastMCP` is constructed with `version=__version__`. SSE transport uses the same host-origin protection as Streamable HTTP.
-- **Package version**: 2.1.0.
+- **Package version**: pyproject.toml read 2.1.0 at the time; that version was never tagged or published.
 - **Conformance baseline**: `tools-call-simple-text` and `tools-call-error` are no longer expected failures.
 
 ## [2.0.1] - 2026-10-05
