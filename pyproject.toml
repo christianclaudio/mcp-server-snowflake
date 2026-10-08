@@ -1,10 +1,22 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling>=1.32.4,<2", "uv-dynamic-versioning>=0.14.1,<0.15"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "uv-dynamic-versioning"
+
+[tool.uv-dynamic-versioning]
+vcs = "git"
+style = "pep440"
+bump = true
+fallback-version = "0.0.0"
+
+[tool.uv]
+cache-keys = [{ file = "pyproject.toml" }, { git = { commit = true, tags = true } }]
 
 [project]
 name = "mcp-server-snowflake"
-version = "2.1.0"
+dynamic = ["version"]
 description = "Enterprise Model Context Protocol (MCP) server for Snowflake data cloud and Cortex AI."
 readme = "README.md"
 license = "Apache-2.0"
@@ -57,7 +69,7 @@ Homepage = "https://github.com/christianclaudio/mcp-server-snowflake"
 Repository = "https://github.com/christianclaudio/mcp-server-snowflake"
 Issues = "https://github.com/christianclaudio/mcp-server-snowflake/issues"
 Documentation = "https://github.com/christianclaudio/mcp-server-snowflake#readme"
-Changelog = "https://github.com/christianclaudio/mcp-server-snowflake/blob/main/CHANGELOG.md"
+Changelog = "https://github.com/christianclaudio/mcp-server-snowflake/releases"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/snowflake_mcp"]

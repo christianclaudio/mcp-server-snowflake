@@ -16,6 +16,9 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Install uv
         uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
@@ -34,13 +37,17 @@ jobs:
       - name: Run Drift Check
         id: drift-check
         run: |
+          # Capture the exit code explicitly: under the default `bash -e` a failing
+          # command would end the step before DRIFT_STATUS is written.
+          set +e
           uv run python scripts/check_snowflake_drift.py > drift_results.txt 2>&1
-          echo "DRIFT_STATUS=$?" >> $GITHUB_ENV
-        continue-on-error: true
+          status=$?
+          set -e
+          echo "DRIFT_STATUS=${status}" >> "$GITHUB_ENV"
 
       - name: Create Issue on Failure
         if: env.DRIFT_STATUS != '0'
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
         with:
           script: |
             const fs = require('fs');
@@ -51,22 +58,35 @@ jobs:
               console.error(err);
             }
             
-            const issueTitle = "⚠️ Alert: Snowflake API / SDK Drift Detected";
-            const issueBody = `### Snowflake Drift Monitor Alert
-            
-            The scheduled weekly Snowflake SDK & API drift scan detected new SDK releases or schema contract updates.
-            
-            #### Scan Output:
-            \`\`\`text
-            ${driftOutput}
-            \`\`\`
-            
-            _Automated check run by GitHub Actions._`;
+            const status = process.env.DRIFT_STATUS;
+            // An uncaught exception also exits 1, so drift needs the line the script
+            // prints only right before `return 1`.
+            const drift = status === '1' && driftOutput.includes('❌ Drift Error');
+            const issueTitle = drift
+              ? "Snowflake drift: registered tool count no longer matches the 140-tool contract"
+              : `Snowflake drift monitor failed (exit ${status})`;
+            const summary = drift
+              ? "The drift scan found that the server no longer registers exactly 140 tools. The latest Snowflake SDK versions on PyPI are listed for reference only; they never fail the check."
+              : `The drift scan could not finish: the drift script exited ${status} before it reported a tool count, so there is no drift result.`;
+            const issueBody = [
+              "### Snowflake Drift Monitor",
+              "",
+              summary,
+              "",
+              "#### Scan Output",
+              "```text",
+              driftOutput,
+              "```",
+              "",
+              drift
+                ? "Inspect the output. If the tool count changed by mistake, fix the registration under `src/snowflake_mcp/`. If the change is intended, update the expected count in `scripts/check_tool_contract.py`, `scripts/check_snowflake_drift.py` and the `contract` job name in `.github/workflows/ci.yml` together."
+                : "Fix the failing step shown in the output, then re-run the workflow.",
+            ].join("\n");
 
             await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
               title: issueTitle,
               body: issueBody,
-              labels: ['maintenance', 'drift']
+              labels: ['maintenance', 'drift', 'forge-todo']
             });

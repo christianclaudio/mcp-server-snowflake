@@ -1,13 +1,17 @@
 # 📜 Changelog
 
-All notable changes to this project will be documented in this file.
+> **This file is frozen as of 1.2.0. Release notes now live on [GitHub Releases](https://github.com/christianclaudio/mcp-server-snowflake/releases).**
+> Each release body is generated from the squash commits since the previous tag by `scripts/release_notes.py`, including every `BREAKING CHANGE:` footer and its migration steps. Do not add entries here; the history below is kept for reference.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+All notable changes through 1.2.0 are documented in this file. The `2.1.0`, `2.0.1` and `2.0.0` entries were pending at the freeze: none of them was tagged or published, so all three ship in the first release after 1.2.0, whose version comes from its tag.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
 ## [2.1.0] - 2026-10-06
+
+*Frozen: never tagged or published. This entry was pending at the freeze and ships in the first GitHub Release after 1.2.0; later changes are listed on [GitHub Releases](https://github.com/christianclaudio/mcp-server-snowflake/releases).*
 
 ### Breaking changes
 - **Confirm gates**: `confirm=True` is now required on `queries_execute_dml`, `queries_cancel_query`, `queries_rollback_transaction`, `tasks_execute_task`, and `recipes_warehouse_scale_and_execute`. These tools previously ran without confirmation.
@@ -29,15 +33,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **Server version**: `FastMCP` is constructed with `version=__version__`. SSE transport uses the same host-origin protection as Streamable HTTP.
-- **Package version**: 2.1.0.
+- **Package version**: pyproject.toml read 2.1.0 at the time; that version was never tagged or published.
 - **Conformance baseline**: `tools-call-simple-text` and `tools-call-error` are no longer expected failures.
 
 ## [2.0.1] - 2026-10-05
+
+*Frozen: never tagged or published. This entry was pending at the freeze and ships in the first GitHub Release after 1.2.0; later changes are listed on [GitHub Releases](https://github.com/christianclaudio/mcp-server-snowflake/releases).*
 
 ### Security
 - **FastMCP floor**: `pyproject.toml` and `fastmcp.json` require `fastmcp>=4.0.11`. `uv.lock` resolves FastMCP 4.0.11.
 
 ## [2.0.0] - 2026-10-03
+
+*Frozen: never tagged or published. This entry was pending at the freeze and ships in the first GitHub Release after 1.2.0; later changes are listed on [GitHub Releases](https://github.com/christianclaudio/mcp-server-snowflake/releases).*
 
 ### Breaking
 - **Wire names**: Tools no longer use a product-wide `snowflake_` prefix. Each of the 19 domain modules is mounted with FastMCP `namespace=<domain>`, so clients see `{domain}_{name}` on one flat `tools/list`. Local tool names stay bare. Example: `snowflake_query` is now `queries_query`, and `snowflake_list_databases` is now `databases_list_databases`. Cortex tools drop the repeated domain token so the mount does not double-prefix them (`snowflake_cortex_complete` is `cortex_complete`). Package `snowflake_mcp` and server identity `snowflake` / `mcp-server-snowflake` are unchanged. This catalog has no prompts or resource URIs. This release is not tagged and is not published.
@@ -53,7 +61,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Claim scrub**: Changelog tool names match registered `@mcp.tool` names. `AGENTS.md` no longer documents a phantom `errors.py`, a connection-pool API, a dynamic User-Agent header, or a stale `mcp>=2.1.1` floor. The drift-monitor docstring now states the 140-tool contract.
 
 ### Removed
-- **`docs/`**: Removed the in-repo tree, including `docs/COOKBOOK.md`. The cookbook lives only on mcp-server-template.
+- **`docs/`**: Removed the in-repo tree, including `docs/COOKBOOK.md`. The cookbook lives only in the template repository.
 
 ## [1.1.6] - 2026-09-12
 
