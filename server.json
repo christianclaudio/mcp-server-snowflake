@@ -7,12 +7,12 @@
     "url": "https://github.com/christianclaudio/mcp-server-snowflake",
     "source": "github"
   },
-  "version": "2.1.0",
+  "version": "0.0.0",
   "packages": [
     {
       "registryType": "oci",
-      "identifier": "ghcr.io/christianclaudio/mcp-server-snowflake:2.1.0",
-      "version": "2.1.0",
+      "identifier": "ghcr.io/christianclaudio/mcp-server-snowflake:0.0.0",
+      "version": "0.0.0",
       "transport": {
         "type": "stdio"
       },
