@@ -1,4 +1,4 @@
-<!-- mcp-name: io.github.christianclaudio/mcp-server-snowflake -->
+<!-- mcp-name: io.github.christianclaudio/snowflake -->
 # ❄️ mcp-server-snowflake
 
 [![CI](https://github.com/christianclaudio/mcp-server-snowflake/actions/workflows/ci.yml/badge.svg)](https://github.com/christianclaudio/mcp-server-snowflake/actions/workflows/ci.yml)
@@ -316,8 +316,8 @@ uv run python scripts/check_tool_contract.py
 # 5. MCP protocol conformance suite (Spec 2026-07-28)
 ./scripts/check_conformance.sh
 
-# 6. Conventional commit SemVer bump determination
-uv run python scripts/determine_bump.py
+# 6. Release notes preview since the last tag (needs full history and tags)
+python3 scripts/release_notes.py
 ```
 
 ---
