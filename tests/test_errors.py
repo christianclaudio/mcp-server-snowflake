@@ -448,10 +448,12 @@ async def test_connector_error_escaping_a_handler_leaves_no_secret_on_the_chain(
 ) -> None:
     """A connection.py error raised from a token-bearing connector error, end to end.
 
-    The shipped handlers catch connector errors and return an error-shaped result, so
-    the probe tool lets one escape. The text of the error that reaches
-    ErrorHandlingMiddleware is already redacted, so the middleware passes it through
-    unchanged; only its ``finally`` drops the connector error from ``__context__``.
+    No connector error escapes a shipped handler: all 140 tools catch every client call
+    and none re-raise. A few fall back to another query and return success or partial;
+    the rest return an error-shaped result. So the probe tool lets one escape. The text
+    of the error that reaches ErrorHandlingMiddleware is already redacted, so the
+    middleware passes it through unchanged; only its ``finally`` drops the connector
+    error from ``__context__``.
     """
     monkeypatch.delenv("SNOWFLAKE_MCP_READONLY", raising=False)
     boundary: list[BaseException] = []

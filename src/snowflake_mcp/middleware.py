@@ -264,9 +264,11 @@ class ErrorHandlingMiddleware(Middleware):
         # connection.py path (``raise mapped from exc``; ``SafetyViolationError(...)
         # from exc``): that text is already redacted, so when such an error escapes
         # a handler it passes through unchanged with the token-bearing connector
-        # error on its __context__ chain. The shipped handlers catch these and
-        # return error-shaped results instead. FastMCP's own exception log and
-        # tools/call span run before this middleware.
+        # error on its __context__ chain. No connector error escapes a shipped
+        # handler: all 140 tools catch every client call and none re-raise. A few
+        # fall back to another query and return success or partial; the rest
+        # return error-shaped results. FastMCP's own exception log and tools/call
+        # span run before this middleware.
         try:
             raise failure from None
         finally:
