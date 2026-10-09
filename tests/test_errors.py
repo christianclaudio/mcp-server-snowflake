@@ -380,6 +380,56 @@ def test_redact_secrets_more_token_forms(raw: str, expected: str) -> None:
     assert redact_secrets(raw) == expected
 
 
+# The house-standard key pattern, found by its shape rather than its key list, so a later
+# edit to the list (or a left boundary on it) still reaches the tests below.
+_TOKEN_KEY_INDEX = next(
+    i for i, p in enumerate(_SECRET_PATTERNS) if ")[_-]?token(?:" in p.pattern and "%3D" not in p.pattern
+)
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "session_token=SECRET",
+        "oauth_token=SECRET",
+        "session-token: SECRET",
+        "x_oauth_token=SECRET",
+    ],
+)
+def test_token_key_pattern_redacts_session_and_oauth_tokens(raw: str) -> None:
+    """The house-standard key pattern alone covers session_token and oauth_token.
+
+    ``oauth_token`` matches through its ``auth_token`` suffix: the key pattern has no left
+    boundary. Dropping ``session`` or ``auth`` from the key list, or adding a left
+    boundary, fails this test even though the bare ``token`` alternative of the
+    key=value pattern still redacts these bare forms.
+    """
+    redacted = _apply(_TOKEN_KEY_INDEX, raw)
+    assert "SECRET" not in redacted
+    assert redacted.endswith("[REDACTED]")
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("session_token=SECRET", "session_token=[REDACTED]"),
+        ("oauth_token=SECRET", "oauth_token=[REDACTED]"),
+        ('{"session_token": "SECRET"}', '{"session_token": "[REDACTED]"}'),
+        ('{"oauth_token": "SECRET"}', '{"oauth_token": "[REDACTED]"}'),
+        ("{'oauth_token': 'SECRET'}", "{'oauth_token': '[REDACTED]'}"),
+        ("cb=x%3Fsession_token%3DSECRET%26y%3D1", "cb=x%3Fsession_token%3D[REDACTED]%26y%3D1"),
+        ("cb=x%3Foauth_token%3DSECRET%26y%3D1", "cb=x%3Foauth_token%3D[REDACTED]%26y%3D1"),
+    ],
+)
+def test_redact_secrets_session_and_oauth_tokens(raw: str, expected: str) -> None:
+    """session_token and oauth_token are redacted bare, quoted and URL-encoded.
+
+    The quoted and encoded forms rely on the house-standard patterns only, so narrowing
+    their key list (or the bare ``token`` alternative) is caught here.
+    """
+    assert redact_secrets(raw) == expected
+
+
 def test_redact_secrets_leaves_token_words_alone() -> None:
     """Ordinary words, counters and JSON pagination keys that contain "token" are not redacted.
 
