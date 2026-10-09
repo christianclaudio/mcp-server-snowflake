@@ -50,7 +50,8 @@ _SECRET_PATTERNS: list[re.Pattern[str]] = [
     ),
     # House standard token patterns (copied verbatim, applied in this order). They run
     # after the bare key=value pattern above and before the authorization pattern below,
-    # so "Authorization: Token <value>" redacts the value, not the scheme word.
+    # so "Authorization: Token <value>" redacts the value. The generic authorization
+    # pattern then replaces the scheme word too: "Authorization: [REDACTED] [REDACTED]".
     # api/access/refresh/auth/id/session tokens as key=value, key: value, an
     # ``X-Auth-Token:`` header and JSON ("key": "value", also backslash-escaped inside an
     # already-serialized JSON string).
