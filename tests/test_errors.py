@@ -450,7 +450,9 @@ async def test_connector_error_escaping_a_handler_leaves_no_secret_on_the_chain(
 
     No connector error escapes a shipped handler: all 140 tools catch every client call
     and none re-raise. A few fall back to another query and return success or partial;
-    the rest return an error-shaped result. So the probe tool lets one escape. The text
+    the rest return error-shaped results, except that
+    ``recipes_warehouse_scale_and_execute`` reports a failed size restore as
+    ``restore_error`` on a success result. So the probe tool lets one escape. The text
     of the error that reaches ErrorHandlingMiddleware is already redacted, so the
     middleware passes it through unchanged; only its ``finally`` drops the connector
     error from ``__context__``.

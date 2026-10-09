@@ -267,8 +267,10 @@ class ErrorHandlingMiddleware(Middleware):
         # error on its __context__ chain. No connector error escapes a shipped
         # handler: all 140 tools catch every client call and none re-raise. A few
         # fall back to another query and return success or partial; the rest
-        # return error-shaped results. FastMCP's own exception log and tools/call
-        # span run before this middleware.
+        # return error-shaped results, except that
+        # ``recipes_warehouse_scale_and_execute`` reports a failed size restore as
+        # ``restore_error`` on a success result. FastMCP's own exception log and
+        # tools/call span run before this middleware.
         try:
             raise failure from None
         finally:
