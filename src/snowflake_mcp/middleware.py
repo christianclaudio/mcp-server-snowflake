@@ -256,7 +256,8 @@ class ErrorHandlingMiddleware(Middleware):
             if payload is None:
                 return redacted
             failure = ToolError(json.dumps(redact_error_payload(payload)))
-        # Break the exception chain so an unredacted cause or context never
-        # reaches tracebacks or OpenTelemetry exception events.
+        # Break the chain: exceptions leaving ErrorHandlingMiddleware carry no
+        # unredacted cause or context. FastMCP's own exception log and tools/call
+        # span run before this middleware.
         failure.__context__ = None
         raise failure from None
