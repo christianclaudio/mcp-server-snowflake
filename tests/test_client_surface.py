@@ -38,12 +38,13 @@ Every profile must list at least one tool. Each tool's ``inputSchema`` (and
 ``outputSchema`` when present) must be an object schema that is itself valid JSON Schema
 (draft 2020-12); every failure is collected and reported in one message.
 
-On ``full`` the test also builds the server with Tool Search on and, when this FastMCP
-build exports Code Mode, with Code Mode on. Each run lists the discovery tools, checks
-their schemas, and fetches every flat ``full`` tool through the mode's own discovery tool
-(``search_tools`` by exact name; Code Mode ``search`` and ``get_schema``), so a tool that the mode
-drops, or a schema it breaks, fails the run. These runs never call a catalog tool
-(``call_tool`` / ``execute``), so they stay offline too.
+On ``full`` the test also builds the server with Tool Search on and with Code Mode on.
+The FastMCP version this repo requires ships Code Mode, so that run has no import skip
+and fails if Code Mode is missing. Each run lists the discovery tools, checks their
+schemas, and fetches every flat ``full`` tool through the mode's own discovery tool
+(``search_tools`` by exact name; Code Mode ``search`` and ``get_schema``), so a tool
+that the mode drops, or a schema it breaks, fails the run. These runs never call a
+catalog tool (``call_tool`` / ``execute``), so they stay offline too.
 
 A server with no resources, templates or prompts passes those checks trivially.
 """
@@ -229,7 +230,6 @@ async def test_full_tool_search_reaches_every_tool(surface_settings: SnowflakeCo
 
 async def test_full_code_mode_reaches_every_tool(surface_settings: SnowflakeConfig) -> None:
     """With Code Mode on ``full``, ``search`` and ``get_schema`` reach every flat tool."""
-    pytest.importorskip("fastmcp.experimental.transforms.code_mode")
     expected = await _flat_full_tool_names(surface_settings)
     server = create_server(
         client=SnowflakeClient(config=surface_settings),
