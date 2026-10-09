@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
 from fastmcp import FastMCP
+from fastmcp.exceptions import ToolError
 
 from snowflake_mcp.connection import (
     SnowflakeClient,
@@ -14,7 +16,7 @@ from snowflake_mcp.connection import (
     quote_literal,
     read_only_enabled,
 )
-from snowflake_mcp.errors import SafetyViolationError
+from snowflake_mcp.errors import SafetyViolationError, redact_error_payload
 from snowflake_mcp.tools.tables import qualify_table_target
 from snowflake_mcp.tools.warehouses import VALID_WAREHOUSE_SIZES
 
@@ -180,11 +182,22 @@ def register_recipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
                 "restored_initial_size": restored,
                 "query_result": query_res,
             }
-            if restore_error:
-                res["restore_error"] = restore_error
-            return res
         except Exception as e:
             return {"status": "error", "error": str(e)}
+        if restore_error is None:
+            return res
+        # The query ran, but the warehouse was left at the scaled-up size: a failed tool call
+        # (MCP tools error handling: execution errors are results with isError: true).
+        failure = {
+            **res,
+            "status": "error",
+            "error": (
+                f"Query completed, but restoring warehouse '{warehouse_name}' to size "
+                f"'{initial_size}' failed; it is still at '{norm_size}'."
+            ),
+            "restore_error": restore_error,
+        }
+        raise ToolError(json.dumps(redact_error_payload(failure), default=str))
 
     @mcp.tool(
         name="clone_table_recipe",

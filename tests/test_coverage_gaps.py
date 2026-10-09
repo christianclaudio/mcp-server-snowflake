@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import runpy
 import sys
 from datetime import datetime
@@ -10,6 +11,8 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from fastmcp import Client
+from fastmcp.exceptions import ToolError
 
 from snowflake_mcp.cli import main, run_init_wizard
 from snowflake_mcp.config import SnowflakeConfig
@@ -232,7 +235,42 @@ async def test_list_connections_error_and_warehouse_restore(monkeypatch: pytest.
     listed = await tools["governance_list_connections"].fn()
     assert listed["status"] == "error"
 
-    scaled = await tools["recipes_warehouse_scale_and_execute"].fn("WH", "LARGE", "SELECT 1", True, confirm=True)
-    assert scaled["status"] == "success"
-    assert scaled["restored_initial_size"] is False
-    assert "restore failed" in scaled["restore_error"]
+    with pytest.raises(ToolError) as exc_info:
+        await tools["recipes_warehouse_scale_and_execute"].fn("WH", "LARGE", "SELECT 1", True, confirm=True)
+    payload = json.loads(str(exc_info.value))
+    assert payload["status"] == "error"
+    assert payload["restored_initial_size"] is False
+    assert "restore failed" in payload["restore_error"]
+    assert "still at 'LARGE'" in payload["error"]
+    assert payload["query_result"] == {"data": [{"ok": 1}]}
+
+
+@pytest.mark.asyncio
+async def test_warehouse_restore_failure_is_error_result(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A failed size restore reaches the client as isError: true, redacted, with the query result (#35)."""
+    monkeypatch.setenv("SNOWFLAKE_PASSWORD", "hunter2-restore-secret")
+    cfg = SnowflakeConfig(account="acc", user="usr")
+    client = SnowflakeClient(config=cfg)
+
+    def _queries(query: str, **kwargs: object) -> dict[str, object]:
+        if "WAREHOUSE_SIZE = 'SMALL'" in query:
+            raise RuntimeError("restore failed for hunter2-restore-secret")
+        if "SHOW WAREHOUSES" in query:
+            return {"data": [{"size": "SMALL"}]}
+        return {"data": [{"ok": 1}]}
+
+    client.execute_query = MagicMock(side_effect=_queries)  # type: ignore[method-assign]
+    async with Client(create_server(client=client)) as mcp_client:
+        res = await mcp_client.call_tool(
+            "recipes_warehouse_scale_and_execute",
+            {"warehouse_name": "WH", "target_size": "LARGE", "query": "SELECT 1", "confirm": True},
+            raise_on_error=False,
+        )
+    assert res.is_error
+    text = "".join(getattr(c, "text", "") for c in res.content)
+    assert "hunter2-restore-secret" not in text
+    payload = json.loads(text)
+    assert payload["status"] == "error"
+    assert payload["restored_initial_size"] is False
+    assert "[REDACTED]" in payload["restore_error"]
+    assert payload["query_result"] == {"data": [{"ok": 1}]}
