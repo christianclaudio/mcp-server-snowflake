@@ -310,3 +310,61 @@ async def test_warehouse_query_and_restore_failure_is_one_error_result(monkeypat
     assert payload["restore_error"] == "restore failed for [REDACTED]"
     assert "Query on warehouse 'WH' failed." in payload["error"]
     assert "still at 'LARGE'" in payload["error"]
+
+
+async def _call_scale_recipe(client: SnowflakeClient) -> dict[str, object]:
+    async with Client(create_server(client=client)) as mcp_client:
+        res = await mcp_client.call_tool(
+            "recipes_warehouse_scale_and_execute",
+            {"warehouse_name": "WH", "target_size": "LARGE", "query": "SELECT 1", "confirm": True},
+            raise_on_error=False,
+        )
+    assert res.is_error
+    text = "".join(getattr(c, "text", "") for c in res.content)
+    assert "hunter2-step-secret" not in text
+    payload: dict[str, object] = json.loads(text)
+    assert payload["status"] == "error"
+    return payload
+
+
+@pytest.mark.asyncio
+async def test_warehouse_lookup_failure_is_error_result(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A failed warehouse lookup is an isError result; nothing is scaled or run (#35)."""
+    monkeypatch.setenv("SNOWFLAKE_PASSWORD", "hunter2-step-secret")
+    client = SnowflakeClient(config=SnowflakeConfig(account="acc", user="usr"))
+    client.execute_query = MagicMock(  # type: ignore[method-assign]
+        side_effect=RuntimeError("lookup failed for hunter2-step-secret")
+    )
+    payload = await _call_scale_recipe(client)
+    assert payload["lookup_error"] == "lookup failed for [REDACTED]"
+    assert payload["warehouse"] == "WH"
+    assert payload["scaled_to"] is None
+    assert client.execute_query.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_warehouse_scale_up_failure_attempts_restore(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A failed scale-up skips the query, still attempts the restore, and reports both failures (#35)."""
+    monkeypatch.setenv("SNOWFLAKE_PASSWORD", "hunter2-step-secret")
+    client = SnowflakeClient(config=SnowflakeConfig(account="acc", user="usr"))
+    seen: list[str] = []
+
+    def _queries(query: str, **kwargs: object) -> dict[str, object]:
+        seen.append(query)
+        if "SHOW WAREHOUSES" in query:
+            return {"data": [{"size": "SMALL"}]}
+        if "WAREHOUSE_SIZE = 'LARGE'" in query:
+            raise RuntimeError("scale failed for hunter2-step-secret")
+        if "WAREHOUSE_SIZE = 'SMALL'" in query:
+            raise RuntimeError("restore failed for hunter2-step-secret")
+        raise AssertionError(f"unexpected query {query}")
+
+    client.execute_query = MagicMock(side_effect=_queries)  # type: ignore[method-assign]
+    payload = await _call_scale_recipe(client)
+    assert any("WAREHOUSE_SIZE = 'SMALL'" in q for q in seen)  # restore attempted
+    assert "SELECT 1" not in seen  # query skipped
+    assert payload["scale_error"] == "scale failed for [REDACTED]"
+    assert payload["restore_error"] == "restore failed for [REDACTED]"
+    assert payload["query_result"] is None
+    assert payload["restored_initial_size"] is False
+    assert "Scaling warehouse 'WH' to 'LARGE' failed" in str(payload["error"])
