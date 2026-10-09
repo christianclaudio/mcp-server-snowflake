@@ -430,6 +430,38 @@ def test_redact_secrets_session_and_oauth_tokens(raw: str, expected: str) -> Non
     assert redact_secrets(raw) == expected
 
 
+# The bare ``token`` pattern (house-standard entry 9), found by its lookbehind.
+_BARE_TOKEN_INDEX = next(
+    i for i, p in enumerate(_SECRET_PATTERNS) if p.pattern.startswith(r"(?i)((?<![A-Za-z0-9_])token")
+)
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("token: SECRET", "token: [REDACTED]"),
+        ("token:SECRET", "token:[REDACTED]"),
+        ("token = SECRET", "token = [REDACTED]"),
+        ("GET /x?token=SECRET&a=1", "GET /x?token=[REDACTED]&a=1"),
+    ],
+)
+def test_bare_token_pattern_redacts_colon_equals_and_spaces(raw: str, expected: str) -> None:
+    """Entry 9 alone redacts ``token:``, ``token=`` and spaced forms.
+
+    The key=value pattern's bare ``token`` alternative also covers these, so this checks the
+    entry itself: narrowing it back to ``token=`` fails the ``:`` and spaced cases.
+    """
+    assert _apply(_BARE_TOKEN_INDEX, raw) == expected
+
+
+@pytest.mark.parametrize("raw", ["token: SECRET", "token:SECRET", "token = SECRET"])
+def test_redact_secrets_bare_token_key(raw: str) -> None:
+    """The full redaction removes a bare ``token`` value with ``:``/``=`` and spaces."""
+    redacted = redact_secrets(raw)
+    assert "SECRET" not in redacted
+    assert redacted.endswith("[REDACTED]")
+
+
 def test_redact_secrets_leaves_token_words_alone() -> None:
     """Ordinary words, counters and JSON pagination keys that contain "token" are not redacted.
 

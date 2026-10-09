@@ -74,9 +74,10 @@ _SECRET_PATTERNS: list[re.Pattern[str]] = [
     # JSON ``"token": "value"``; the opening quote right before ``token`` keeps keys such
     # as ``"next_token"`` and ``"page_token"`` untouched.
     re.compile(r"(?i)(\\?[\"']token\\?[\"']\s*:\s*\\?[\"'])[^\s\"'\\&,;]+", re.IGNORECASE),
-    # Bare ``token=`` query parameter; the lookbehind keeps ``page_token=``,
-    # ``next_token=`` and ``csrf_token=`` untouched.
-    re.compile(r"(?i)((?<![A-Za-z0-9_])token=)[^\s\"'\\&#]+", re.IGNORECASE),
+    # Bare ``token`` key with ``:`` or ``=`` and optional spaces (``token=``, ``token: x``,
+    # ``token = x``); the lookbehind keeps ``page_token``, ``next_token`` and ``csrf_token``
+    # untouched.
+    re.compile(r"(?i)((?<![A-Za-z0-9_])token\s*[:=]\s*)[^\s\"'\\&#]+", re.IGNORECASE),
     re.compile(r"(?i)(authorization\s*[=:]\s*)(?:'[^']*'|\"[^\"]*\"|\S+)"),
 ]
 
