@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Contract verification script asserting full suite of 140 Snowflake MCP tools and annotations."""
+"""Contract verification script asserting the full suite of Snowflake MCP tools and annotations.
+
+Source of truth for the expected tool count (``EXPECTED_TOOL_COUNT``).
+"""
 
 from __future__ import annotations
 
@@ -8,6 +11,10 @@ import sys
 
 from snowflake_mcp.config import SnowflakeConfig
 from snowflake_mcp.server import DOMAIN_NAMES, create_server
+
+# Expected number of tools on the default ``full`` catalog. Change it here only;
+# scripts/check_snowflake_drift.py imports it.
+EXPECTED_TOOL_COUNT = 140
 
 
 def verify_contract() -> int:
@@ -21,8 +28,8 @@ def verify_contract() -> int:
         print(f"  ✓ {name}")
 
     errors: list[str] = []
-    if len(registered) != 140:
-        errors.append(f"Expected 140 tools, found {len(registered)}")
+    if len(registered) != EXPECTED_TOOL_COUNT:
+        errors.append(f"Expected {EXPECTED_TOOL_COUNT} tools, found {len(registered)}")
 
     tools = list(registered.values())
     ro_count = sum(1 for t in tools if t.annotations and t.annotations.read_only_hint)

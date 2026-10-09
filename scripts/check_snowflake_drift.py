@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
-"""Snowflake API & SDK Drift Monitor.
+"""Snowflake tool count and SDK version monitor.
 
-Checks PyPI for new releases of core Snowflake SDKs (snowflake-connector-python,
-snowflake-core, snowflake-snowpark-python) and verifies the 140-tool suite registration contract.
+Checks that the server registers the expected tool count (``EXPECTED_TOOL_COUNT`` in
+``scripts/check_tool_contract.py``) and prints the latest PyPI versions of the core
+Snowflake SDKs (snowflake-connector-python, snowflake-core, snowflake-snowpark-python)
+for reference. The SDK versions never affect the exit code.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import subprocess
 import sys
+
+from check_tool_contract import EXPECTED_TOOL_COUNT
 
 SDK_PACKAGES = [
     "snowflake-connector-python",
@@ -43,28 +48,27 @@ def check_pypi_versions() -> dict[str, str]:
 
 def main() -> int:
     print("=" * 60)
-    print("🔍 SNOWFLAKE API & SDK DRIFT MONITOR")
+    print("🔍 SNOWFLAKE TOOL COUNT AND SDK VERSION MONITOR")
     print("=" * 60)
 
-    print("\n📦 Latest Snowflake SDK Releases on PyPI:")
+    print("\n📦 Latest Snowflake SDK Releases on PyPI (reference only):")
     versions = check_pypi_versions()
     for pkg, ver in versions.items():
         print(f"  • {pkg}: {ver}")
 
-    print("\n🛡️ Verifying Local 140-Tool Contract Alignment:")
+    print(f"\n🛡️ Verifying the {EXPECTED_TOOL_COUNT}-tool contract:")
     from snowflake_mcp.config import SnowflakeConfig
     from snowflake_mcp.server import create_server
 
     server = create_server(config=SnowflakeConfig(account="dummy_acc", user="dummy_user"))
-    tools = getattr(server, "_tool_manager", None)
-    tool_count = len(tools._tools) if tools else len(getattr(server, "_tools", {}))
-    print(f"  • Registered MCP Tools in Suite: {tool_count} / 140")
+    tool_count = len(asyncio.run(server.list_tools()))
+    print(f"  • Registered MCP Tools in Suite: {tool_count} / {EXPECTED_TOOL_COUNT}")
 
-    if tool_count != 140:
-        print(f"❌ Drift Error: Registered tools ({tool_count}) != exact expected 140 tools!")
+    if tool_count != EXPECTED_TOOL_COUNT:
+        print(f"❌ Drift Error: Registered tools ({tool_count}) != exact expected {EXPECTED_TOOL_COUNT} tools!")
         return 1
 
-    print("\n✅ Drift scan completed successfully. All contracts aligned.")
+    print("\n✅ Tool count check completed successfully.")
     return 0
 
 
