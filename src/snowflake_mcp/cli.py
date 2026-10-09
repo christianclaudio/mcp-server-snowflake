@@ -12,7 +12,7 @@ import warnings
 from typing import Any
 
 from snowflake_mcp.config import SnowflakeConfig
-from snowflake_mcp.server import VALID_PROFILES, create_server
+from snowflake_mcp.server import TOOL_SEARCH_BACKENDS, VALID_PROFILES, create_server
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("snowflake_mcp")
@@ -102,22 +102,43 @@ def main() -> None:
     parser.add_argument(
         "--readonly",
         action="store_true",
-        help="Run in strict read-only mode (tools stay registered; handlers reject mutations)",
+        help=(
+            "Strict read-only mode: the profile's tools/list is unchanged, and any call to a tool not "
+            "annotated readOnlyHint=True is refused (isError: true). Compare --profile readonly, which "
+            "hides those tools."
+        ),
     )
     parser.add_argument(
         "--profile",
+        type=str.lower,
         choices=sorted(VALID_PROFILES),
-        default=os.environ.get("SNOWFLAKE_MCP_PROFILE", "full"),
+        default=os.environ.get("SNOWFLAKE_MCP_PROFILE", "full").strip().lower(),
         help=(
-            "Tool catalog profile. 'full' (default) lists all 140 tools. "
-            "'readonly' lists read-only tools only. A domain name lists that domain."
+            "Tool catalog profile (default 'full', all 140 tools). Job profiles: dba, pipeline, cortex, apps. "
+            "'readonly' lists only tools annotated readOnlyHint=True. A domain name lists that domain."
         ),
     )
     parser.add_argument(
         "--enable-tool-search",
         action="store_true",
         default=os.environ.get("SNOWFLAKE_MCP_ENABLE_TOOL_SEARCH", "").strip().lower() in {"1", "true", "yes"},
-        help="Opt in to RegexSearchTransform (search_tools + call_tool) instead of the flat tools/list.",
+        help="Enable Tool Search on profile 'full' only (tools/list becomes search_tools + call_tool).",
+    )
+    parser.add_argument(
+        "--tool-search-backend",
+        type=str.lower,
+        choices=TOOL_SEARCH_BACKENDS,
+        default=os.environ.get("SNOWFLAKE_MCP_TOOL_SEARCH_BACKEND", "regex").strip().lower(),
+        help="Tool Search backend: 'regex' (default) or 'bm25'.",
+    )
+    parser.add_argument(
+        "--enable-code-mode",
+        action="store_true",
+        default=os.environ.get("SNOWFLAKE_MCP_ENABLE_CODE_MODE", "").strip().lower() in {"1", "true", "yes"},
+        help=(
+            "Enable experimental Code Mode on profile 'full' only (needs fastmcp[code-mode]). "
+            "Mutually exclusive with --enable-tool-search."
+        ),
     )
     parser.add_argument(
         "--stateless",
@@ -165,6 +186,8 @@ def main() -> None:
         config=config,
         profile=args.profile,
         enable_tool_search=args.enable_tool_search,
+        enable_code_mode=args.enable_code_mode,
+        tool_search_backend=args.tool_search_backend,
     )
 
     if args.transport != "streamable-http":

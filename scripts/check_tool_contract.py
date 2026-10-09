@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Contract verification script asserting full suite of 140 Snowflake MCP tools and annotations."""
+"""Contract verification: the full 140-tool catalog, its annotations, and per-profile tool counts."""
 
 from __future__ import annotations
 
@@ -7,7 +7,19 @@ import asyncio
 import sys
 
 from snowflake_mcp.config import SnowflakeConfig
+from snowflake_mcp.profiles import PROFILES
 from snowflake_mcp.server import DOMAIN_NAMES, create_server
+
+# Profile -> (listed tools, of which readOnlyHint=True). Domain profiles are checked
+# against the full catalog (every tool with that domain prefix).
+EXPECTED_PROFILE_COUNTS: dict[str, tuple[int, int]] = {
+    "full": (140, 88),
+    "readonly": (88, 88),
+    "dba": (62, 41),
+    "pipeline": (64, 33),
+    "cortex": (16, 16),
+    "apps": (24, 22),
+}
 
 
 def verify_contract() -> int:
@@ -88,6 +100,8 @@ def verify_contract() -> int:
     if undomain:
         errors.append(f"Tools missing a domain prefix: {undomain}")
 
+    errors.extend(asyncio.run(_profile_errors(tool_names)))
+
     wire_tools, wire_prompts, wire_resources = asyncio.run(_wire_catalog(mcp))
     if wire_tools != tool_names:
         errors.append(
@@ -106,11 +120,31 @@ def verify_contract() -> int:
             print(f"  ✗ {err}", file=sys.stderr)
         return 1
 
-    print(
-        f"\nAll {len(registered)} tool contracts and annotations verified successfully with 100% full platform coverage!"
-    )
+    print(f"\nAll {len(registered)} tool contracts, annotations and {len(PROFILES)} profiles verified successfully!")
     print("No exposed tool, prompt, or resource name starts with snowflake_.")
     return 0
+
+
+async def _profile_errors(full_names: set[str]) -> list[str]:
+    """Check every profile's tools/list size and read-only count."""
+    errors: list[str] = []
+    print("\nProfile verification (listed / readOnlyHint=True):")
+    for name in sorted(PROFILES):
+        dummy_cfg = SnowflakeConfig(account="dummy_acc", user="dummy_user")
+        tools = await create_server(config=dummy_cfg, profile=name).list_tools()  # type: ignore[attr-defined]
+        listed = len(tools)
+        read_only = sum(1 for t in tools if t.annotations and t.annotations.read_only_hint is True)
+        expected = EXPECTED_PROFILE_COUNTS.get(name)
+        if expected is None:
+            domain_total = sum(1 for tool in full_names if tool.startswith(f"{name}_"))
+            domain_ro = sum(1 for t in tools if t.annotations and t.annotations.read_only_hint is True)
+            expected = (domain_total, domain_ro)
+            if not all(t.name.startswith(f"{name}_") for t in tools):
+                errors.append(f"Profile {name} lists tools outside its domain")
+        print(f"  ✓ {name}: {listed} / {read_only} (expected {expected[0]} / {expected[1]})")
+        if (listed, read_only) != expected:
+            errors.append(f"Profile {name}: expected {expected}, found {(listed, read_only)}")
+    return errors
 
 
 async def _wire_catalog(mcp: object) -> tuple[set[str], set[str], set[str]]:

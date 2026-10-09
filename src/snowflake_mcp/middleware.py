@@ -2,11 +2,11 @@
 
 ``ParentAuditMiddleware`` is the outermost layer: it times each request,
 redacts exception arguments, and re-raises the same exception. Protocol
-errors stay protocol errors. ``ReadOnlyGateMiddleware`` blocks mutating
-``tools/call`` requests while read-only mode is on. ``ErrorHandlingMiddleware``
-stays inside those layers: it redacts tool-result payloads and raises a FastMCP
-``ToolError`` for an error-shaped result (``{"status": "error", ...}``), so the
-client gets ``isError: true``.
+errors stay protocol errors. ``ReadOnlyGateMiddleware`` refuses ``tools/call``
+requests for tools not annotated ``readOnlyHint=True`` while read-only mode is
+on. ``ErrorHandlingMiddleware`` stays inside those layers: it redacts
+tool-result payloads and raises a FastMCP ``ToolError`` for an error-shaped
+result (``{"status": "error", ...}``), so the client gets ``isError: true``.
 """
 
 from __future__ import annotations
@@ -14,11 +14,12 @@ from __future__ import annotations
 import json
 import logging
 import time
-from collections.abc import Iterable, Mapping
 from typing import Any
 
+from fastmcp import FastMCP
 from fastmcp.exceptions import DisabledError, NotFoundError, ToolError, ValidationError
 from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
+from fastmcp.tools import Tool
 from fastmcp.tools.base import ToolResult
 from mcp.shared.exceptions import MCPError
 from mcp.types import CallToolResult, TextContent
@@ -27,12 +28,12 @@ from pydantic import ValidationError as PydanticValidationError
 from snowflake_mcp.config import SnowflakeConfig
 from snowflake_mcp.connection import read_only_enabled
 from snowflake_mcp.errors import SafetyViolationError, redact_error_payload, redact_secrets
+from snowflake_mcp.profiles import is_read_only_tool
 
 logger = logging.getLogger("snowflake_mcp")
 
-# Exposed wire names and bare local names for every tool whose readOnlyHint is not True.
-MUTATING_TOOLS: set[str] = set()
-_NAMESPACE_PREFIXES: tuple[str, ...] = ()
+# Synthetic Tool Search proxy that carries the real tool name in its ``name`` argument.
+_SEARCH_PROXY_TOOLS = frozenset({"call_tool"})
 
 # These must reach FastMCP's own handlers. Wrapping them (for example turning
 # NotFoundError into ToolError) becomes JSON-RPC -32603 "Internal server error".
@@ -125,32 +126,6 @@ def tool_error_payload(result: Any) -> dict[str, Any] | None:
     return None
 
 
-def bare_tool_name(name: str) -> str:
-    """Strip a mounted domain prefix, leaving the local tool name."""
-    for prefix in _NAMESPACE_PREFIXES:
-        if name.startswith(prefix):
-            return name[len(prefix) :]
-    return name
-
-
-def record_mutating_tools(tools: Mapping[str, Any], namespaces: Iterable[str]) -> None:
-    """Union non-read-only tools into ``MUTATING_TOOLS``.
-
-    Each entry is stored under the exposed name (``queries_execute_dml``) and
-    the bare local name (``execute_dml``).
-    """
-    global _NAMESPACE_PREFIXES
-    prefixes = tuple(f"{name}_" for name in sorted(set(namespaces), key=len, reverse=True))
-    if prefixes:
-        _NAMESPACE_PREFIXES = prefixes
-    for name, component in tools.items():
-        annotations = getattr(component, "annotations", None)
-        if annotations is not None and annotations.read_only_hint is True:
-            continue
-        MUTATING_TOOLS.add(name)
-        MUTATING_TOOLS.add(bare_tool_name(name))
-
-
 class ParentAuditMiddleware(Middleware):
     """Outermost audit log. Rewrites exception args in place and re-raises."""
 
@@ -185,20 +160,39 @@ class ParentAuditMiddleware(Middleware):
         return result
 
 
-class ReadOnlyGateMiddleware(Middleware):
-    """Block mutating tools/call requests while read-only mode is on.
+def _effective_tool_name(message: Any) -> str:
+    """Return the tool under enforcement, unwrapping the Tool Search ``call_tool`` proxy."""
+    tool_name = getattr(message, "name", None) if message is not None else None
+    name = tool_name if isinstance(tool_name, str) else ""
+    if name not in _SEARCH_PROXY_TOOLS:
+        return name
+    arguments = getattr(message, "arguments", None)
+    nested = arguments.get("name") if isinstance(arguments, dict) else None
+    return nested if isinstance(nested, str) and nested else name
 
-    ``conceal`` records tools the active profile removed. Those names stay in
-    ``MUTATING_TOOLS`` but must surface as unknown tools, not as a read-only denial.
+
+def _read_only_refusal(name: str) -> SafetyViolationError:
+    """The read-only refusal: a FastMCP ``ToolError``, reported with ``isError: true``."""
+    return SafetyViolationError(f"Denied in read-only mode (SNOWFLAKE_MCP_READONLY=1); tool '{name}' blocked.")
+
+
+class ReadOnlyGateMiddleware(Middleware):
+    """Refuse calls to tools not annotated ``readOnlyHint=True`` while read-only is on.
+
+    Read-only is on with ``SNOWFLAKE_MCP_READONLY=1``, ``--readonly``, or the
+    ``readonly`` profile. The only signal is the MCP ``readOnlyHint`` of the resolved
+    tool: a missing annotation or any value other than ``True`` is a write (fail closed).
+
+    * No serving FastMCP context: the annotation cannot be read, so the call is refused.
+    * ``call_tool`` is unwrapped to the tool it proxies, but only when ``call_tool`` is a
+      real tool on this server (Tool Search attached). Otherwise it passes through and
+      FastMCP reports it as unknown.
+    * A name that is not a visible tool (a typo, a tool outside the profile, or a write
+      the ``readonly`` profile hides) passes through to FastMCP's ``Unknown tool`` error.
     """
 
     def __init__(self, config: SnowflakeConfig) -> None:
         self._config = config
-        self._concealed: set[str] = set()
-
-    def conceal(self, name: str) -> None:
-        """Remember a tool this profile removed from the catalog."""
-        self._concealed.add(name)
 
     def _read_only_enabled(self) -> bool:
         return read_only_enabled(self._config)
@@ -208,14 +202,27 @@ class ReadOnlyGateMiddleware(Middleware):
         context: MiddlewareContext[Any],
         call_next: CallNext[Any, Any],
     ) -> Any:
-        if self._read_only_enabled() and getattr(context, "method", None) == "tools/call":
-            message = getattr(context, "message", None)
-            tool_name = getattr(message, "name", None) if message is not None else None
-            if isinstance(tool_name, str) and tool_name in MUTATING_TOOLS and tool_name not in self._concealed:
-                raise SafetyViolationError(
-                    f"Denied in read-only mode (SNOWFLAKE_MCP_READONLY=1); tool '{tool_name}' blocked."
-                )
+        if not self._read_only_enabled() or getattr(context, "method", None) != "tools/call":
+            return await call_next(context)
+        message = getattr(context, "message", None)
+        fastmcp_context = getattr(context, "fastmcp_context", None)
+        if fastmcp_context is None:
+            raise _read_only_refusal(_effective_tool_name(message))
+        server = fastmcp_context.fastmcp
+        outer_name = getattr(message, "name", None)
+        if outer_name in _SEARCH_PROXY_TOOLS and await self._lookup(server, outer_name) is None:
+            return await call_next(context)
+        effective_name = _effective_tool_name(message)
+        tool = await self._lookup(server, effective_name)
+        if tool is not None and not is_read_only_tool(tool):
+            logger.warning("Blocked non-read-only tool call in read-only mode: %s", effective_name)
+            raise _read_only_refusal(effective_name)
         return await call_next(context)
+
+    @staticmethod
+    async def _lookup(server: FastMCP[Any], name: str) -> Tool | None:
+        """Resolve ``name`` with the public ``get_tool``; ``None`` when it is not a visible tool."""
+        return await server.get_tool(name)
 
 
 class ErrorHandlingMiddleware(Middleware):

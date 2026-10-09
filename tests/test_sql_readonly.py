@@ -148,7 +148,6 @@ async def test_readonly_profile_sets_flag_and_hides_mutating_tools() -> None:
     assert client.config.read_only is True
     gate = next(item for item in srv.middleware if isinstance(item, ReadOnlyGateMiddleware))
     assert gate._read_only_enabled()
-    assert "queries_execute_dml" in gate._concealed
 
     with pytest.raises(NotFoundError, match="Unknown tool"):
         await srv.call_tool("queries_execute_dml", {})

@@ -26,10 +26,8 @@ from snowflake_mcp.errors import (
     redact_secrets,
 )
 from snowflake_mcp.middleware import (
-    MUTATING_TOOLS,
     ParentAuditMiddleware,
     ReadOnlyGateMiddleware,
-    bare_tool_name,
 )
 from snowflake_mcp.server import create_server
 
@@ -250,15 +248,9 @@ async def test_read_only_gate_blocks_writes_and_allows_reads() -> None:
 
 
 @pytest.mark.asyncio
-async def test_read_only_gate_middleware_does_not_call_handler() -> None:
-    create_server(client=SnowflakeClient(config=SnowflakeConfig(account="acc", user="usr")))
-    assert "queries_execute_dml" in MUTATING_TOOLS
-    assert "execute_dml" in MUTATING_TOOLS
-    assert bare_tool_name("queries_execute_dml") == "execute_dml"
-    assert bare_tool_name("execute_dml") == "execute_dml"
-
+async def test_read_only_gate_without_server_context_fails_closed() -> None:
     gate = ReadOnlyGateMiddleware(SnowflakeConfig(account="acc", user="usr", read_only=True))
-    context = MiddlewareContext(message=SimpleNamespace(name="execute_dml"), method="tools/call")
+    context = MiddlewareContext(message=SimpleNamespace(name="queries_query"), method="tools/call")
     call_next = AsyncMock()
     with pytest.raises(SafetyViolationError, match="SNOWFLAKE_MCP_READONLY=1"):
         await gate.on_message(context, call_next)
@@ -283,19 +275,26 @@ async def test_read_only_gate_env_flag_and_passthrough(monkeypatch: pytest.Monke
     assert await gate.on_message(blocked, call_next) == "ok"
 
 
-def test_mutating_set_covers_every_non_readonly_tool() -> None:
-    client = SnowflakeClient(config=SnowflakeConfig(account="acc", user="usr"))
-    srv = create_server(client=client)
-    missing: list[str] = []
-    read_only_leaks: list[str] = []
-    for name, tool in srv._tool_manager._tools.items():
-        annotations = getattr(tool, "annotations", None)
-        if annotations is not None and annotations.read_only_hint is True:
-            if name in MUTATING_TOOLS:
-                read_only_leaks.append(name)
-            continue
-        if name not in MUTATING_TOOLS or bare_tool_name(name) not in MUTATING_TOOLS:
-            missing.append(name)
-    assert not read_only_leaks
-    assert not missing
-    assert len(MUTATING_TOOLS) == 104
+@pytest.mark.asyncio
+async def test_read_only_gate_refuses_exactly_the_tools_without_read_only_hint() -> None:
+    srv = create_server(client=SnowflakeClient(config=SnowflakeConfig(account="acc", user="usr")))
+    gate = ReadOnlyGateMiddleware(SnowflakeConfig(account="acc", user="usr", read_only=True))
+    refused: set[str] = set()
+    allowed: set[str] = set()
+    for tool in await srv.list_tools():
+        context = MiddlewareContext(
+            message=SimpleNamespace(name=tool.name, arguments={}),
+            method="tools/call",
+            fastmcp_context=SimpleNamespace(fastmcp=srv),  # type: ignore[arg-type]
+        )
+        try:
+            await gate.on_message(context, AsyncMock(return_value="ok"))
+        except SafetyViolationError:
+            refused.add(tool.name)
+        else:
+            allowed.add(tool.name)
+    hinted = {t.name for t in await srv.list_tools() if t.annotations and t.annotations.read_only_hint is True}
+    assert allowed == hinted
+    assert len(allowed) == 88
+    assert len(refused) == 52
+    assert "queries_execute_dml" in refused

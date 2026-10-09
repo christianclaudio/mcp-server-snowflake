@@ -279,11 +279,10 @@ async def test_default_catalog_is_flat_and_tool_search_is_opt_in() -> None:
     search_names = {tool.name for tool in await searched.list_tools()}
     assert search_names == {"search_tools", "call_tool"}
 
-    cortex = create_server(client=_client(), profile="cortex")
-    cortex_names = {tool.name for tool in await cortex.list_tools()}
-    assert cortex_names
-    assert all(name.startswith("cortex_") for name in cortex_names)
-    assert len(cortex_names) < 140
+    domain = create_server(client=_client(), profile="warehouses")
+    domain_names = {tool.name for tool in await domain.list_tools()}
+    assert len(domain_names) == 8
+    assert all(name.startswith("warehouses_") for name in domain_names)
 
     readonly_client = _client()
     readonly = create_server(client=readonly_client, profile="readonly")
@@ -438,3 +437,15 @@ def test_cli_profile_and_tool_search(monkeypatch: pytest.MonkeyPatch) -> None:
     main()
     assert created["profile"] == "queries"
     assert created["enable_tool_search"] is True
+    assert created["enable_code_mode"] is False
+    assert created["tool_search_backend"] == "regex"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        ["snowflake-mcp", "--profile", "DBA", "--enable-code-mode", "--tool-search-backend", "bm25"],
+    )
+    created.clear()
+    main()
+    assert created["profile"] == "dba"
+    assert created["enable_code_mode"] is True
+    assert created["tool_search_backend"] == "bm25"
