@@ -57,6 +57,7 @@ Profiles decide what `tools/list` shows. Job profiles (`dba`, `pipeline`, `corte
 3. **Pure Offline Testing**:
    - Add unit tests in `tests/` mocking `SnowflakeClient`.
    - Zero live network calls during tests. Live checks stay behind `@pytest.mark.e2e`.
+   - Keep `tests/test_client_surface.py` (mandatory house standard; conformance is not a substitute): it builds `create_server` under every profile in `PROFILES` and, through an in-memory `fastmcp.Client`, lists every tool and reads every resource and prompt; add fixture URIs or prompt arguments in its tables, never skip a component.
    - Live e2e `expect` mismatches follow **Live e2e expect policy** in `TESTING.md` (also under Safety & Protocol Rules below). Fix harness markers or fixture expects in the same PR.
 4. **Update Tool Contract**:
    - Update the expected tool count and annotation counts in `scripts/check_tool_contract.py` (the `contract` job and step names in `.github/workflows/ci.yml` also state the count).
