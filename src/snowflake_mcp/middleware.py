@@ -4,7 +4,9 @@
 redacts exception arguments, and re-raises the same exception. Protocol
 errors stay protocol errors. ``ReadOnlyGateMiddleware`` blocks mutating
 ``tools/call`` requests while read-only mode is on. ``ErrorHandlingMiddleware``
-stays inside those layers and redacts tool-result payloads.
+stays inside those layers: it redacts tool-result payloads and raises a FastMCP
+``ToolError`` for an error-shaped result (``{"status": "error", ...}``), so the
+client gets ``isError: true``.
 """
 
 from __future__ import annotations
@@ -15,7 +17,7 @@ import time
 from collections.abc import Iterable, Mapping
 from typing import Any
 
-from fastmcp.exceptions import DisabledError, NotFoundError, ValidationError
+from fastmcp.exceptions import DisabledError, NotFoundError, ToolError, ValidationError
 from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
 from fastmcp.tools.base import ToolResult
 from mcp.shared.exceptions import MCPError
@@ -102,6 +104,27 @@ def redact_tool_result(result: Any) -> Any:
     return result
 
 
+def tool_error_payload(result: Any) -> dict[str, Any] | None:
+    """Return the payload of an error-shaped tool result, or ``None``.
+
+    Tool handlers report a failure as ``{"status": "error", ...}``. The structured
+    content is checked first, then a single JSON text block.
+    """
+    if not isinstance(result, (ToolResult, CallToolResult)) or result.is_error:
+        return None
+    candidates: list[Any] = [result.structured_content]
+    texts = [getattr(block, "text", None) for block in result.content]
+    if len(texts) == 1 and isinstance(texts[0], str):
+        try:
+            candidates.append(json.loads(texts[0]))
+        except json.JSONDecodeError:
+            pass
+    for payload in candidates:
+        if isinstance(payload, dict) and payload.get("status") == "error":
+            return payload
+    return None
+
+
 def bare_tool_name(name: str) -> str:
     """Strip a mounted domain prefix, leaving the local tool name."""
     for prefix in _NAMESPACE_PREFIXES:
@@ -154,7 +177,8 @@ class ParentAuditMiddleware(Middleware):
                 redact_secrets(str(exc)),
             )
             if exc.args:
-                exc.args = tuple(redact_secrets(arg) if isinstance(arg, str) else arg for arg in exc.args)
+                # JSON payloads (ToolError text) are redacted per value so they stay valid JSON.
+                exc.args = tuple(_redact_text(arg, is_error=True) if isinstance(arg, str) else arg for arg in exc.args)
             raise
         duration_ms = (time.perf_counter() - start) * 1000.0
         logger.debug("MCP request completed: %s in %.2fms", target, duration_ms)
@@ -195,7 +219,13 @@ class ReadOnlyGateMiddleware(Middleware):
 
 
 class ErrorHandlingMiddleware(Middleware):
-    """Redact handler failures without wrapping protocol errors."""
+    """Redact handler failures and report error-shaped results as ``ToolError``.
+
+    Protocol errors are re-raised unwrapped. A tool result shaped
+    ``{"status": "error", ...}`` becomes a ``ToolError`` whose text is the redacted
+    JSON payload, so FastMCP returns it with ``isError: true`` (MCP tool execution
+    error) instead of a successful result.
+    """
 
     async def on_message(
         self,
@@ -214,4 +244,8 @@ class ErrorHandlingMiddleware(Middleware):
             if rewritten is exc:
                 raise
             raise rewritten from None
-        return redact_tool_result(result)
+        redacted = redact_tool_result(result)
+        payload = tool_error_payload(redacted)
+        if payload is not None:
+            raise ToolError(json.dumps(redact_error_payload(payload)))
+        return redacted

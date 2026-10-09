@@ -151,14 +151,21 @@ async def test_tool_failures_are_redacted_tool_errors() -> None:
         "password=s3cretvalue snowflake://USER:SuperSecret@acct token=pat_abcdefghijklmnopqrstuvwxyz"
     )
     srv = create_server(client=client)
-    returned = await srv.call_tool("queries_query", {"query": "SELECT 1"})
-    text = returned.content[0].text
+    with pytest.raises(ToolError) as returned:
+        await srv.call_tool("queries_query", {"query": "SELECT 1"})
+    text = str(returned.value)
     assert "s3cretvalue" not in text
     assert "SuperSecret" not in text
     assert "pat_abcdefghijklmnopqrstuvwxyz" not in text
     assert "[REDACTED]" in text
     payload = json.loads(text)
     assert payload["status"] == "error"
+
+    wire = await _post_tool(srv, "queries_query", {"query": "SELECT 1"})
+    assert wire["result"]["isError"] is True
+    wire_text = wire["result"]["content"][0]["text"]
+    assert "s3cretvalue" not in wire_text
+    assert json.loads(wire_text)["status"] == "error"
 
     tool = srv._tool_manager._tools["queries_query"]
 
@@ -219,9 +226,10 @@ async def test_error_middleware_reraises_protocol_errors_and_redacts_others() ->
             structured_content={"status": "error", "error": "token=pat_abcdefghijklmnopqrstuvwxyz"},
         )
 
-    redacted = await middleware.on_message(context, _result)
-    assert "pat_abcdefghijklmnopqrstuvwxyz" not in redacted.content[0].text
-    assert redacted.structured_content["error"].endswith("[REDACTED]")
+    with pytest.raises(ToolError) as structured_error:
+        await middleware.on_message(context, _result)
+    assert "pat_abcdefghijklmnopqrstuvwxyz" not in str(structured_error.value)
+    assert json.loads(str(structured_error.value))["error"].endswith("[REDACTED]")
 
     async def _is_error(_context: MiddlewareContext[Any]) -> Any:
         return ToolResult(content="bearer SECRETTOKEN1234567890", is_error=True)
@@ -247,9 +255,15 @@ async def test_error_middleware_reraises_protocol_errors_and_redacts_others() ->
             is_error=False,
         )
 
-    call_redacted = await middleware.on_message(context, _call_result)
-    assert "s3cretvalue" not in call_redacted.content[0].text
-    assert "[REDACTED]" in call_redacted.content[0].text
+    with pytest.raises(ToolError) as text_error:
+        await middleware.on_message(context, _call_result)
+    assert "s3cretvalue" not in str(text_error.value)
+    assert "[REDACTED]" in str(text_error.value)
+
+    async def _not_json(_context: MiddlewareContext[Any]) -> Any:
+        return CallToolResult(content=[TextContent(type="text", text="{not json")], is_error=False)
+
+    assert (await middleware.on_message(context, _not_json)).content[0].text == "{not json"
 
 
 @pytest.mark.asyncio
