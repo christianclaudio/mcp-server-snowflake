@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any
 
 from fastmcp import FastMCP
+from fastmcp.exceptions import ToolError
 
 from snowflake_mcp.connection import (
     SnowflakeClient,
@@ -14,7 +16,7 @@ from snowflake_mcp.connection import (
     quote_literal,
     read_only_enabled,
 )
-from snowflake_mcp.errors import SafetyViolationError
+from snowflake_mcp.errors import SafetyViolationError, redact_error_payload
 from snowflake_mcp.tools.tables import qualify_table_target
 from snowflake_mcp.tools.warehouses import VALID_WAREHOUSE_SIZES
 
@@ -145,46 +147,84 @@ def register_recipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             message = f"Destructive: To scale warehouse '{warehouse_name}' and execute the query, set confirm=True."
             raise SafetyViolationError(message, status="requires_confirmation")
 
+        # Every failed step is a failed tool call (MCP tools error handling: execution
+        # errors are results with isError: true), reported with the context gathered so far.
+        def _fail(context: dict[str, Any], summary: str) -> ToolError:
+            failure = {"status": "error", "error": summary, **context}
+            return ToolError(json.dumps(redact_error_payload(failure), default=str))
+
         norm_size = target_size.strip().upper()
         if norm_size not in VALID_WAREHOUSE_SIZES:
-            return {
-                "status": "error",
-                "error": f"Invalid target_size '{target_size}'. Must be one of: {sorted(VALID_WAREHOUSE_SIZES)}",
-            }
+            raise _fail(
+                {"warehouse": warehouse_name, "target_size": target_size, "scaled_to": None},
+                f"Invalid target_size '{target_size}'. Must be one of: {sorted(VALID_WAREHOUSE_SIZES)}",
+            )
 
         try:
             wh_desc = client.execute_query(f"SHOW WAREHOUSES LIKE {quote_literal(warehouse_name)}")
-            wh_data = wh_desc.get("data", [])
-            initial_size = wh_data[0].get("size") if wh_data else None
+        except Exception as lookup_err:
+            raise _fail(
+                {"warehouse": warehouse_name, "scaled_to": None, "lookup_error": str(lookup_err)},
+                f"Looking up warehouse '{warehouse_name}' failed; its size was not changed.",
+            ) from None
+        wh_data = wh_desc.get("data", [])
+        initial_size = wh_data[0].get("size") if wh_data else None
 
+        scale_error = None
+        query_error = None
+        restore_error = None
+        restored = False
+        query_res: Any = None
+        try:
             client.execute_query(f"ALTER WAREHOUSE {quote_ident(warehouse_name)} SET WAREHOUSE_SIZE = '{norm_size}'")
-            restored = False
-            restore_error = None
+        except Exception as sc_err:
+            # The ALTER may have partly applied, so the restore below still runs.
+            scale_error = str(sc_err)
+        if scale_error is None:
             try:
                 query_res = client.execute_query(query)
-            finally:
-                if restore_previous_size and initial_size:
-                    try:
-                        client.execute_query(
-                            f"ALTER WAREHOUSE {quote_ident(warehouse_name)} SET WAREHOUSE_SIZE = '{initial_size}'"
-                        )
-                        restored = True
-                    except Exception as re_err:
-                        restore_error = str(re_err)
+            except Exception as q_err:
+                query_error = str(q_err)
+        if restore_previous_size and initial_size:
+            try:
+                client.execute_query(
+                    f"ALTER WAREHOUSE {quote_ident(warehouse_name)} SET WAREHOUSE_SIZE = '{initial_size}'"
+                )
+                restored = True
+            except Exception as re_err:
+                restore_error = str(re_err)
 
-            res: dict[str, Any] = {
-                "status": "success",
-                "warehouse": warehouse_name,
-                "scaled_to": norm_size,
-                "initial_size": initial_size,
-                "restored_initial_size": restored,
-                "query_result": query_res,
-            }
-            if restore_error:
-                res["restore_error"] = restore_error
+        res: dict[str, Any] = {
+            "status": "success",
+            "warehouse": warehouse_name,
+            "scaled_to": norm_size,
+            "initial_size": initial_size,
+            "restored_initial_size": restored,
+            "query_result": query_res,
+        }
+        if scale_error is None and query_error is None and restore_error is None:
             return res
-        except Exception as e:
-            return {"status": "error", "error": str(e)}
+        messages = []
+        if scale_error is not None:
+            messages.append(f"Scaling warehouse '{warehouse_name}' to '{norm_size}' failed; the query was not run.")
+        elif query_error is not None:
+            messages.append(f"Query on warehouse '{warehouse_name}' failed.")
+        else:
+            messages.append("Query completed.")
+        if restore_error is not None:
+            messages.append(
+                f"Restoring warehouse '{warehouse_name}' to size '{initial_size}' failed; "
+                + (f"it may be at '{norm_size}'." if scale_error is not None else f"it is still at '{norm_size}'.")
+            )
+        context = {k: v for k, v in res.items() if k != "status"}
+        for key, value in (
+            ("scale_error", scale_error),
+            ("query_error", query_error),
+            ("restore_error", restore_error),
+        ):
+            if value is not None:
+                context[key] = value
+        raise _fail(context, " ".join(messages))
 
     @mcp.tool(
         name="clone_table_recipe",

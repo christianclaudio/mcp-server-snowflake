@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import inspect
+import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+from fastmcp.exceptions import ToolError
 
 from snowflake_mcp.cli import main as cli_main
 from snowflake_mcp.config import SnowflakeConfig
@@ -103,7 +105,10 @@ async def test_all_tools_success_and_error_branches(
 
         # 2. Error branch execution
         fn_err = tools_err[name].fn
-        res_err = await fn_err(**args_kwargs)
+        try:
+            res_err = await fn_err(**args_kwargs)
+        except ToolError as exc:  # failed steps are isError results (#35); the text is the JSON payload
+            res_err = json.loads(str(exc))
         assert isinstance(res_err, dict), f"Tool {name} error branch did not return dict: {res_err}"
         assert (
             res_err.get("status")

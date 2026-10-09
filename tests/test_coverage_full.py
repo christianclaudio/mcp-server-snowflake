@@ -48,6 +48,8 @@ async def test_all_128_tools_execution(client: SnowflakeClient) -> None:
                     "action_sql",
                 ):
                     kwargs[p_name] = "SELECT 1"
+                elif p_name == "target_size":
+                    kwargs[p_name] = "SMALL"
                 elif p_name in ("limit", "max_rows"):
                     kwargs[p_name] = 10
                 elif p_name in ("if_not_exists", "auto_ingest", "restore_previous_size"):

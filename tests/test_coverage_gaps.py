@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import runpy
 import sys
 from datetime import datetime
@@ -10,6 +11,8 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from fastmcp import Client
+from fastmcp.exceptions import ToolError
 
 from snowflake_mcp.cli import main, run_init_wizard
 from snowflake_mcp.config import SnowflakeConfig
@@ -232,7 +235,190 @@ async def test_list_connections_error_and_warehouse_restore(monkeypatch: pytest.
     listed = await tools["governance_list_connections"].fn()
     assert listed["status"] == "error"
 
-    scaled = await tools["recipes_warehouse_scale_and_execute"].fn("WH", "LARGE", "SELECT 1", True, confirm=True)
-    assert scaled["status"] == "success"
-    assert scaled["restored_initial_size"] is False
-    assert "restore failed" in scaled["restore_error"]
+    with pytest.raises(ToolError) as exc_info:
+        await tools["recipes_warehouse_scale_and_execute"].fn("WH", "LARGE", "SELECT 1", True, confirm=True)
+    payload = json.loads(str(exc_info.value))
+    assert payload["status"] == "error"
+    assert payload["restored_initial_size"] is False
+    assert "restore failed" in payload["restore_error"]
+    assert "still at 'LARGE'" in payload["error"]
+    assert payload["query_result"] == {"data": [{"ok": 1}]}
+
+
+@pytest.mark.asyncio
+async def test_warehouse_restore_failure_is_error_result(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A failed size restore reaches the client as isError: true, redacted, with the query result (#35)."""
+    monkeypatch.setenv("SNOWFLAKE_PASSWORD", "hunter2-restore-secret")
+    cfg = SnowflakeConfig(account="acc", user="usr")
+    client = SnowflakeClient(config=cfg)
+
+    def _queries(query: str, **kwargs: object) -> dict[str, object]:
+        if "WAREHOUSE_SIZE = 'SMALL'" in query:
+            raise RuntimeError("restore failed for hunter2-restore-secret")
+        if "SHOW WAREHOUSES" in query:
+            return {"data": [{"size": "SMALL"}]}
+        return {"data": [{"ok": 1}]}
+
+    client.execute_query = MagicMock(side_effect=_queries)  # type: ignore[method-assign]
+    async with Client(create_server(client=client)) as mcp_client:
+        res = await mcp_client.call_tool(
+            "recipes_warehouse_scale_and_execute",
+            {"warehouse_name": "WH", "target_size": "LARGE", "query": "SELECT 1", "confirm": True},
+            raise_on_error=False,
+        )
+    assert res.is_error
+    text = "".join(getattr(c, "text", "") for c in res.content)
+    assert "hunter2-restore-secret" not in text
+    payload = json.loads(text)
+    assert payload["status"] == "error"
+    assert payload["restored_initial_size"] is False
+    assert "[REDACTED]" in payload["restore_error"]
+    assert payload["query_result"] == {"data": [{"ok": 1}]}
+
+
+@pytest.mark.asyncio
+async def test_warehouse_query_and_restore_failure_is_one_error_result(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When the query and the size restore both fail, one isError result carries both, redacted (#35)."""
+    monkeypatch.setenv("SNOWFLAKE_PASSWORD", "hunter2-both-fail-secret")
+    cfg = SnowflakeConfig(account="acc", user="usr")
+    client = SnowflakeClient(config=cfg)
+
+    def _queries(query: str, **kwargs: object) -> dict[str, object]:
+        if "WAREHOUSE_SIZE = 'SMALL'" in query:
+            raise RuntimeError("restore failed for hunter2-both-fail-secret")
+        if "SHOW WAREHOUSES" in query:
+            return {"data": [{"size": "SMALL"}]}
+        if "WAREHOUSE_SIZE = 'LARGE'" in query:
+            return {"data": []}
+        raise RuntimeError("query failed for hunter2-both-fail-secret")
+
+    client.execute_query = MagicMock(side_effect=_queries)  # type: ignore[method-assign]
+    async with Client(create_server(client=client)) as mcp_client:
+        res = await mcp_client.call_tool(
+            "recipes_warehouse_scale_and_execute",
+            {"warehouse_name": "WH", "target_size": "LARGE", "query": "SELECT 1", "confirm": True},
+            raise_on_error=False,
+        )
+    assert res.is_error
+    text = "".join(getattr(c, "text", "") for c in res.content)
+    assert "hunter2-both-fail-secret" not in text
+    payload = json.loads(text)
+    assert payload["status"] == "error"
+    assert payload["query_result"] is None
+    assert payload["restored_initial_size"] is False
+    assert payload["query_error"] == "query failed for [REDACTED]"
+    assert payload["restore_error"] == "restore failed for [REDACTED]"
+    assert "Query on warehouse 'WH' failed." in payload["error"]
+    assert "still at 'LARGE'" in payload["error"]
+
+
+async def _call_scale_recipe(client: SnowflakeClient) -> dict[str, object]:
+    async with Client(create_server(client=client)) as mcp_client:
+        res = await mcp_client.call_tool(
+            "recipes_warehouse_scale_and_execute",
+            {"warehouse_name": "WH", "target_size": "LARGE", "query": "SELECT 1", "confirm": True},
+            raise_on_error=False,
+        )
+    assert res.is_error
+    text = "".join(getattr(c, "text", "") for c in res.content)
+    assert "hunter2-step-secret" not in text
+    payload: dict[str, object] = json.loads(text)
+    assert payload["status"] == "error"
+    return payload
+
+
+@pytest.mark.asyncio
+async def test_warehouse_lookup_failure_is_error_result(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A failed warehouse lookup is an isError result; nothing is scaled or run (#35)."""
+    monkeypatch.setenv("SNOWFLAKE_PASSWORD", "hunter2-step-secret")
+    client = SnowflakeClient(config=SnowflakeConfig(account="acc", user="usr"))
+    client.execute_query = MagicMock(  # type: ignore[method-assign]
+        side_effect=RuntimeError("lookup failed for hunter2-step-secret")
+    )
+    payload = await _call_scale_recipe(client)
+    assert payload["lookup_error"] == "lookup failed for [REDACTED]"
+    assert payload["warehouse"] == "WH"
+    assert payload["scaled_to"] is None
+    assert client.execute_query.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_warehouse_scale_up_failure_attempts_restore(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A failed scale-up skips the query, still attempts the restore, and reports both failures (#35)."""
+    monkeypatch.setenv("SNOWFLAKE_PASSWORD", "hunter2-step-secret")
+    client = SnowflakeClient(config=SnowflakeConfig(account="acc", user="usr"))
+    seen: list[str] = []
+
+    def _queries(query: str, **kwargs: object) -> dict[str, object]:
+        seen.append(query)
+        if "SHOW WAREHOUSES" in query:
+            return {"data": [{"size": "SMALL"}]}
+        if "WAREHOUSE_SIZE = 'LARGE'" in query:
+            raise RuntimeError("scale failed for hunter2-step-secret")
+        if "WAREHOUSE_SIZE = 'SMALL'" in query:
+            raise RuntimeError("restore failed for hunter2-step-secret")
+        raise AssertionError(f"unexpected query {query}")
+
+    client.execute_query = MagicMock(side_effect=_queries)  # type: ignore[method-assign]
+    payload = await _call_scale_recipe(client)
+    assert any("WAREHOUSE_SIZE = 'SMALL'" in q for q in seen)  # restore attempted
+    assert "SELECT 1" not in seen  # query skipped
+    assert payload["scale_error"] == "scale failed for [REDACTED]"
+    assert payload["restore_error"] == "restore failed for [REDACTED]"
+    assert payload["query_result"] is None
+    assert payload["restored_initial_size"] is False
+    assert "Scaling warehouse 'WH' to 'LARGE' failed" in str(payload["error"])
+
+
+@pytest.mark.asyncio
+async def test_warehouse_invalid_target_size_is_error_before_any_statement() -> None:
+    """An invalid target_size is an isError result and no statement runs (#35)."""
+    client = SnowflakeClient(config=SnowflakeConfig(account="acc", user="usr"))
+    client.execute_query = MagicMock(return_value={"data": []})  # type: ignore[method-assign]
+    async with Client(create_server(client=client)) as mcp_client:
+        res = await mcp_client.call_tool(
+            "recipes_warehouse_scale_and_execute",
+            {"warehouse_name": "WH", "target_size": "HUGE", "query": "SELECT 1", "confirm": True},
+            raise_on_error=False,
+        )
+    assert res.is_error
+    payload = json.loads("".join(getattr(c, "text", "") for c in res.content))
+    assert payload["status"] == "error"
+    assert "Invalid target_size 'HUGE'" in payload["error"]
+    assert payload["target_size"] == "HUGE"
+    assert payload["warehouse"] == "WH"
+    client.execute_query.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_scale_recipe_errors_do_not_chain_unredacted_exceptions(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Recipe ToolErrors carry no __cause__/__context__, so tracebacks cannot leak the raw error (#35)."""
+    import traceback
+
+    monkeypatch.setenv("SNOWFLAKE_PASSWORD", "hunter2-chain-secret")
+    client = SnowflakeClient(config=SnowflakeConfig(account="acc", user="usr"))
+    tools = create_server(client=client)._tool_manager._tools
+    fn = tools["recipes_warehouse_scale_and_execute"].fn
+
+    # Lookup failure: raised inside the except block.
+    client.execute_query = MagicMock(  # type: ignore[method-assign]
+        side_effect=RuntimeError("lookup failed for hunter2-chain-secret")
+    )
+    with pytest.raises(ToolError) as lookup_exc:
+        await fn("WH", "LARGE", "SELECT 1", True, confirm=True)
+    assert lookup_exc.value.__cause__ is None
+    assert lookup_exc.value.__suppress_context__ is True
+    assert "hunter2-chain-secret" not in "".join(traceback.format_exception(lookup_exc.value))
+
+    # Scale-up and restore failures: the final raise sits outside every except block.
+    def _queries(query: str, **kwargs: object) -> dict[str, object]:
+        if "SHOW WAREHOUSES" in query:
+            return {"data": [{"size": "SMALL"}]}
+        raise RuntimeError("alter failed for hunter2-chain-secret")
+
+    client.execute_query = MagicMock(side_effect=_queries)  # type: ignore[method-assign]
+    with pytest.raises(ToolError) as step_exc:
+        await fn("WH", "LARGE", "SELECT 1", True, confirm=True)
+    assert step_exc.value.__cause__ is None
+    assert step_exc.value.__context__ is None
+    assert "hunter2-chain-secret" not in "".join(traceback.format_exception(step_exc.value))
