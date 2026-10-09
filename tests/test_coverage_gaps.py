@@ -388,3 +388,37 @@ async def test_warehouse_invalid_target_size_is_error_before_any_statement() -> 
     assert payload["target_size"] == "HUGE"
     assert payload["warehouse"] == "WH"
     client.execute_query.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_scale_recipe_errors_do_not_chain_unredacted_exceptions(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Recipe ToolErrors carry no __cause__/__context__, so tracebacks cannot leak the raw error (#35)."""
+    import traceback
+
+    monkeypatch.setenv("SNOWFLAKE_PASSWORD", "hunter2-chain-secret")
+    client = SnowflakeClient(config=SnowflakeConfig(account="acc", user="usr"))
+    tools = create_server(client=client)._tool_manager._tools
+    fn = tools["recipes_warehouse_scale_and_execute"].fn
+
+    # Lookup failure: raised inside the except block.
+    client.execute_query = MagicMock(  # type: ignore[method-assign]
+        side_effect=RuntimeError("lookup failed for hunter2-chain-secret")
+    )
+    with pytest.raises(ToolError) as lookup_exc:
+        await fn("WH", "LARGE", "SELECT 1", True, confirm=True)
+    assert lookup_exc.value.__cause__ is None
+    assert lookup_exc.value.__suppress_context__ is True
+    assert "hunter2-chain-secret" not in "".join(traceback.format_exception(lookup_exc.value))
+
+    # Scale-up and restore failures: the final raise sits outside every except block.
+    def _queries(query: str, **kwargs: object) -> dict[str, object]:
+        if "SHOW WAREHOUSES" in query:
+            return {"data": [{"size": "SMALL"}]}
+        raise RuntimeError("alter failed for hunter2-chain-secret")
+
+    client.execute_query = MagicMock(side_effect=_queries)  # type: ignore[method-assign]
+    with pytest.raises(ToolError) as step_exc:
+        await fn("WH", "LARGE", "SELECT 1", True, confirm=True)
+    assert step_exc.value.__cause__ is None
+    assert step_exc.value.__context__ is None
+    assert "hunter2-chain-secret" not in "".join(traceback.format_exception(step_exc.value))

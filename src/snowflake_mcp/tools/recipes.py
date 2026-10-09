@@ -166,7 +166,7 @@ def register_recipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             raise _fail(
                 {"warehouse": warehouse_name, "scaled_to": None, "lookup_error": str(lookup_err)},
                 f"Looking up warehouse '{warehouse_name}' failed; its size was not changed.",
-            ) from lookup_err
+            ) from None
         wh_data = wh_desc.get("data", [])
         initial_size = wh_data[0].get("size") if wh_data else None
 
