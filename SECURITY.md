@@ -6,10 +6,12 @@
 
 ## 🔒 Supported Versions
 
+The git tag is the version, so support follows the latest release rather than a version number.
+
 | Version | Supported |
 |---|---|
-| `0.1.x` | ✅ Yes |
-| `< 0.1` | ❌ No |
+| Latest `vX.Y.Z` [GitHub Release](https://github.com/christianclaudio/mcp-server-snowflake/releases/latest) | ✅ Yes |
+| Older releases | ❌ No |
 
 ---
 
