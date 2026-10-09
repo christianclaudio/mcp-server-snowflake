@@ -442,24 +442,27 @@ _BARE_TOKEN_INDEX = next(
         ("token: SECRET", "token: [REDACTED]"),
         ("token:SECRET", "token:[REDACTED]"),
         ("token = SECRET", "token = [REDACTED]"),
+        ('token: "SECRET"', 'token: "[REDACTED]"'),
+        ("token='SECRET'", "token='[REDACTED]'"),
         ("GET /x?token=SECRET&a=1", "GET /x?token=[REDACTED]&a=1"),
     ],
 )
 def test_bare_token_pattern_redacts_colon_equals_and_spaces(raw: str, expected: str) -> None:
-    """Entry 9 alone redacts ``token:``, ``token=`` and spaced forms.
+    """Entry 9 alone redacts ``token:``, ``token=``, spaced and quoted forms.
 
     The key=value pattern's bare ``token`` alternative also covers these, so this checks the
-    entry itself: narrowing it back to ``token=`` fails the ``:`` and spaced cases.
+    entry itself: narrowing it back to ``token=`` fails the ``:`` and spaced cases, and
+    dropping the optional quote fails the quoted cases.
     """
     assert _apply(_BARE_TOKEN_INDEX, raw) == expected
 
 
-@pytest.mark.parametrize("raw", ["token: SECRET", "token:SECRET", "token = SECRET"])
+@pytest.mark.parametrize(
+    "raw", ["token: SECRET", "token:SECRET", "token = SECRET", 'token: "SECRET"', "token='SECRET'"]
+)
 def test_redact_secrets_bare_token_key(raw: str) -> None:
-    """The full redaction removes a bare ``token`` value with ``:``/``=`` and spaces."""
-    redacted = redact_secrets(raw)
-    assert "SECRET" not in redacted
-    assert redacted.endswith("[REDACTED]")
+    """The full redaction removes a bare ``token`` value with ``:``/``=``, spaces and quotes."""
+    assert "SECRET" not in redact_secrets(raw)
 
 
 def test_redact_secrets_leaves_token_words_alone() -> None:
