@@ -274,3 +274,39 @@ async def test_warehouse_restore_failure_is_error_result(monkeypatch: pytest.Mon
     assert payload["restored_initial_size"] is False
     assert "[REDACTED]" in payload["restore_error"]
     assert payload["query_result"] == {"data": [{"ok": 1}]}
+
+
+@pytest.mark.asyncio
+async def test_warehouse_query_and_restore_failure_is_one_error_result(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When the query and the size restore both fail, one isError result carries both, redacted (#35)."""
+    monkeypatch.setenv("SNOWFLAKE_PASSWORD", "hunter2-both-fail-secret")
+    cfg = SnowflakeConfig(account="acc", user="usr")
+    client = SnowflakeClient(config=cfg)
+
+    def _queries(query: str, **kwargs: object) -> dict[str, object]:
+        if "WAREHOUSE_SIZE = 'SMALL'" in query:
+            raise RuntimeError("restore failed for hunter2-both-fail-secret")
+        if "SHOW WAREHOUSES" in query:
+            return {"data": [{"size": "SMALL"}]}
+        if "WAREHOUSE_SIZE = 'LARGE'" in query:
+            return {"data": []}
+        raise RuntimeError("query failed for hunter2-both-fail-secret")
+
+    client.execute_query = MagicMock(side_effect=_queries)  # type: ignore[method-assign]
+    async with Client(create_server(client=client)) as mcp_client:
+        res = await mcp_client.call_tool(
+            "recipes_warehouse_scale_and_execute",
+            {"warehouse_name": "WH", "target_size": "LARGE", "query": "SELECT 1", "confirm": True},
+            raise_on_error=False,
+        )
+    assert res.is_error
+    text = "".join(getattr(c, "text", "") for c in res.content)
+    assert "hunter2-both-fail-secret" not in text
+    payload = json.loads(text)
+    assert payload["status"] == "error"
+    assert payload["query_result"] is None
+    assert payload["restored_initial_size"] is False
+    assert payload["query_error"] == "query failed for [REDACTED]"
+    assert payload["restore_error"] == "restore failed for [REDACTED]"
+    assert "Query on warehouse 'WH' failed." in payload["error"]
+    assert "still at 'LARGE'" in payload["error"]

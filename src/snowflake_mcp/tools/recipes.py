@@ -162,17 +162,20 @@ def register_recipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             client.execute_query(f"ALTER WAREHOUSE {quote_ident(warehouse_name)} SET WAREHOUSE_SIZE = '{norm_size}'")
             restored = False
             restore_error = None
+            query_res: Any = None
+            query_error = None
             try:
                 query_res = client.execute_query(query)
-            finally:
-                if restore_previous_size and initial_size:
-                    try:
-                        client.execute_query(
-                            f"ALTER WAREHOUSE {quote_ident(warehouse_name)} SET WAREHOUSE_SIZE = '{initial_size}'"
-                        )
-                        restored = True
-                    except Exception as re_err:
-                        restore_error = str(re_err)
+            except Exception as q_err:
+                query_error = str(q_err)
+            if restore_previous_size and initial_size:
+                try:
+                    client.execute_query(
+                        f"ALTER WAREHOUSE {quote_ident(warehouse_name)} SET WAREHOUSE_SIZE = '{initial_size}'"
+                    )
+                    restored = True
+                except Exception as re_err:
+                    restore_error = str(re_err)
 
             res: dict[str, Any] = {
                 "status": "success",
@@ -184,19 +187,24 @@ def register_recipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             }
         except Exception as e:
             return {"status": "error", "error": str(e)}
-        if restore_error is None:
+        if query_error is None and restore_error is None:
             return res
-        # The query ran, but the warehouse was left at the scaled-up size: a failed tool call
+        # A failed query or a failed size restore is a failed tool call
         # (MCP tools error handling: execution errors are results with isError: true).
-        failure = {
-            **res,
-            "status": "error",
-            "error": (
-                f"Query completed, but restoring warehouse '{warehouse_name}' to size "
-                f"'{initial_size}' failed; it is still at '{norm_size}'."
-            ),
-            "restore_error": restore_error,
-        }
+        messages = []
+        if query_error is not None:
+            messages.append(f"Query on warehouse '{warehouse_name}' failed.")
+        else:
+            messages.append("Query completed.")
+        if restore_error is not None:
+            messages.append(
+                f"Restoring warehouse '{warehouse_name}' to size '{initial_size}' failed; it is still at '{norm_size}'."
+            )
+        failure: dict[str, Any] = {**res, "status": "error", "error": " ".join(messages)}
+        if query_error is not None:
+            failure["query_error"] = query_error
+        if restore_error is not None:
+            failure["restore_error"] = restore_error
         raise ToolError(json.dumps(redact_error_payload(failure), default=str))
 
     @mcp.tool(
