@@ -228,7 +228,8 @@ class ReadOnlyGateMiddleware(Middleware):
 class ErrorHandlingMiddleware(Middleware):
     """Redact handler failures and report error-shaped results as ``ToolError``.
 
-    Protocol errors are re-raised unwrapped. A tool result shaped
+    Protocol errors are re-raised unwrapped. Every other failure is raised with
+    its exception chain broken (``from None``, no ``__context__``). A tool result shaped
     ``{"status": "error", ...}`` becomes a ``ToolError`` whose text is the redacted
     JSON payload, so FastMCP returns it with ``isError: true`` (MCP tool execution
     error) instead of a successful result.
@@ -239,6 +240,7 @@ class ErrorHandlingMiddleware(Middleware):
         context: MiddlewareContext[Any],
         call_next: CallNext[Any, Any],
     ) -> Any:
+        failure: Exception
         try:
             result = await call_next(context)
         except _PROTOCOL_ERRORS:
@@ -247,12 +249,14 @@ class ErrorHandlingMiddleware(Middleware):
             safe = redact_secrets(str(exc))
             method = getattr(context, "method", None) or "unknown"
             logger.error("MCP request failed method=%s: %s", method, safe)
-            rewritten = _redacted_exception(exc)
-            if rewritten is exc:
-                raise
-            raise rewritten from None
-        redacted = redact_tool_result(result)
-        payload = tool_error_payload(redacted)
-        if payload is not None:
-            raise ToolError(json.dumps(redact_error_payload(payload)))
-        return redacted
+            failure = _redacted_exception(exc)
+        else:
+            redacted = redact_tool_result(result)
+            payload = tool_error_payload(redacted)
+            if payload is None:
+                return redacted
+            failure = ToolError(json.dumps(redact_error_payload(payload)))
+        # Break the exception chain so an unredacted cause or context never
+        # reaches tracebacks or OpenTelemetry exception events.
+        failure.__context__ = None
+        raise failure from None

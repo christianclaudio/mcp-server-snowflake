@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import json
+import logging
+import traceback
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from fastmcp import Client, FastMCP
 from fastmcp.exceptions import NotFoundError, ToolError
 from fastmcp.server.middleware import MiddlewareContext
+from fastmcp.tools.base import ToolResult
 from snowflake.connector.errors import ForbiddenError, ProgrammingError, TooManyRequests
 
 from snowflake_mcp.config import SnowflakeConfig
@@ -26,6 +30,7 @@ from snowflake_mcp.errors import (
     redact_secrets,
 )
 from snowflake_mcp.middleware import (
+    ErrorHandlingMiddleware,
     ParentAuditMiddleware,
     ReadOnlyGateMiddleware,
 )
@@ -298,3 +303,81 @@ async def test_read_only_gate_refuses_exactly_the_tools_without_read_only_hint()
     assert len(allowed) == 88
     assert len(refused) == 52
     assert "queries_execute_dml" in refused
+
+
+_CHAIN_SECRET = "Bearer abc123chainsecretTOKEN"
+
+
+def _formatted(exc: BaseException) -> str:
+    return "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+
+
+@pytest.mark.asyncio
+async def test_error_middleware_breaks_the_chain_of_an_unchanged_exception() -> None:
+    middleware = ErrorHandlingMiddleware()
+    context = MiddlewareContext(message=SimpleNamespace(name="queries_query"), method="tools/call")
+
+    async def _chained(_context: MiddlewareContext[Any]) -> Any:
+        try:
+            raise ValueError(f"upstream rejected {_CHAIN_SECRET}")
+        except ValueError as inner:
+            raise RuntimeError("warehouse request failed") from inner
+
+    with pytest.raises(RuntimeError, match="warehouse request failed") as caught:
+        await middleware.on_message(context, _chained)
+
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
+    assert caught.value.__suppress_context__ is True
+    assert "abc123chainsecretTOKEN" not in _formatted(caught.value)
+
+
+@pytest.mark.asyncio
+async def test_error_middleware_redacts_its_own_is_error_text_and_logs(caplog: pytest.LogCaptureFixture) -> None:
+    server: FastMCP[Any] = FastMCP("redaction-probe")
+    server.add_middleware(ErrorHandlingMiddleware())
+
+    @server.tool
+    def explode() -> str:
+        raise RuntimeError(f"connector said {_CHAIN_SECRET}")
+
+    caplog.set_level(logging.DEBUG)
+    async with Client(server) as client:
+        result = await client.call_tool("explode", {}, raise_on_error=False)
+
+    assert result.is_error is True
+    text = result.content[0].text  # type: ignore[union-attr]
+    assert "abc123chainsecretTOKEN" not in text
+    assert "Bearer [REDACTED]" in text
+    ours = "\n".join(
+        caplog.handler.format(record) for record in caplog.records if record.name.startswith("snowflake_mcp")
+    )
+    assert "MCP request failed method=tools/call" in ours
+    assert "Bearer [REDACTED]" in ours
+    assert "abc123chainsecretTOKEN" not in ours
+
+
+@pytest.mark.asyncio
+async def test_error_middleware_error_shaped_result_carries_no_chain() -> None:
+    middleware = ErrorHandlingMiddleware()
+    context = MiddlewareContext(message=SimpleNamespace(name="queries_query"), method="tools/call")
+
+    async def _error_shaped(_context: MiddlewareContext[Any]) -> Any:
+        return ToolResult(content='{"status": "error", "error": "token=pat_abcdefghijklmnopqrstuvwxyz"}')
+
+    with pytest.raises(ToolError) as plain:
+        await middleware.on_message(context, _error_shaped)
+    assert plain.value.__cause__ is None
+    assert plain.value.__context__ is None
+
+    # Invoked while the caller is handling a secret-bearing exception, the
+    # ToolError must still not chain to it.
+    try:
+        raise ValueError(f"caller state {_CHAIN_SECRET}")
+    except ValueError:
+        with pytest.raises(ToolError) as nested:
+            await middleware.on_message(context, _error_shaped)
+    assert nested.value.__cause__ is None
+    assert nested.value.__suppress_context__ is True
+    assert "abc123chainsecretTOKEN" not in _formatted(nested.value)
+    assert "pat_abcdefghijklmnopqrstuvwxyz" not in str(nested.value)
