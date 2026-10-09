@@ -465,6 +465,16 @@ def test_redact_secrets_bare_token_key(raw: str) -> None:
     assert "SECRET" not in redact_secrets(raw)
 
 
+def test_redact_secrets_bare_token_swallows_fragment() -> None:
+    """Known limitation, pinned: a bare ``token=`` value also takes a literal ``#fragment``.
+
+    The key=value pattern's bare ``token`` alternative runs before the house-standard
+    patterns and its ``\\S+`` value does not stop at ``#``. The encoded ``%23`` form keeps
+    its fragment (see ``url_encoded_access_token_fragment``).
+    """
+    assert redact_secrets("/x?token=SECRET#frag") == "/x?token=[REDACTED]"
+
+
 def test_redact_secrets_leaves_token_words_alone() -> None:
     """Ordinary words, counters and JSON pagination keys that contain "token" are not redacted.
 
