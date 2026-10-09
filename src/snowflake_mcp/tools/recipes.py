@@ -147,18 +147,18 @@ def register_recipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             message = f"Destructive: To scale warehouse '{warehouse_name}' and execute the query, set confirm=True."
             raise SafetyViolationError(message, status="requires_confirmation")
 
-        norm_size = target_size.strip().upper()
-        if norm_size not in VALID_WAREHOUSE_SIZES:
-            return {
-                "status": "error",
-                "error": f"Invalid target_size '{target_size}'. Must be one of: {sorted(VALID_WAREHOUSE_SIZES)}",
-            }
-
         # Every failed step is a failed tool call (MCP tools error handling: execution
         # errors are results with isError: true), reported with the context gathered so far.
         def _fail(context: dict[str, Any], summary: str) -> ToolError:
             failure = {"status": "error", "error": summary, **context}
             return ToolError(json.dumps(redact_error_payload(failure), default=str))
+
+        norm_size = target_size.strip().upper()
+        if norm_size not in VALID_WAREHOUSE_SIZES:
+            raise _fail(
+                {"warehouse": warehouse_name, "target_size": target_size, "scaled_to": None},
+                f"Invalid target_size '{target_size}'. Must be one of: {sorted(VALID_WAREHOUSE_SIZES)}",
+            )
 
         try:
             wh_desc = client.execute_query(f"SHOW WAREHOUSES LIKE {quote_literal(warehouse_name)}")

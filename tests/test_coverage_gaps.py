@@ -368,3 +368,23 @@ async def test_warehouse_scale_up_failure_attempts_restore(monkeypatch: pytest.M
     assert payload["query_result"] is None
     assert payload["restored_initial_size"] is False
     assert "Scaling warehouse 'WH' to 'LARGE' failed" in str(payload["error"])
+
+
+@pytest.mark.asyncio
+async def test_warehouse_invalid_target_size_is_error_before_any_statement() -> None:
+    """An invalid target_size is an isError result and no statement runs (#35)."""
+    client = SnowflakeClient(config=SnowflakeConfig(account="acc", user="usr"))
+    client.execute_query = MagicMock(return_value={"data": []})  # type: ignore[method-assign]
+    async with Client(create_server(client=client)) as mcp_client:
+        res = await mcp_client.call_tool(
+            "recipes_warehouse_scale_and_execute",
+            {"warehouse_name": "WH", "target_size": "HUGE", "query": "SELECT 1", "confirm": True},
+            raise_on_error=False,
+        )
+    assert res.is_error
+    payload = json.loads("".join(getattr(c, "text", "") for c in res.content))
+    assert payload["status"] == "error"
+    assert "Invalid target_size 'HUGE'" in payload["error"]
+    assert payload["target_size"] == "HUGE"
+    assert payload["warehouse"] == "WH"
+    client.execute_query.assert_not_called()
