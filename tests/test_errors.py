@@ -33,6 +33,11 @@ from snowflake_mcp.middleware import (
 )
 from snowflake_mcp.server import create_server
 
+# Looked up by pattern text, so the test does not depend on where the pattern sits.
+_AUTHORIZATION_INDEX = next(
+    i for i, p in enumerate(_SECRET_PATTERNS) if p.pattern.startswith(r"(?i)(authorization\s*[=:]")
+)
+
 
 def _apply(pattern_index: int, text: str) -> str:
     return _SECRET_PATTERNS[pattern_index].sub(_replace_secret, text)
@@ -95,7 +100,7 @@ def test_snowflake_env_assignment_pattern_keeps_name() -> None:
 
 
 def test_authorization_pattern_keeps_header_name() -> None:
-    redacted = _apply(9, "authorization: supersecrettoken")
+    redacted = _apply(_AUTHORIZATION_INDEX, "authorization: supersecrettoken")
     assert "supersecrettoken" not in redacted
     assert redacted.startswith("authorization:")
     assert "[REDACTED]" in redacted
@@ -299,3 +304,222 @@ def test_mutating_set_covers_every_non_readonly_tool() -> None:
     assert not read_only_leaks
     assert not missing
     assert len(MUTATING_TOOLS) == 104
+
+
+def test_redact_secrets_token_forms() -> None:
+    """api/access/refresh tokens are redacted bare, quoted, escaped, and as a token= query value."""
+    cases = {
+        "api_token=SECRET1": "api_token=[REDACTED]",
+        "api-token: SECRET1": "api-token: [REDACTED]",
+        "access_token: SECRET2": "access_token: [REDACTED]",
+        "refresh_token=SECRET4": "refresh_token=[REDACTED]",
+        '{"refresh_token": "SECRET4"}': '{"refresh_token": "[REDACTED]"}',
+        '{"access_token":"SECRET2"}': '{"access_token":"[REDACTED]"}',
+        "{'access_token': 'SECRET2'}": "{'access_token': '[REDACTED]'}",
+        '{"m": "{\\"api_token\\": \\"SECRET5\\", \\"b\\": 1}"}': (
+            '{"m": "{\\"api_token\\": \\"[REDACTED]\\", \\"b\\": 1}"}'
+        ),
+        "GET https://account.snowflakecomputing.com/x?token=SECRET3": (
+            "GET https://account.snowflakecomputing.com/x?token=[REDACTED]"
+        ),
+    }
+    for raw, expected in cases.items():
+        assert redact_secrets(raw) == expected, raw
+
+
+# Expected values differ from the house standard where an existing pattern here already
+# redacts more: the bare ``key=value`` pattern takes the whole ``\S+`` value (so ``&x=1``
+# goes too), and the authorization pattern also replaces the ``Token`` scheme word.
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        pytest.param("auth_token=SECRET7", "auth_token=[REDACTED]", id="auth_token"),
+        pytest.param('{"id_token": "SECRET8"}', '{"id_token": "[REDACTED]"}', id="id_token"),
+        pytest.param("session-token: SECRET9&x=1", "session-token: [REDACTED]", id="session_token"),
+        pytest.param(
+            "X-Auth-Token: SECRET10\nAccept: */*",
+            "X-Auth-Token: [REDACTED]\nAccept: */*",
+            id="x_auth_token_header",
+        ),
+        pytest.param(
+            "Authorization: Token SECRET11 rejected",
+            "Authorization: [REDACTED] [REDACTED] rejected",
+            id="authorization_token",
+        ),
+        pytest.param(
+            "{'Authorization': 'Token SECRET12'}",
+            "{'Authorization': 'Token [REDACTED]'}",
+            id="authorization_token_dict",
+        ),
+        pytest.param('{"token": "SECRET13"}', '{"token": "[REDACTED]"}', id="json_token"),
+        pytest.param(
+            '{"m": "{\\"token\\": \\"SECRET14\\"}"}',
+            '{"m": "{\\"token\\": \\"[REDACTED]\\"}"}',
+            id="json_token_escaped",
+        ),
+        pytest.param(
+            "cb=https%3A%2F%2Fh%2Fx%3Faccess_token%3DSECRET15%26x%3D1%23frag",
+            "cb=https%3A%2F%2Fh%2Fx%3Faccess_token%3D[REDACTED]%26x%3D1%23frag",
+            id="url_encoded_access_token",
+        ),
+        pytest.param(
+            "cb=https%3A%2F%2Fh%2Fx%3Faccess_token%3DSECRET21%23frag",
+            "cb=https%3A%2F%2Fh%2Fx%3Faccess_token%3D[REDACTED]%23frag",
+            id="url_encoded_access_token_fragment",
+        ),
+        pytest.param(
+            "q=api_token%3DS16%26refresh_token%3DS17%26auth_token%3DS18%26id_token%3DS19%26session_token%3DS20",
+            "q=api_token%3D[REDACTED]%26refresh_token%3D[REDACTED]%26auth_token%3D[REDACTED]"
+            "%26id_token%3D[REDACTED]%26session_token%3D[REDACTED]",
+            id="url_encoded_other_keys",
+        ),
+    ],
+)
+def test_redact_secrets_more_token_forms(raw: str, expected: str) -> None:
+    """auth/id/session tokens, X-Auth-Token, Authorization: Token, JSON "token" and %3D."""
+    assert redact_secrets(raw) == expected
+
+
+# The house-standard key pattern, found by its shape rather than its key list, so a later
+# edit to the list (or a left boundary on it) still reaches the tests below.
+_TOKEN_KEY_INDEX = next(
+    i for i, p in enumerate(_SECRET_PATTERNS) if ")[_-]?token(?:" in p.pattern and "%3D" not in p.pattern
+)
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "session_token=SECRET",
+        "oauth_token=SECRET",
+        "session-token: SECRET",
+        "x_oauth_token=SECRET",
+    ],
+)
+def test_token_key_pattern_redacts_session_and_oauth_tokens(raw: str) -> None:
+    """The house-standard key pattern alone covers session_token and oauth_token.
+
+    ``oauth_token`` matches through its ``auth_token`` suffix: the key pattern has no left
+    boundary. Dropping ``session`` or ``auth`` from the key list, or adding a left
+    boundary, fails this test even though the bare ``token`` alternative of the
+    key=value pattern still redacts these bare forms.
+    """
+    redacted = _apply(_TOKEN_KEY_INDEX, raw)
+    assert "SECRET" not in redacted
+    assert redacted.endswith("[REDACTED]")
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("session_token=SECRET", "session_token=[REDACTED]"),
+        ("oauth_token=SECRET", "oauth_token=[REDACTED]"),
+        ('{"session_token": "SECRET"}', '{"session_token": "[REDACTED]"}'),
+        ('{"oauth_token": "SECRET"}', '{"oauth_token": "[REDACTED]"}'),
+        ("{'oauth_token': 'SECRET'}", "{'oauth_token': '[REDACTED]'}"),
+        ("cb=x%3Fsession_token%3DSECRET%26y%3D1", "cb=x%3Fsession_token%3D[REDACTED]%26y%3D1"),
+        ("cb=x%3Foauth_token%3DSECRET%26y%3D1", "cb=x%3Foauth_token%3D[REDACTED]%26y%3D1"),
+    ],
+)
+def test_redact_secrets_session_and_oauth_tokens(raw: str, expected: str) -> None:
+    """session_token and oauth_token are redacted bare, quoted and URL-encoded.
+
+    The quoted and encoded forms rely on the house-standard patterns only, so narrowing
+    their key list (or the bare ``token`` alternative) is caught here.
+    """
+    assert redact_secrets(raw) == expected
+
+
+# The bare ``token`` pattern (house-standard entry 9), found by its lookbehind.
+_BARE_TOKEN_INDEX = next(
+    i for i, p in enumerate(_SECRET_PATTERNS) if p.pattern.startswith(r"(?i)((?<![A-Za-z0-9_])token")
+)
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("token: SECRET", "token: [REDACTED]"),
+        ("token:SECRET", "token:[REDACTED]"),
+        ("token = SECRET", "token = [REDACTED]"),
+        ('token: "SECRET"', 'token: "[REDACTED]"'),
+        ("token='SECRET'", "token='[REDACTED]'"),
+        ("GET /x?token=SECRET&a=1", "GET /x?token=[REDACTED]&a=1"),
+    ],
+)
+def test_bare_token_pattern_redacts_colon_equals_and_spaces(raw: str, expected: str) -> None:
+    """Entry 9 alone redacts ``token:``, ``token=``, spaced and quoted forms.
+
+    The key=value pattern's bare ``token`` alternative also covers these, so this checks the
+    entry itself: narrowing it back to ``token=`` fails the ``:`` and spaced cases, and
+    dropping the optional quote fails the quoted cases.
+    """
+    assert _apply(_BARE_TOKEN_INDEX, raw) == expected
+
+
+@pytest.mark.parametrize(
+    "raw", ["token: SECRET", "token:SECRET", "token = SECRET", 'token: "SECRET"', "token='SECRET'"]
+)
+def test_redact_secrets_bare_token_key(raw: str) -> None:
+    """The full redaction removes a bare ``token`` value with ``:``/``=``, spaces and quotes."""
+    assert "SECRET" not in redact_secrets(raw)
+
+
+def test_redact_secrets_bare_token_swallows_fragment() -> None:
+    """Known limitation, pinned: a bare ``token=`` value also takes a literal ``#fragment``.
+
+    The key=value pattern's bare ``token`` alternative runs before the house-standard
+    patterns and its ``\\S+`` value does not stop at ``#``. The encoded ``%23`` form keeps
+    its fragment (see ``url_encoded_access_token_fragment``).
+    """
+    assert redact_secrets("/x?token=SECRET#frag") == "/x?token=[REDACTED]"
+
+
+def test_redact_secrets_leaves_token_words_alone() -> None:
+    """Ordinary words, counters and JSON pagination keys that contain "token" are not redacted.
+
+    Bare ``page_token=``, ``next_token=`` and ``csrf_token=`` are not listed: the existing
+    ``token`` key in the key=value pattern still redacts any ``*_token=`` value.
+    """
+    for text in (
+        "tokenizer failed on input",
+        "next_page_token_count=5",
+        "refresh_token_expires_in=3600",
+        "the token expired",
+        "max_tokens=1024",
+        '{"page_token": "x", "next_token": "x", "csrf_token": "x", "max_tokens": 5}',
+        "X-Auth-Token-Expires: 2026-10-09T00:00:00Z",
+        "session_token_ttl=3600",
+        "id_token_hint_count=2",
+        "Token x is invalid",
+        "Authorization failed: token expired",
+    ):
+        assert redact_secrets(text) == text, text
+
+
+@pytest.mark.asyncio
+async def test_tool_error_path_redacts_token_forms() -> None:
+    """A handler failure echoing quoted and encoded token forms reaches the client redacted."""
+    client = SnowflakeClient(config=SnowflakeConfig(account="acc", user="usr"))
+    client.execute_query = MagicMock(  # type: ignore[method-assign]
+        side_effect=RuntimeError(
+            "OAuth refresh failed for https://acc.snowflakecomputing.com/oauth?token=SECRET3: "
+            '{"access_token": "SECRET2", "refresh_token": "SECRET4", "token": "SECRET13"} '
+            "{'api_token': 'SECRET1'} cb=x%3Fsession_token%3DSECRET15%26y%3D1"
+        )
+    )
+    srv = create_server(client=client)
+    res = await srv.call_tool("queries_query", {"query": "SELECT 1"})
+    text = res.content[0].text
+    payload = json.loads(text)
+    assert payload["status"] == "error"
+    assert payload["error"] == (
+        "OAuth refresh failed for https://acc.snowflakecomputing.com/oauth?token=[REDACTED] "
+        '{"access_token": "[REDACTED]", "refresh_token": "[REDACTED]", "token": "[REDACTED]"} '
+        "{'api_token': '[REDACTED]'} cb=x%3Fsession_token%3D[REDACTED]%26y%3D1"
+    )
+    assert res.structured_content is not None
+    assert res.structured_content["error"] == payload["error"]
+    for secret in ("SECRET1", "SECRET2", "SECRET3", "SECRET4", "SECRET13", "SECRET15"):
+        assert secret not in text
+        assert secret not in json.dumps(res.structured_content)

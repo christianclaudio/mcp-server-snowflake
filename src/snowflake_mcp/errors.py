@@ -48,6 +48,41 @@ _SECRET_PATTERNS: list[re.Pattern[str]] = [
         r"(?i)(SNOWFLAKE_(?:PASSWORD|TOKEN|PRIVATE_KEY_RAW|PRIVATE_KEY_PASSPHRASE|"
         r"OAUTH_CLIENT_SECRET)\s*[=:]\s*)\S+"
     ),
+    # House standard token patterns (copied verbatim, applied in this order). They run
+    # after the bare key=value pattern above and before the authorization pattern below,
+    # so "Authorization: Token <value>" redacts the value. The generic authorization
+    # pattern then replaces the scheme word too in the header form ("Authorization: [REDACTED] [REDACTED]");
+    # the dict/JSON form keeps it ({"Authorization": "Token [REDACTED]"}).
+    # api/access/refresh/auth/id/session tokens as key=value, key: value, an
+    # ``X-Auth-Token:`` header and JSON ("key": "value", also backslash-escaped inside an
+    # already-serialized JSON string).
+    re.compile(
+        r"(?i)((?:api|access|refresh|auth|id|session)[_-]?token(?:\\?[\"'])?\s*[:=]\s*"
+        r"(?:\\?[\"'])?)[^\s\"'\\&,;]+",
+        re.IGNORECASE,
+    ),
+    # The same keys URL-encoded (``access_token%3D...``); the value stops at an encoded
+    # ``%26`` (&) or ``%23`` (#), so the parameters after it survive.
+    re.compile(
+        r"(?i)((?:api|access|refresh|auth|id|session)[_-]?token%3D)"
+        r"(?:[^\s\"'\\&,;#%]|%(?!26|23))+",
+        re.IGNORECASE,
+    ),
+    # ``Authorization: Token <value>`` scheme, also as a quoted JSON or dict entry.
+    re.compile(
+        r"(?i)(authorization(?:\\?[\"'])?\s*[:=]\s*(?:\\?[\"'])?token\s+)[^\s\"'\\&,;]+",
+        re.IGNORECASE,
+    ),
+    # JSON ``"token": "value"``; the opening quote right before ``token`` keeps keys such
+    # as ``"next_token"`` and ``"page_token"`` untouched.
+    re.compile(r"(?i)(\\?[\"']token\\?[\"']\s*:\s*\\?[\"'])[^\s\"'\\&,;]+", re.IGNORECASE),
+    # Bare ``token`` key with ``:`` or ``=``, optional spaces and an optional quote
+    # (``token=``, ``token: x``, ``token = x``, ``token: "x"``); the lookbehind keeps
+    # ``page_token``, ``next_token`` and ``csrf_token`` untouched.
+    re.compile(
+        r"(?i)((?<![A-Za-z0-9_])token\s*[:=]\s*(?:\\?[\"'])?)[^\s\"'\\&#]+",
+        re.IGNORECASE,
+    ),
     re.compile(r"(?i)(authorization\s*[=:]\s*)(?:'[^']*'|\"[^\"]*\"|\S+)"),
 ]
 
