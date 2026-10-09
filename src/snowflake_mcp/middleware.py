@@ -257,7 +257,11 @@ class ErrorHandlingMiddleware(Middleware):
                 return redacted
             failure = ToolError(json.dumps(redact_error_payload(payload)))
         # Break the chain: exceptions leaving ErrorHandlingMiddleware carry no
-        # unredacted cause or context. FastMCP's own exception log and tools/call
-        # span run before this middleware.
-        failure.__context__ = None
-        raise failure from None
+        # unredacted cause or context. The raise sits after the except block, so
+        # this frame attaches no context; the finally clears the one Python
+        # attaches when the caller is itself handling an exception. FastMCP's own
+        # exception log and tools/call span run before this middleware.
+        try:
+            raise failure from None
+        finally:
+            failure.__context__ = None

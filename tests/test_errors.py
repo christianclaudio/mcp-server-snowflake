@@ -378,6 +378,40 @@ async def test_error_middleware_error_shaped_result_carries_no_chain() -> None:
         with pytest.raises(ToolError) as nested:
             await middleware.on_message(context, _error_shaped)
     assert nested.value.__cause__ is None
+    assert nested.value.__context__ is None
     assert nested.value.__suppress_context__ is True
     assert "abc123chainsecretTOKEN" not in _formatted(nested.value)
+    assert "abc123chainsecretTOKEN" not in _chain_text(nested.value)
     assert "pat_abcdefghijklmnopqrstuvwxyz" not in str(nested.value)
+
+
+def _chain_text(exc: BaseException) -> str:
+    """Every message on the ``__cause__`` / ``__context__`` chain, as a chain-walking reporter sees it."""
+    seen: list[str] = []
+    pending: list[BaseException | None] = [exc.__cause__, exc.__context__]
+    while pending:
+        link = pending.pop()
+        if link is None:
+            continue
+        seen.append(f"{type(link).__name__}: {link}")
+        pending.extend([link.__cause__, link.__context__])
+    return "\n".join(seen)
+
+
+@pytest.mark.asyncio
+async def test_error_middleware_redacted_error_has_no_secret_on_context() -> None:
+    """A redacted copy is raised after the except block, so the original is not its context."""
+    middleware = ErrorHandlingMiddleware()
+    context = MiddlewareContext(message=SimpleNamespace(name="queries_query"), method="tools/call")
+
+    async def _leaks(_context: MiddlewareContext[Any]) -> Any:
+        raise RuntimeError(f"connector said {_CHAIN_SECRET}")
+
+    with pytest.raises(RuntimeError) as caught:
+        await middleware.on_message(context, _leaks)
+
+    assert "abc123chainsecretTOKEN" not in str(caught.value)
+    assert "Bearer [REDACTED]" in str(caught.value)
+    assert caught.value.__cause__ is None
+    assert caught.value.__context__ is None
+    assert "abc123chainsecretTOKEN" not in _chain_text(caught.value)
