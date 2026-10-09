@@ -109,7 +109,35 @@
         },
         {
           "name": "SNOWFLAKE_MCP_READONLY",
-          "description": "Set to 1 to enforce strict read-only mode, rejecting all DDL/DML mutations",
+          "description": "Set to 1 for read-only mode: tools/list is unchanged and any tool not annotated readOnlyHint=true is refused at call time",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "SNOWFLAKE_MCP_PROFILE",
+          "description": "Tool profile: full (default, 140 tools), readonly (readOnlyHint=true tools only), a job profile (dba, pipeline, cortex, apps), or one domain name. Unknown values stop startup.",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "SNOWFLAKE_MCP_ENABLE_TOOL_SEARCH",
+          "description": "Set to 1 to replace tools/list with search_tools and call_tool. Profile full only; mutually exclusive with SNOWFLAKE_MCP_ENABLE_CODE_MODE.",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "SNOWFLAKE_MCP_TOOL_SEARCH_BACKEND",
+          "description": "Tool Search backend: regex (default) or bm25.",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "SNOWFLAKE_MCP_ENABLE_CODE_MODE",
+          "description": "Set to 1 for experimental Code Mode (search, get_schema, execute). Profile full only; needs fastmcp[code-mode], skipped with a warning otherwise.",
           "isRequired": false,
           "format": "string",
           "isSecret": false

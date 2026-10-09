@@ -43,13 +43,19 @@ This skill provides expert operating guidelines, architectural recipes, and safe
    Dedicated drop and truncate tools enforce safety gating and **MUST** receive `confirm=True` to execute:
    - `databases_drop_database`, `schemas_drop_schema`, `tables_drop_table`, `tables_truncate_table`
    - `warehouses_drop_warehouse`, `tasks_drop_task`, `streams_drop_stream`, `pipes_drop_pipe`, `alerts_drop_alert`, `governance_drop_role`
-   - If `confirm=False`, the tool returns status `"requires_confirmation"` and does NOT execute.
+   - If `confirm=False`, the call returns a tool error (`isError: true`) whose payload has status `"requires_confirmation"`, and nothing executes.
    - For generic DML statements executed via `queries_execute_dml` (e.g. `DELETE FROM`), operations run directly unless the server is in read-only mode.
 
 2. **Read-Only Mode Respect**:
-   When the server is configured in read-only mode (`SNOWFLAKE_MCP_READONLY=1` or `--readonly`), all DDL and DML operations are automatically blocked at the server level. Agents must switch to query-only analysis.
+   In read-only mode, every tool not annotated `readOnlyHint=True` is blocked at the server level. With `SNOWFLAKE_MCP_READONLY=1` or `--readonly` those tools stay listed and a call returns `isError: true` ("Denied in read-only mode"). With `--profile readonly` they are not listed at all. Agents must switch to query-only analysis and should pick tools whose `readOnlyHint` is `true`.
 
-3. **Time Travel Safety**:
+3. **Check `isError`, not `status`**:
+   A failed call (Snowflake error, rejected argument, safety refusal) returns `isError: true`. The text is the JSON payload, for example `{"status": "error", "error": "..."}`. Treat `isError: true` as failure and do not retry the same mutation blindly.
+
+4. **Profiles and discovery**:
+   The server may run a job profile (`dba`, `pipeline`, `cortex`, `apps`), `readonly`, a single domain, or `full`. Only the listed tools exist for that session. On `full` the operator may enable Tool Search (`search_tools` then `call_tool`) or Code Mode (`search`, `get_schema`, `execute`); search first, then call the tool by its exact name.
+
+5. **Time Travel Safety**:
    If an object is dropped unintentionally, call `tables_undrop_table` or `databases_undrop_database` immediately within the retention window.
 
 ---

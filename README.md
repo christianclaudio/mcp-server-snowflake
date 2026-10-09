@@ -9,7 +9,7 @@
 [![CodeRabbit Reviews](https://img.shields.io/coderabbit/prs/github/christianclaudio/mcp-server-snowflake?labelColor=171717&color=FF570A&label=CodeRabbit+Reviews)](https://coderabbit.ai)
 
 > **Supercharge AI Agents with Native Snowflake Data Cloud & Cortex AI Superpowers!** ⚡  
-> An enterprise-grade Model Context Protocol (MCP) server providing **140 tools** across 19 domain modules, dynamic profile switching, zero-config connection resolution, safe SQL execution, virtual warehouse management, object inspection, Horizon data lineage, and Cortex AI integrations straight to your favorite AI assistant.
+> An enterprise-grade Model Context Protocol (MCP) server providing **140 tools** across 19 domain modules, job-shaped profiles that list only the tools a job needs, dynamic connection switching, zero-config connection resolution, safe SQL execution, virtual warehouse management, object inspection, Horizon data lineage, and Cortex AI integrations straight to your favorite AI assistant.
 
 ---
 
@@ -32,7 +32,7 @@ flowchart TD
     subgraph Server["snowflake-mcp (FastMCP 4)"]
         CLI["CLI & Arg Parser (Allowed Hosts & DNS Rebinding Protection)"]
         Auth["Multi-Auth & Profile Resolver (~/.snowflake/connections.toml / Key-Pair / PAT / SSO)"]
-        Registry["Tool Registry (140 Tools across 19 Modules)"]
+        Registry["Tool Registry (19 domains, 140 tools; the profile selects what is listed)"]
         Safety["Safety Gates (confirm=True, Read-Only Guard, Row Limits)"]
     end
 
@@ -63,7 +63,7 @@ flowchart TD
 
 > [!WARNING]
 > **Safety Guardrails**  
-> - **Read-Only Safety Mode:** Set `SNOWFLAKE_MCP_READONLY=1`, pass `--readonly`, or pass `--profile readonly` to block mutating tools. The profile sets the same read-only flag the gate reads. On each new session, read-only mode runs `USE SECONDARY ROLES NONE` before any tool SQL and closes the connection if that pin fails. Write mode does not run that statement. Objects readable only through a secondary role's grants are not visible under `--readonly` until the read-only primary role is granted `SELECT` on them directly. Set `DEFAULT_SECONDARY_ROLES = ()` on the read-only user, or use a dedicated user that holds only that role. Prefer a programmatic access token with `ROLE_RESTRICTION` set to the read-only role so Snowflake evaluates privileges under that role ([programmatic access tokens](https://docs.snowflake.com/en/user-guide/programmatic-access-tokens)). `ROLE_RESTRICTION` does not replace the session pin. See FAQ / Troubleshooting.  
+> - **Read-Only Safety Mode:** Set `SNOWFLAKE_MCP_READONLY=1`, pass `--readonly`, or pass `--profile readonly` to block every tool not annotated `readOnlyHint=True`. `--readonly` keeps the profile's `tools/list` and refuses those tools at call time; `--profile readonly` hides them (see **Profiles, read-only and discovery** below). Both set the same read-only flag the gate reads. On each new session, read-only mode runs `USE SECONDARY ROLES NONE` before any tool SQL and closes the connection if that pin fails. Write mode does not run that statement. Objects readable only through a secondary role's grants are not visible under `--readonly` until the read-only primary role is granted `SELECT` on them directly. Set `DEFAULT_SECONDARY_ROLES = ()` on the read-only user, or use a dedicated user that holds only that role. Prefer a programmatic access token with `ROLE_RESTRICTION` set to the read-only role so Snowflake evaluates privileges under that role ([programmatic access tokens](https://docs.snowflake.com/en/user-guide/programmatic-access-tokens)). `ROLE_RESTRICTION` does not replace the session pin. See FAQ / Troubleshooting.  
 > - **Caller SQL:** `queries_query`, `queries_get_query_plan`, and the `query` arguments of `recipes_warehouse_scale_and_execute` and `recipes_export_query_to_stage` refuse anything that is not one read-only statement, whether or not read-only mode is on. Allowed forms are one `SELECT` (no `INTO`), `SHOW`, `DESCRIBE`/`DESC`, or `EXPLAIN SELECT`. `SYSTEM$` calls are refused except `SYSTEM$TYPEOF` and `SYSTEM$CLUSTERING_INFORMATION`. `IDENTIFIER(...)` in call position and `TABLE(IDENTIFIER(...))` are refused. User-defined functions inside `SELECT` are not inspected.  
 > - **Destructive Safety Gates:** Dropping databases, schemas, or tables requires explicit `confirm=True`.  
 > - **Query Limits:** Default execution limits prevent context window overflow (`SNOWFLAKE_MAX_ROWS=1000`, `SNOWFLAKE_QUERY_TIMEOUT=120`).
@@ -91,7 +91,7 @@ Some describe and lineage tools return an empty success for a missing name. That
 
 `horizon_get_column_lineage` returns `status: success` when its `SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY` query succeeds. That query does not filter on the supplied table or column name, so the payload can still contain recent access-history rows when that name is missing. The live harness still uses `expect: success` because the call succeeds. That is harness policy, not an empty-payload claim.
 
-Most other missing-object describe tools still reject: the handler returns `status: error`, and the live harness records `expect: rejected`. The fixture table and marker lists are in [TESTING.md](TESTING.md) under **Live e2e expect policy**.
+Most other missing-object describe tools still reject: the call returns a tool error (`isError: true`) whose text is the `{"status": "error", ...}` payload, and the live harness records `expect: rejected`. The fixture table and marker lists are in [TESTING.md](TESTING.md) under **Live e2e expect policy**.
 
 ### Programmatic access tokens and `ROLE_RESTRICTION`
 
@@ -136,17 +136,19 @@ snowflake-mcp --init
 # Run with a specific Snowflake CLI connection profile
 snowflake-mcp -c my_connection
 
-# Run in read-only mode (every tool stays registered; handlers reject mutations)
-snowflake-mcp -c my_connection --readonly
+# Pick the job profile that matches the work (dba, pipeline, cortex, apps)
+snowflake-mcp -c my_connection --profile pipeline
 
-# List one domain, or only read-only tools
-snowflake-mcp --profile cortex
+# Read-only: list the profile as is and refuse non-read-only tools at call time
+snowflake-mcp -c my_connection --profile dba --readonly
+
+# Read-only: list only tools annotated readOnlyHint=True
 snowflake-mcp --profile readonly
-# `--profile readonly` hides mutating tools, sets the read-only flag, and pins USE SECONDARY ROLES NONE on each session.
+# Both read-only forms set the read-only flag and pin USE SECONDARY ROLES NONE on each session.
 # Set DEFAULT_SECONDARY_ROLES = () on that user, or use a dedicated user that holds only the read-only role.
 
-# Opt in to regex tool search instead of the flat 140-tool tools/list
-snowflake-mcp --enable-tool-search
+# Profile full only: Tool Search (regex or bm25) or experimental Code Mode, never both
+snowflake-mcp --profile full --enable-tool-search --tool-search-backend bm25
 
 # Build a local image (the published image is ghcr.io/christianclaudio/mcp-server-snowflake)
 docker build -t mcp-server-snowflake .
@@ -155,7 +157,39 @@ docker run -i --rm mcp-server-snowflake
 
 ---
 
-## 🛠️ Complete Tool Suite (140 Enterprise Tools)
+## 🎛️ Profiles, read-only and discovery
+
+Pick a profile with `--profile` or `SNOWFLAKE_MCP_PROFILE`. Profile names are case-insensitive. An unknown profile stops the server at startup with a `ValueError` that lists the valid names.
+
+**Job profiles** cut across domains and list only the tools one job needs. Prompts and resources are not filtered.
+
+| Profile | Job it serves | Tools | Read-only (`readOnlyHint=True`) |
+|---|---|---:|---:|
+| `full` (default) | Complete catalog, all 19 domains. Tool Search and Code Mode can attach only here. | 140 | 88 |
+| `readonly` | Auditor or safe exploration: only tools annotated `readOnlyHint=True`, across all domains. | 88 | 88 |
+| `dba` | Platform admin or DBA: warehouses, databases and schemas, roles, users and grants, network and masking policies, tags, and query performance and cost. | 62 | 41 |
+| `pipeline` | Data engineer: stages, pipes, streams, tasks, dynamic and Iceberg tables, alerts, tables and DML. | 64 | 33 |
+| `cortex` | Analyst or AI builder: Cortex functions, Search and the analyst query tool, with read-only context discovery. | 16 | 16 |
+| `apps` | App developer: Streamlit and SPCS compute pools and services, image repositories, procedures, UDFs, secrets, integrations and app stages. | 24 | 22 |
+
+Every tool is in at least one job profile. **Domain profiles** stay available: each domain name lists that domain only (`queries` 9, `databases` 7, `schemas` 6, `tables` 10, `warehouses` 8, `stages` 6, `tasks` 7, `streams` 5, `dynamic_tables` 9, `pipes` 5, `alerts` 6, `governance` 12, `network` 6, `compute_services` 8, `tags` 4, `horizon` 6, `programmability` 10, `recipes` 8). `cortex` is the job profile above: it keeps all 8 cortex-domain tools and adds 8 read-only discovery tools.
+
+**Read-only.** `readOnlyHint` is the only signal. A tool without the annotation, or with any value other than `true`, is treated as a write.
+
+| | `--readonly` / `SNOWFLAKE_MCP_READONLY=1` | `--profile readonly` |
+|---|---|---|
+| `tools/list` | Unchanged: the active profile's full list, writes included | Only the 88 read-only tools |
+| Calling a write | Refused before the handler runs: `isError: true`, `Denied in read-only mode ...` | The tool is not listed, so the call fails as `Unknown tool` |
+| Combines with a job profile | Yes (`--profile dba --readonly` lists 62 and refuses 21) | No, it is its own profile |
+| Session pin and SQL guards | On | On |
+
+**Discovery.** Tool Search (`--enable-tool-search`, `SNOWFLAKE_MCP_ENABLE_TOOL_SEARCH=1`) replaces `tools/list` with `search_tools` and `call_tool`. The backend is `regex` (default) or `bm25` (`--tool-search-backend`, `SNOWFLAKE_MCP_TOOL_SEARCH_BACKEND`). Experimental Code Mode (`--enable-code-mode`, `SNOWFLAKE_MCP_ENABLE_CODE_MODE=1`) lists `search`, `get_schema` and `execute`. It needs `fastmcp[code-mode]`; without it the server logs a warning and keeps the flat list. Both attach only on `full`. On any other profile the server logs a warning and keeps that profile's flat list. Enabling both raises `ValueError` at startup. Under read-only, `search_tools`, `search` and `get_schema` stay available, `call_tool` is checked against the tool it calls, and `execute` is refused.
+
+**Tool errors.** A failed call (a Snowflake error or a rejected argument) returns `isError: true`. The text is the redacted JSON payload, for example `{"status": "error", "error": "..."}`. Successful results keep their `status: success` shape.
+
+---
+
+## 🛠️ Complete Tool Suite (140 tools, profile `full`)
 
 | Domain Suite | Count | Key Tools |
 |---|---|---|
@@ -310,7 +344,7 @@ uv run mypy src/
 # 3. Unit and mocked test suite
 uv run pytest
 
-# 4. Tool contract verification (builds the server; 140 tools)
+# 4. Tool contract verification (140 tools on full, annotations, every profile count)
 uv run python scripts/check_tool_contract.py
 
 # 5. MCP protocol conformance suite (Spec 2026-07-28)

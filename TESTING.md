@@ -26,7 +26,7 @@ pytest -m e2e tests/test_e2e_live.py
 
 ## 🛡️ Tool Contract Verification
 
-`scripts/check_tool_contract.py` guarantees that all **140 tools** remain registered across all 19 domain modules without silent regression.
+`scripts/check_tool_contract.py` checks that the `full` profile registers all **140 tools** across the 19 domain modules with explicit annotations, and that every profile (`readonly`, the job profiles `dba`, `pipeline`, `cortex`, `apps`, and each domain profile) lists its expected number of tools and read-only tools.
 
 ```bash
 python scripts/check_tool_contract.py
