@@ -5,16 +5,18 @@ from __future__ import annotations
 import json
 import logging
 import traceback
+from collections.abc import Callable
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastmcp import Client, FastMCP
 from fastmcp.exceptions import NotFoundError, ToolError
 from fastmcp.server.middleware import MiddlewareContext
 from fastmcp.tools.base import ToolResult
-from snowflake.connector.errors import ForbiddenError, ProgrammingError, TooManyRequests
+from mcp.types import ToolAnnotations
+from snowflake.connector.errors import DatabaseError, ForbiddenError, ProgrammingError, TooManyRequests
 
 from snowflake_mcp.config import SnowflakeConfig
 from snowflake_mcp.connection import SnowflakeClient
@@ -415,3 +417,85 @@ async def test_error_middleware_redacted_error_has_no_secret_on_context() -> Non
     assert caught.value.__cause__ is None
     assert caught.value.__context__ is None
     assert "abc123chainsecretTOKEN" not in _chain_text(caught.value)
+
+
+_CONNECTOR_TOKEN = "Authorization: Bearer sk-live-abc123"
+
+
+def _not_found(sql: str) -> Exception | None:
+    """connection.py ``raise mapped from exc``: a ProgrammingError mapped to ResourceNotFoundError."""
+    return ProgrammingError(msg=f"Object 'X' does not exist {_CONNECTOR_TOKEN}", errno=2003)
+
+
+def _pin_fails(sql: str) -> Exception | None:
+    """connection.py ``SafetyViolationError(...) from exc``: the read-only secondary-roles pin fails."""
+    if sql == "USE SECONDARY ROLES NONE":
+        return DatabaseError(msg=f"pin failed {_CONNECTOR_TOKEN}")
+    return None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("read_only", "connector_error", "redacted_in_text"),
+    [(False, _not_found, True), (True, _pin_fails, False)],
+    ids=["execute_query-mapped-ProgrammingError", "secondary-roles-pin-DatabaseError"],
+)
+async def test_connector_error_escaping_a_handler_leaves_no_secret_on_the_chain(
+    monkeypatch: pytest.MonkeyPatch,
+    read_only: bool,
+    connector_error: Callable[[str], Exception | None],
+    redacted_in_text: bool,
+) -> None:
+    """A connection.py error raised from a token-bearing connector error, end to end.
+
+    The shipped handlers catch connector errors and return an error-shaped result, so
+    the probe tool lets one escape. The text of the error that reaches
+    ErrorHandlingMiddleware is already redacted, so the middleware passes it through
+    unchanged; only its ``finally`` drops the connector error from ``__context__``.
+    """
+    monkeypatch.delenv("SNOWFLAKE_MCP_READONLY", raising=False)
+    boundary: list[BaseException] = []
+    original = ErrorHandlingMiddleware.on_message
+
+    async def _recording(self: ErrorHandlingMiddleware, context: MiddlewareContext[Any], call_next: Any) -> Any:
+        try:
+            return await original(self, context, call_next)
+        except BaseException as exc:
+            boundary.append(exc)
+            raise
+
+    monkeypatch.setattr(ErrorHandlingMiddleware, "on_message", _recording)
+
+    def _execute(sql: str, *args: object, **kwargs: object) -> None:
+        error = connector_error(sql)
+        if error is not None:
+            raise error
+
+    cursor = MagicMock()
+    cursor.execute.side_effect = _execute
+    conn = MagicMock()
+    conn.is_closed.return_value = False
+    conn.cursor.return_value = cursor
+    client = SnowflakeClient(config=SnowflakeConfig(account="acc", user="usr", read_only=read_only))
+    server = create_server(client=client)
+
+    @server.tool(annotations=ToolAnnotations(readOnlyHint=True))
+    def raw_query() -> dict[str, Any]:
+        return client.execute_query("SELECT 1")
+
+    with patch("snowflake.connector.connect", return_value=conn):
+        async with Client(server) as mcp_client:
+            result = await mcp_client.call_tool("raw_query", {}, raise_on_error=False)
+
+    assert cursor.execute.called
+    assert result.is_error is True
+    text = result.content[0].text  # type: ignore[union-attr]
+    assert "sk-live-abc123" not in text
+    assert ("[REDACTED]" in text) is redacted_in_text
+    assert len(boundary) == 1
+    raised = boundary[0]
+    assert isinstance(raised, ToolError)
+    assert raised.__cause__ is None
+    assert raised.__context__ is None
+    assert "sk-live-abc123" not in _chain_text(raised)
+    assert "sk-live-abc123" not in _formatted(raised)

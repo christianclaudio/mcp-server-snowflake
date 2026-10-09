@@ -12,7 +12,9 @@ calls reach the vendor API; any repo whose tools need a network mock should supp
 in its own ``conftest.py``.
 
 The checks are generic. A server copied from the template keeps this file unchanged
-except for the import line and the three fixture tables below:
+except for the import line and the three fixture tables below. This copy also changes
+``surface_settings``, ``surface_client``, ``_flat_full_tool_names`` and the
+``create_server`` calls, so every build gets a ``SnowflakeClient`` with a dummy config:
 
 * ``SURFACE_SETTINGS`` -- ``settings`` attributes to patch before ``create_server``
   (dummy credentials or base URLs a resource needs to build). Example:

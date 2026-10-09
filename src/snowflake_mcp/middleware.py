@@ -258,9 +258,15 @@ class ErrorHandlingMiddleware(Middleware):
             failure = ToolError(json.dumps(redact_error_payload(payload)))
         # Break the chain: exceptions leaving ErrorHandlingMiddleware carry no
         # unredacted cause or context. The raise sits after the except block, so
-        # this frame attaches no context; the finally clears the one Python
-        # attaches when the caller is itself handling an exception. FastMCP's own
-        # exception log and tools/call span run before this middleware.
+        # this frame attaches no context. The finally clears two others: the one
+        # Python attaches when the caller is itself handling an exception, and the
+        # one an unchanged exception already carries. The second is the
+        # connection.py path (``raise mapped from exc``; ``SafetyViolationError(...)
+        # from exc``): that text is already redacted, so when such an error escapes
+        # a handler it passes through unchanged with the token-bearing connector
+        # error on its __context__ chain. The shipped handlers catch these and
+        # return error-shaped results instead. FastMCP's own exception log and
+        # tools/call span run before this middleware.
         try:
             raise failure from None
         finally:
