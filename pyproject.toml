@@ -38,8 +38,8 @@ classifiers = [
     "Topic :: Database",
 ]
 dependencies = [
-    "mcp>=2.2.0",
-    "fastmcp>=4.0.11",
+    "mcp>=2.3.0",
+    "fastmcp>=4.1.0",
     "snowflake-connector-python>=4.8.0",
     "snowflake-core>=1.13.2",
     "pydantic>=2.13.5",
