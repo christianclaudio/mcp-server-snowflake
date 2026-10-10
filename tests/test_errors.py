@@ -15,13 +15,11 @@ from snowflake.connector.errors import ForbiddenError, ProgrammingError, TooMany
 from snowflake_mcp.config import SnowflakeConfig
 from snowflake_mcp.connection import SnowflakeClient
 from snowflake_mcp.errors import (
-    _SECRET_PATTERNS,
     AuthenticationError,
     RateLimitError,
     ResourceNotFoundError,
     SafetyViolationError,
     SnowflakeMCPError,
-    _replace_secret,
     map_connector_error,
     redact_secrets,
 )
@@ -33,74 +31,66 @@ from snowflake_mcp.middleware import (
 )
 from snowflake_mcp.server import create_server
 
-# Looked up by pattern text, so the test does not depend on where the pattern sits.
-_AUTHORIZATION_INDEX = next(
-    i for i, p in enumerate(_SECRET_PATTERNS) if p.pattern.startswith(r"(?i)(authorization\s*[=:]")
-)
-
-
-def _apply(pattern_index: int, text: str) -> str:
-    return _SECRET_PATTERNS[pattern_index].sub(_replace_secret, text)
-
 
 def test_private_key_pattern_redacts_pem_block() -> None:
     pem = "-----BEGIN PRIVATE KEY-----\nABCDsecretKEY\n-----END PRIVATE KEY-----"
-    redacted = _apply(0, f"key material {pem}")
+    redacted = redact_secrets(f"key material {pem}")
     assert "ABCDsecretKEY" not in redacted
     assert "[REDACTED]" in redacted
 
 
 def test_jwt_pattern_redacts_compact_token() -> None:
     token = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1In0.signature"
-    redacted = _apply(1, f"jwt {token}")
+    redacted = redact_secrets(f"jwt {token}")
     assert token not in redacted
     assert "[REDACTED]" in redacted
 
 
 def test_bearer_pattern_keeps_scheme() -> None:
-    redacted = _apply(2, "Bearer abc.def.ghi")
+    redacted = redact_secrets("Bearer abc.def.ghi")
     assert redacted == "Bearer [REDACTED]"
 
 
 def test_snowflake_uri_pattern_keeps_user() -> None:
-    redacted = _apply(3, "snowflake://ANALYST:SuperSecret@xy12345.snowflakecomputing.com")
+    redacted = redact_secrets("snowflake://ANALYST:SuperSecret@xy12345.snowflakecomputing.com")
     assert "SuperSecret" not in redacted
     assert redacted.startswith("snowflake://ANALYST:[REDACTED]")
 
 
 def test_generic_url_pattern_keeps_user() -> None:
-    redacted = _apply(4, "https://analyst:s3cretpass@example.com/path")
+    redacted = redact_secrets("https://analyst:s3cretpass@example.com/path")
     assert "s3cretpass" not in redacted
     assert redacted.startswith("https://analyst:[REDACTED]")
 
 
 def test_password_equals_pattern_keeps_label() -> None:
-    redacted = _apply(5, "password='hunter2-secret'")
+    redacted = redact_secrets("password='hunter2-secret'")
     assert "hunter2-secret" not in redacted
-    assert redacted == "password=[REDACTED]"
+    # Template v1.6.0 rule: a quoted value is masked to its closing quote; the quotes stay.
+    assert redacted == "password='[REDACTED]'"
 
 
 def test_password_word_pattern_keeps_label() -> None:
-    redacted = _apply(6, "rejected password s3cret")
+    redacted = redact_secrets("rejected password s3cret")
     assert "s3cret" not in redacted
     assert "[REDACTED]" in redacted
 
 
 def test_token_assignment_pattern_keeps_label() -> None:
-    redacted = _apply(7, "token=pat_abcdefghijklmnopqrstuvwxyz")
+    redacted = redact_secrets("token=pat_abcdefghijklmnopqrstuvwxyz")
     assert "pat_abcdefghijklmnopqrstuvwxyz" not in redacted
     assert redacted == "token=[REDACTED]"
 
 
 def test_snowflake_env_assignment_pattern_keeps_name() -> None:
-    redacted = _apply(8, "SNOWFLAKE_TOKEN=session-token-value")
+    redacted = redact_secrets("SNOWFLAKE_TOKEN=session-token-value")
     assert "session-token-value" not in redacted
     assert redacted.startswith("SNOWFLAKE_TOKEN=")
     assert "[REDACTED]" in redacted
 
 
 def test_authorization_pattern_keeps_header_name() -> None:
-    redacted = _apply(_AUTHORIZATION_INDEX, "authorization: supersecrettoken")
+    redacted = redact_secrets("authorization: supersecrettoken")
     assert "supersecrettoken" not in redacted
     assert redacted.startswith("authorization:")
     assert "[REDACTED]" in redacted
@@ -335,7 +325,7 @@ def test_redact_secrets_token_forms() -> None:
     [
         pytest.param("auth_token=SECRET7", "auth_token=[REDACTED]", id="auth_token"),
         pytest.param('{"id_token": "SECRET8"}', '{"id_token": "[REDACTED]"}', id="id_token"),
-        pytest.param("session-token: SECRET9&x=1", "session-token: [REDACTED]", id="session_token"),
+        pytest.param("session-token: SECRET9&x=1", "session-token: [REDACTED]&x=1", id="session_token"),
         pytest.param(
             "X-Auth-Token: SECRET10\nAccept: */*",
             "X-Auth-Token: [REDACTED]\nAccept: */*",
@@ -380,13 +370,6 @@ def test_redact_secrets_more_token_forms(raw: str, expected: str) -> None:
     assert redact_secrets(raw) == expected
 
 
-# The house-standard key pattern, found by its shape rather than its key list, so a later
-# edit to the list (or a left boundary on it) still reaches the tests below.
-_TOKEN_KEY_INDEX = next(
-    i for i, p in enumerate(_SECRET_PATTERNS) if ")[_-]?token(?:" in p.pattern and "%3D" not in p.pattern
-)
-
-
 @pytest.mark.parametrize(
     "raw",
     [
@@ -404,7 +387,7 @@ def test_token_key_pattern_redacts_session_and_oauth_tokens(raw: str) -> None:
     boundary, fails this test even though the bare ``token`` alternative of the
     key=value pattern still redacts these bare forms.
     """
-    redacted = _apply(_TOKEN_KEY_INDEX, raw)
+    redacted = redact_secrets(raw)
     assert "SECRET" not in redacted
     assert redacted.endswith("[REDACTED]")
 
@@ -430,12 +413,6 @@ def test_redact_secrets_session_and_oauth_tokens(raw: str, expected: str) -> Non
     assert redact_secrets(raw) == expected
 
 
-# The bare ``token`` pattern (house-standard entry 9), found by its lookbehind.
-_BARE_TOKEN_INDEX = next(
-    i for i, p in enumerate(_SECRET_PATTERNS) if p.pattern.startswith(r"(?i)((?<![A-Za-z0-9_])token")
-)
-
-
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [
@@ -454,7 +431,7 @@ def test_bare_token_pattern_redacts_colon_equals_and_spaces(raw: str, expected: 
     entry itself: narrowing it back to ``token=`` fails the ``:`` and spaced cases, and
     dropping the optional quote fails the quoted cases.
     """
-    assert _apply(_BARE_TOKEN_INDEX, raw) == expected
+    assert redact_secrets(raw) == expected
 
 
 @pytest.mark.parametrize(
@@ -465,14 +442,13 @@ def test_redact_secrets_bare_token_key(raw: str) -> None:
     assert "SECRET" not in redact_secrets(raw)
 
 
-def test_redact_secrets_bare_token_swallows_fragment() -> None:
-    """Known limitation, pinned: a bare ``token=`` value also takes a literal ``#fragment``.
+def test_redact_secrets_bare_token_keeps_fragment() -> None:
+    """A bare ``token=`` value stops at a literal ``#``, as the encoded ``%23`` form does.
 
-    The key=value pattern's bare ``token`` alternative runs before the house-standard
-    patterns and its ``\\S+`` value does not stop at ``#``. The encoded ``%23`` form keeps
-    its fragment (see ``url_encoded_access_token_fragment``).
+    The house rules run before the Snowflake extras, so the bare ``token`` rule (which
+    stops at ``#``) masks the value first; the fragment is not part of the secret.
     """
-    assert redact_secrets("/x?token=SECRET#frag") == "/x?token=[REDACTED]"
+    assert redact_secrets("/x?token=SECRET#frag") == "/x?token=[REDACTED]#frag"
 
 
 def test_redact_secrets_leaves_token_words_alone() -> None:
@@ -523,3 +499,19 @@ async def test_tool_error_path_redacts_token_forms() -> None:
     for secret in ("SECRET1", "SECRET2", "SECRET3", "SECRET4", "SECRET13", "SECRET15"):
         assert secret not in text
         assert secret not in json.dumps(res.structured_content)
+
+
+def test_error_classes_redact_with_redact_message_and_keep_json_shape() -> None:
+    """SnowflakeMCPError and SafetyViolationError build their message with redact_message."""
+    import json
+
+    body = json.dumps({"code": "390100", "password": 987654321, "private_key": ["k1"], "api_key": {"v": "s"}})
+    err = SnowflakeMCPError(f"upstream 401: {body}")
+    parsed = json.loads(err.message.split(": ", 1)[1])
+    assert parsed == {"code": "390100", "password": "[REDACTED]", "private_key": "[REDACTED]", "api_key": "[REDACTED]"}
+    assert str(err) == err.message
+    for cls in (AuthenticationError, ResourceNotFoundError, RateLimitError):
+        assert "987654321" not in str(cls(body))
+    sv = SafetyViolationError(f"denied: {body}")
+    inner = json.loads(json.loads(str(sv))["error"].split(": ", 1)[1])
+    assert inner["password"] == inner["private_key"] == inner["api_key"] == "[REDACTED]"

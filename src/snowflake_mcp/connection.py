@@ -472,12 +472,12 @@ class SnowflakeClient:
         cursor = conn.cursor()
         try:
             cursor.execute("USE SECONDARY ROLES NONE")
-        except Exception as exc:
+        except Exception:
             self._conn = None
             conn.close()
             raise SafetyViolationError(
                 "Read-only mode refused to start because USE SECONDARY ROLES NONE failed."
-            ) from exc
+            ) from None
         finally:
             cursor.close()
 
@@ -532,7 +532,7 @@ class SnowflakeClient:
         except Exception as exc:
             mapped = map_connector_error(exc)
             if mapped is not None:
-                raise mapped from exc
+                raise mapped from None
             raise
         finally:
             cursor.close()

@@ -11,6 +11,16 @@ import sys
 import warnings
 from typing import Any
 
+from fastmcp import FastMCP
+
+from snowflake_mcp.auth import (
+    ALLOW_UNAUTHENTICATED_BIND_ENV,
+    AUTH_TOKEN_ENV,
+    SharedTokenVerifier,
+    allow_unauthenticated_bind,
+    is_localhost,
+    read_auth_token,
+)
 from snowflake_mcp.config import SnowflakeConfig
 from snowflake_mcp.server import VALID_PROFILES, create_server
 
@@ -61,6 +71,41 @@ def run_init_wizard() -> None:
 def _handle_shutdown(signum: int, frame: Any) -> None:
     """Gracefully handle SIGTERM/SIGINT from host supervisor to exit with status 0 immediately."""
     sys.exit(0)
+
+
+def _apply_http_auth(parser: argparse.ArgumentParser, server: FastMCP, transport: str, host: str) -> None:
+    """Make sure bearer auth from the token env is on, or enforce the localhost-only bind policy.
+
+    ``create_server`` already attaches the verifier when the token env is set at build time;
+    this attaches it at serve time if no verifier exists yet. A token that is empty after
+    ``.strip()`` counts as unset. With no token, a bind to any host other than 127.0.0.1,
+    ::1 or localhost exits through ``parser.error`` (code 2) unless
+    ``SNOWFLAKE_MCP_ALLOW_UNAUTHENTICATED_BIND`` opts in. Messages never include the token.
+    """
+    auth_token = read_auth_token()
+    if auth_token:
+        if not isinstance(server.auth, SharedTokenVerifier):
+            server.auth = SharedTokenVerifier(auth_token)
+        logger.info("Bearer token authentication is on for the %s transport", transport)
+        return
+    if not is_localhost(host):
+        if not allow_unauthenticated_bind():
+            parser.error(
+                f"refusing to serve {transport} on non-localhost host {host!r} without "
+                f"authentication: set {AUTH_TOKEN_ENV}, bind to 127.0.0.1, ::1 or localhost, "
+                f"or set {ALLOW_UNAUTHENTICATED_BIND_ENV}=1 to accept an unauthenticated bind"
+            )
+        logger.warning(
+            "%s is set: serving %s on non-localhost host %r without authentication.",
+            ALLOW_UNAUTHENTICATED_BIND_ENV,
+            transport,
+            host,
+        )
+    logger.warning(
+        "%s is not set, so MCP requests on the %s transport are not authenticated.",
+        AUTH_TOKEN_ENV,
+        transport,
+    )
 
 
 def main() -> None:
@@ -200,6 +245,9 @@ def main() -> None:
     }
     if getattr(args, "allowed_origins", None) is not None:
         run_kwargs["allowed_origins"] = args.allowed_origins
+
+    if args.transport in ("sse", "streamable-http"):
+        _apply_http_auth(parser, mcp, args.transport, args.host)
 
     if args.transport == "sse":
         warnings.warn(

@@ -41,3 +41,13 @@ Destructive operations (e.g. `DROP DATABASE`, `DROP SCHEMA`, `DROP TABLE`, `TRUN
 ### 4. Credential Protection
 - Never commit credentials to git.
 - Tokens, passwords, and RSA private keys are handled in memory and excluded from MCP logs.
+
+### 5. Release Provenance
+Each release's wheel, sdist and GHCR image carry a GitHub build provenance attestation, created by a separate `attest` job that holds only `contents: read`, `id-token: write` and `attestations: write` (no GitHub Release or GHCR credentials). Verify before installing:
+
+```bash
+gh attestation verify mcp_server_snowflake-<version>-py3-none-any.whl --repo christianclaudio/mcp-server-snowflake
+gh attestation verify oci://ghcr.io/christianclaudio/mcp-server-snowflake:<version> --repo christianclaudio/mcp-server-snowflake
+```
+
+The attest job runs after the GitHub Release and the GHCR push, so a failed attestation does not undo them. When the MCP Registry job is enabled, it waits for `attest`, so a failed attestation blocks the registry publish.

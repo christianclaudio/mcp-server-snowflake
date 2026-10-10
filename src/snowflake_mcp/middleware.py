@@ -24,7 +24,7 @@ from pydantic import ValidationError as PydanticValidationError
 
 from snowflake_mcp.config import SnowflakeConfig
 from snowflake_mcp.connection import read_only_enabled
-from snowflake_mcp.errors import SafetyViolationError, redact_error_payload, redact_secrets
+from snowflake_mcp.errors import SafetyViolationError, redact_error_payload, redact_error_value, redact_message
 
 logger = logging.getLogger("snowflake_mcp")
 
@@ -45,7 +45,7 @@ _PROTOCOL_ERRORS = (
 
 def _redacted_exception(exc: Exception) -> Exception:
     """Return ``exc`` unchanged, or a same-type copy whose message is redacted."""
-    redacted = redact_secrets(str(exc))
+    redacted = redact_message(str(exc))
     if redacted == str(exc):
         return exc
     try:
@@ -60,12 +60,12 @@ def _redact_text(text: str, *, is_error: bool) -> str:
     except json.JSONDecodeError:
         parsed = None
     if isinstance(parsed, (dict, list)):
-        redacted = redact_error_payload(parsed)
+        redacted = redact_error_value(parsed) if is_error else redact_error_payload(parsed)
         if redacted != parsed:
             return json.dumps(redacted)
         return text
     if is_error:
-        return redact_secrets(text)
+        return redact_message(text)
     return text
 
 
@@ -80,13 +80,17 @@ def redact_tool_result(result: Any) -> Any:
     if not isinstance(result, (ToolResult, CallToolResult)):
         return result
     changed = False
+    is_error = bool(result.is_error)
     if result.structured_content is not None:
-        redacted_structured = redact_error_payload(result.structured_content)
+        redacted_structured = (
+            redact_error_value(result.structured_content)
+            if is_error
+            else redact_error_payload(result.structured_content)
+        )
         if redacted_structured != result.structured_content:
             result.structured_content = redacted_structured
             changed = True
     new_content = []
-    is_error = bool(result.is_error)
     for block in result.content:
         text = getattr(block, "text", None)
         if isinstance(text, str):
@@ -151,10 +155,10 @@ class ParentAuditMiddleware(Middleware):
                 "MCP request failed: %s in %.2fms: %s",
                 target,
                 duration_ms,
-                redact_secrets(str(exc)),
+                redact_message(str(exc)),
             )
             if exc.args:
-                exc.args = tuple(redact_secrets(arg) if isinstance(arg, str) else arg for arg in exc.args)
+                exc.args = tuple(redact_message(arg) if isinstance(arg, str) else arg for arg in exc.args)
             raise
         duration_ms = (time.perf_counter() - start) * 1000.0
         logger.debug("MCP request completed: %s in %.2fms", target, duration_ms)
@@ -207,7 +211,7 @@ class ErrorHandlingMiddleware(Middleware):
         except _PROTOCOL_ERRORS:
             raise
         except Exception as exc:
-            safe = redact_secrets(str(exc))
+            safe = redact_message(str(exc))
             method = getattr(context, "method", None) or "unknown"
             logger.error("MCP request failed method=%s: %s", method, safe)
             rewritten = _redacted_exception(exc)
