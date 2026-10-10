@@ -74,6 +74,12 @@ def _replace_secret(match: re.Match[str]) -> str:
 # Credential keys whose whole value is a secret.
 # Snowflake adds ``passphrase`` and ``secret`` (key-pair passphrases, OAuth client secrets).
 _KEYS = r"(?:api[_-]?key|client[_-]?secret|private[_-]?key|password|passphrase|secret)"
+# Credential keys whose bracketed or bare (number, ``None``, ``True``) value is masked whole,
+# whether the key is quoted or not: ``_KEYS`` plus the token names the token rules cover. The
+# lookbehind keeps ``next_token``, ``page_token`` and ``max_tokens`` untouched.
+_VALUE_KEYS = r"(?:" + _KEYS + r"|(?:api|access|refresh|auth|id|session)[_-]?token|(?<![A-Za-z0-9_])token)"
+# A closing quote after a key (``'api_key':``, ``"password":``, ``\"token\":``).
+_KEY_CLOSE = r"(?:\\?[\"'])?"
 # The fixed mask: the same string whatever the secret's length (template #67).
 MASK = "[REDACTED]"
 
@@ -103,10 +109,12 @@ SECRET_PATTERNS = [
     # A PEM block, from ``-----BEGIN ...-----`` to ``-----END ...-----``, across lines or
     # with ``\n`` escapes inside a serialized JSON string. A BEGIN with no END is masked to
     # the end of the text (fail closed), which also keeps the scan linear: a lazy search for
-    # an END that never comes re-read the rest of the text from every BEGIN.
+    # an END that never comes re-read the rest of the text from every BEGIN. The END must
+    # carry the BEGIN's label (any case): a ``-----END CERTIFICATE-----`` inside a PRIVATE
+    # KEY block does not end it.
     re.compile(
-        r"()-----BEGIN [A-Z0-9 ]+-----(?:(?!-----END [A-Z0-9 ]+-----).)*"
-        r"(?:-----END [A-Z0-9 ]+-----|\Z)",
+        r"()-----BEGIN ([A-Z0-9 ]+)-----(?:(?!-----END \2-----).)*"
+        r"(?:-----END \2-----|\Z)",
         re.DOTALL | re.IGNORECASE,
     ),
     # Bearer value: base64url and base64 characters (``~``, ``+``, ``/``) plus ``=`` padding.
@@ -121,6 +129,15 @@ SECRET_PATTERNS = [
     # whole string up to its closing unescaped quote, escapes included; the quotes stay.
     re.compile(
         r"(?i)([\"']?" + _KEYS + r"[\"']?\s*[:=]\s*([\"']))(?:\\.|(?!\2)[^\\\n])*",
+        re.IGNORECASE,
+    ),
+    # Quoted key with a bare value: a Python ``repr`` or JSON number, ``None``, ``True`` or
+    # word (``{'password': 12345}``). The value stops at whitespace, ``,`` or a closing
+    # bracket, so the rest of the dict keeps its shape. ``None``/``null`` stays, as in
+    # ``redact_payload``. Quoted and bracketed values have their own rules.
+    re.compile(
+        r"(?i)(\\?[\"']" + _VALUE_KEYS + r"\\?[\"']\s*[:=]\s*)"
+        r"(?![\"'\\\[{(]|" + r"\[REDACTED\]" + r"|(?:null|None)(?![^\s,}\])]))[^\s,}\])]+",
         re.IGNORECASE,
     ),
     # The same inside an already-serialized JSON string (``\"password\": \"...\"``, template
@@ -172,9 +189,15 @@ SECRET_PATTERNS = [
 ]
 
 
-# A credential key followed by ``{`` or ``[``: the start of a bracketed value.
-_KEYED_BRACKET = re.compile(r"(?i)(" + _KEYS + r"[ \t]*[:=][ \t]*)(?=[\[{])(?!\[REDACTED\])", re.IGNORECASE)
-_CLOSERS = {"{": "}", "[": "]"}
+# A credential key followed by ``{``, ``[`` or ``(`` (a Python tuple): the start of a bracketed
+# value. The key may
+# be quoted, as in a Python ``repr`` (``{'api_key': ['a', 'b']}``) or JSON that does not
+# parse.
+_KEYED_BRACKET = re.compile(
+    r"(?i)(" + _VALUE_KEYS + _KEY_CLOSE + r"[ \t]*[:=][ \t]*)(?=[\[{(])(?!" + r"\[REDACTED\]" + r")",
+    re.IGNORECASE,
+)
+_CLOSERS = {"{": "}", "[": "]", "(": ")"}
 
 
 class _Brackets:
@@ -199,7 +222,10 @@ class _Brackets:
     def end(self, start: int) -> int:
         """Return the index just past the bracket balancing ``text[start]``.
 
-        Brackets inside double-quoted strings (with backslash escapes) do not count. When
+        Brackets inside double- or single-quoted strings (with backslash escapes) do not
+        count, so a Python ``repr`` value such as ``['a]b']`` balances correctly. A
+        single-quoted string also ends at a newline (a ``repr`` string never spans lines),
+        so a stray apostrophe cannot hide the rest of the text. When
         the value never balances, the end of the line is returned instead, so an
         unparseable value is still masked whole.
         """
@@ -209,17 +235,17 @@ class _Brackets:
             return self._line_end(start)
         text = self.text
         stack: list[tuple[str, int]] = []
-        in_string = False
+        quote = ""
         i = start
         while i < len(text):
             ch = text[i]
-            if in_string:
+            if quote:
                 if ch == "\\":
                     i += 1
-                elif ch == '"':
-                    in_string = False
-            elif ch == '"':
-                in_string = True
+                elif ch == quote or (ch == "\n" and quote == "'"):
+                    quote = ""
+            elif ch in "\"'":
+                quote = ch
             elif ch in _CLOSERS:
                 stack.append((_CLOSERS[ch], i))
             elif stack and ch == stack[-1][0]:
@@ -319,7 +345,16 @@ def redact_message(text: str) -> str:
     tries = 0
     brackets = _Brackets(text)
     while i < len(text):
-        if text[i] in "{[":
+        if text[i] == "(":
+            # A tuple right after a credential key (``{'api_key': ('a', 'b')}``) is masked
+            # whole too. Only the 256 characters before it are checked, and a ``(`` never
+            # counts as a try, so prose and tracebacks full of parentheses stay linear.
+            window = text[max(start, i - 256) : i + 1]
+            if any(m.end() == len(window) - 1 for m in _KEYED_BRACKET.finditer(window)):
+                parts.append(redact_secrets(text[start:i]) + MASK)
+                start = i = brackets.end(i)
+                continue
+        elif text[i] in "{[":
             prefix = text[start:i]
             # A value right after a credential key (``password={...}``) is the secret,
             # masked whole to its balanced bracket whether or not it parses.
