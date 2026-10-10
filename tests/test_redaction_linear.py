@@ -135,9 +135,45 @@ async def test_keyed_bracket_flood_through_tools_call_is_fast_and_masked() -> No
     ids=["snowflake-uri", "generic-uri"],
 )
 def test_uri_credential_scan_is_linear(raw: str) -> None:
-    """A URI password stops before the next ``://``, so ``@``-less repeats stay linear."""
+    """One match consumes the whole token, so ``@``-less repeats stay linear."""
     began = time.perf_counter()
     redact_secrets(raw)
     assert time.perf_counter() - began < 3.0
     assert redact_secrets("snowflake://me:p/a:ss@acct/db") == "snowflake://me:" + MASK + "acct/db"
     assert redact_secrets("dsn=postgres://u:pw@h") == "dsn=postgres://u:" + MASK + "h"
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("snowflake://bob:pa://ssS3CRET7@acct", "snowflake://bob:" + MASK + "acct"),
+        ("x://bob:pa://ssS3CRET7@h/db", "x://bob:" + MASK + "h/db"),
+        ("snowflake://me:p/a:ss@acct/db", "snowflake://me:" + MASK + "acct/db"),
+        (
+            "a snowflake://u1:p://S3CRET8@h1 b postgres://u2:q:/S3CRET9@h2 c",
+            "a snowflake://u1:" + MASK + "h1 b postgres://u2:" + MASK + "h2 c",
+        ),
+        ("snowflake://bob:pa://ssS3CRET7", "snowflake://bob:" + MASK),
+        ("'snowflake://bob:pa://ssS3CRET7@acct' ok", "'snowflake://bob:" + MASK + "acct' ok"),
+    ],
+    ids=["snowflake-scheme-in-password", "generic-scheme-in-password", "slash-colon", "multiple", "no-at", "quoted"],
+)
+def test_uri_password_with_scheme_is_masked_whole(raw: str, expected: str) -> None:
+    """A password holding ``://``, ``/`` or ``:`` is masked to the last ``@`` of its token."""
+    assert redact_secrets(raw) == expected
+    assert "S3CRET" not in redact_secrets(raw)
+
+
+@pytest.mark.parametrize(
+    "raw",
+    ["snowflake://u:pa://" * 20000, "snowflake://u:" + "a" * 20000, "x://u:pa://" * 20000],
+    ids=["snowflake-scheme-flood", "snowflake-long-password", "generic-scheme-flood"],
+)
+def test_uri_no_at_flood_is_linear_and_fail_closed(raw: str) -> None:
+    """With no ``@`` a 20,000-repeat token is masked to its end in linear time."""
+    began = time.perf_counter()
+    out = redact_secrets(raw)
+    assert time.perf_counter() - began < 3.0
+    assert out.endswith(MASK)
+    assert "pa://" not in out
+    assert "aaaa" not in out

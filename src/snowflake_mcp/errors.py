@@ -43,13 +43,14 @@ _ENV_SECRET_VARS = (
 _SNOWFLAKE_PATTERNS: list[re.Pattern[str]] = [
     re.compile(r"eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+"),
     re.compile(r"(?i)(bearer\s+)(?!\[REDACTED\])[A-Za-z0-9\-._~+/]+=*"),
-    # A URI password stops before the next ``://``: with no ``@`` after it, each scheme's
-    # scan then ends at the next scheme instead of the end of the text (quadratic for
-    # ``snowflake://u:`` repeated, about 11s at 20,000 repeats).
-    re.compile(r"(?i)(snowflake://[^:\s'\"/]+:)(?:(?!://)[^@\s'\"])+@"),
+    # A URI password runs to the last ``@`` in its token (whitespace or a quote ends the
+    # token), so a password holding ``://``, ``/`` or ``:`` is masked whole. With no ``@``
+    # the rest of the token is masked (fail closed). Either way one match consumes the
+    # token, so ``snowflake://u:`` repeated is scanned in linear time.
+    re.compile(r"(?i)(snowflake://[^:\s'\"/]+:)(?!\[REDACTED\])(?:[^\s'\"]*@|[^\s'\"]+)"),
     # The lookbehind starts a scheme only at a word boundary, so a long run of letters is
     # scanned once instead of once per start position (quadratic on main).
-    re.compile(r"(?i)((?<![a-z0-9+.-])[a-z][a-z0-9+.-]*://[^:\s'\"/@]+:)(?:(?!://)[^@\s'\"])+@"),
+    re.compile(r"(?i)((?<![a-z0-9+.-])[a-z][a-z0-9+.-]*://[^:\s'\"/@]+:)(?!\[REDACTED\])(?:[^\s'\"]*@|[^\s'\"]+)"),
     # Any ``*token``/``*secret`` key, including ``next_token``-style names the house token
     # rules leave alone.
     re.compile(
