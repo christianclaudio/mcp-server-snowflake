@@ -13,6 +13,7 @@ from fastmcp.tools import FunctionTool, Tool
 from mcp.types import CallToolResult, ToolAnnotations
 
 from snowflake_mcp import __version__
+from snowflake_mcp.auth import SharedTokenVerifier, read_auth_token
 from snowflake_mcp.config import SnowflakeConfig
 from snowflake_mcp.connection import SnowflakeClient
 from snowflake_mcp.middleware import (
@@ -322,9 +323,15 @@ def create_server(
             logger.info("Shutting down Snowflake MCP server")
             snow_client.close()
 
+    # Bearer auth on every HTTP entry point (``snowflake-mcp``, ``fastmcp run``,
+    # ``http_app()``): FastMCP servers default to ``auth=None``, so the verifier is
+    # attached at build whenever the stripped token env is non-blank. The localhost bind
+    # refusal stays in ``cli.main()``, the only entry point that knows the bind host.
+    auth_token = read_auth_token()
     mcp = FastMCP(
         "snowflake",
         version=__version__,
+        auth=SharedTokenVerifier(auth_token) if auth_token else None,
         instructions=(
             "Enterprise MCP server for Snowflake data cloud and Cortex AI. Execute queries, manage "
             "databases, schemas, tables, warehouses, tasks, streams, dynamic tables, pipes, alerts, "
