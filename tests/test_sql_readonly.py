@@ -427,3 +427,41 @@ def test_install_docs_do_not_reference_pypi_package() -> None:
             assert needle not in text, f"{path} still tells users to {needle}"
     readme = (root / "README.md").read_text(encoding="utf-8")
     assert "pypi.org/project/mcp-server-snowflake" not in readme
+
+
+def _chain_text(exc: BaseException) -> str:
+    import traceback
+
+    return "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+
+
+def test_mapped_connector_error_does_not_chain_the_raw_error() -> None:
+    """A mapped connector error is raised ``from None``: the raw message is not on the chain."""
+    from snowflake.connector.errors import ProgrammingError
+
+    from snowflake_mcp.errors import AuthenticationError
+
+    secret = "hunter2-mapped-chain-secret"
+    client, conn, cursor = _connected_client(read_only=False)
+    cursor.execute.side_effect = ProgrammingError(f"auth failed password={secret}", errno=250001, send_telemetry=False)
+    with patch("snowflake.connector.connect", return_value=conn):
+        with pytest.raises(AuthenticationError) as exc_info:
+            client.execute_query("SELECT 1")
+    exc = exc_info.value
+    assert exc.__cause__ is None
+    assert exc.__suppress_context__ is True
+    assert secret not in str(exc)
+    assert secret not in _chain_text(exc)
+
+
+def test_secondary_roles_pin_failure_does_not_chain_the_raw_error() -> None:
+    secret = "hunter2-pin-chain-secret"
+    client, conn, cursor = _connected_client(read_only=True)
+    cursor.execute.side_effect = RuntimeError(f"pin failed token={secret}")
+    with patch("snowflake.connector.connect", return_value=conn):
+        with pytest.raises(SafetyViolationError) as exc_info:
+            client.execute_query("SELECT 1")
+    exc = exc_info.value
+    assert exc.__cause__ is None
+    assert exc.__suppress_context__ is True
+    assert secret not in _chain_text(exc)
