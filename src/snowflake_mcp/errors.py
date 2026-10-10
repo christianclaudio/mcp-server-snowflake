@@ -382,10 +382,14 @@ def redact_error_payload(value: object) -> object:
 
 
 class SnowflakeMCPError(Exception):
-    """Base error. The message is redacted before it is stored or raised."""
+    """Base error. The message is redacted before it is stored or raised.
+
+    The message goes through ``redact_message``, so a JSON body inside it (an upstream
+    error response, for example) is redacted value by value and keeps its shape.
+    """
 
     def __init__(self, message: str, details: dict[str, Any] | None = None) -> None:
-        self.message = redact_secrets(message)
+        self.message = redact_message(message)
         self.details = details or {}
         super().__init__(self.message)
 
@@ -410,7 +414,7 @@ class SafetyViolationError(ToolError, SnowflakeMCPError):
     """
 
     def __init__(self, message: str, details: dict[str, Any] | None = None, *, status: str = "error") -> None:
-        redacted = redact_secrets(message)
+        redacted = redact_message(message)
         self.message = redacted
         self.details = details or {}
         if status == "requires_confirmation":

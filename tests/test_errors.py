@@ -499,3 +499,19 @@ async def test_tool_error_path_redacts_token_forms() -> None:
     for secret in ("SECRET1", "SECRET2", "SECRET3", "SECRET4", "SECRET13", "SECRET15"):
         assert secret not in text
         assert secret not in json.dumps(res.structured_content)
+
+
+def test_error_classes_redact_with_redact_message_and_keep_json_shape() -> None:
+    """SnowflakeMCPError and SafetyViolationError build their message with redact_message."""
+    import json
+
+    body = json.dumps({"code": "390100", "password": 987654321, "private_key": ["k1"], "api_key": {"v": "s"}})
+    err = SnowflakeMCPError(f"upstream 401: {body}")
+    parsed = json.loads(err.message.split(": ", 1)[1])
+    assert parsed == {"code": "390100", "password": "[REDACTED]", "private_key": "[REDACTED]", "api_key": "[REDACTED]"}
+    assert str(err) == err.message
+    for cls in (AuthenticationError, ResourceNotFoundError, RateLimitError):
+        assert "987654321" not in str(cls(body))
+    sv = SafetyViolationError(f"denied: {body}")
+    inner = json.loads(json.loads(str(sv))["error"].split(": ", 1)[1])
+    assert inner["password"] == inner["private_key"] == inner["api_key"] == "[REDACTED]"
