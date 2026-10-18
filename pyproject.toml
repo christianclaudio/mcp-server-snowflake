@@ -42,7 +42,7 @@ dependencies = [
     "fastmcp>=4.1.0",
     "snowflake-connector-python>=4.8.0",
     "snowflake-core>=1.13.2",
-    "pydantic>=2.14.0",
+    "pydantic>=2.14.1",
     "cryptography>=50.0.2",
     "python-dotenv>=1.2.4",
     "tomli>=2.0.1; python_version < '3.11'",
@@ -56,7 +56,7 @@ dev = [
     "httpx>=0.28.1",
     "opentelemetry-sdk>=1.45.1,<1.46",
     "mypy>=2.4.0",
-    "ruff>=0.16.10",
+    "ruff>=0.17.0",
     "build>=1.6.1",
     "twine>=7.0.0",
 ]
