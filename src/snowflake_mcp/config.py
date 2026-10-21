@@ -73,18 +73,21 @@ class SnowflakeConfig(BaseModel):
 
     @classmethod
     def list_available_connections(cls, config_path: str | None = None) -> list[str]:
-        """Scan and return list of profile names found in connections.toml."""
-        toml_paths = cls._connections_toml_paths(config_path)
+        """Return the profile names defined across every connections.toml candidate.
 
-        for p in toml_paths:
+        Reads the same files, in the same order, as ``connection_exists``; names are
+        deduplicated, first occurrence first. Unreadable files are skipped.
+        """
+        names: dict[str, None] = {}
+        for p in cls._connections_toml_paths(config_path):
             if p.exists():
                 try:
                     with open(p, "rb") as f:
                         data = tomllib.load(f)
-                        return [k for k, v in data.items() if isinstance(v, dict)]
                 except Exception:
-                    pass
-        return []
+                    continue
+                names.update((k, None) for k, v in data.items() if isinstance(v, dict))
+        return list(names)
 
     @classmethod
     def from_env_or_config(

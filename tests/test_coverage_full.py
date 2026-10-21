@@ -122,13 +122,10 @@ async def test_readonly_safety_guards() -> None:
     ]
 
     for tool_name, args in mutating_tools:
-        try:
-            res = await tools[tool_name].fn(*args)
-        except SafetyViolationError as exc:
-            assert "read-only" in str(exc).lower() or "SNOWFLAKE_MCP_READONLY" in str(exc)
-            continue
-        assert res["status"] == "error", f"Tool {tool_name} should have failed in read-only mode"
-        assert "Denied" in res.get("error", "") or "Operation denied" in res.get("error", "")
+        with pytest.raises(SafetyViolationError) as excinfo:
+            await tools[tool_name].fn(*args)
+        message = str(excinfo.value)
+        assert "read-only" in message.lower() or "SNOWFLAKE_MCP_READONLY" in message, tool_name
 
 
 def test_cli_execution() -> None:

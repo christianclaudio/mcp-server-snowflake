@@ -67,3 +67,24 @@ def test_connection_exists_checks_every_candidate(toml_env: Path, monkeypatch: p
     # A top-level key that is not a profile table is not a profile.
     assert not SnowflakeConfig.connection_exists("default_connection_name")
     assert not SnowflakeConfig.connection_exists("FORGE_NONE")
+
+
+def test_list_available_connections_reads_every_candidate(toml_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Profiles from every candidate file are listed once each, in lookup order."""
+    first = toml_env / "first.toml"
+    first.write_text('[prod]\naccount = "a"\n[dev]\naccount = "b"\n', encoding="utf-8")
+    second = toml_env / "second.toml"
+    second.write_text('[dev]\naccount = "c"\n[qa]\naccount = "d"\nnote = "x"\n', encoding="utf-8")
+    home = toml_env / "home"
+    home.mkdir()
+    (home / "connections.toml").write_text("not = [valid", encoding="utf-8")
+    monkeypatch.setenv("SNOWFLAKE_CONNECTIONS_FILE", str(second))
+
+    assert SnowflakeConfig.list_available_connections(str(first)) == ["prod", "dev", "qa"]
+
+    client = SnowflakeClient(config=SnowflakeConfig(account="acc", user="usr"))
+    with pytest.raises(ValueError) as excinfo:
+        client.switch_connection("FORGE_NONE", config_path=str(first))
+    assert str(excinfo.value) == (
+        "Connection profile 'FORGE_NONE' was not found in connections.toml. Available profiles: prod, dev, qa."
+    )

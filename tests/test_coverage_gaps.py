@@ -91,7 +91,10 @@ def test_list_available_connections_and_first_profile(tmp_path: Path, monkeypatc
     other = tmp_path / "other.toml"
     other.write_text('[dev]\naccount = "b"\nuser = "v"\n', encoding="utf-8")
     monkeypatch.setenv("SNOWFLAKE_CONNECTIONS_FILE", str(other))
-    assert SnowflakeConfig.list_available_connections(str(good)) == ["prod", "note"]
+    monkeypatch.setenv("SNOWFLAKE_HOME", str(tmp_path / "no-home"))
+    monkeypatch.setenv("HOME", str(tmp_path / "no-user"))
+    # Every candidate is read, as connection_exists does: config_path first, then the env file.
+    assert SnowflakeConfig.list_available_connections(str(good)) == ["prod", "note", "dev"]
     monkeypatch.delenv("SNOWFLAKE_CONNECTIONS_FILE", raising=False)
 
     # A bad file is skipped, then the scanner tries SNOWFLAKE_HOME and, separately,
