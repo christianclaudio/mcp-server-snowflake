@@ -98,10 +98,13 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
                 if db and sch
                 else quote_ident(alert_name)
             )
+            # CREATE ALERT takes COMMENT with the other properties, before IF(EXISTS(...)) THEN;
+            # after the action it is a syntax error
+            # (https://docs.snowflake.com/en/sql-reference/sql/create-alert).
             comm_clause = f" COMMENT = {quote_literal(comment)}" if comment else ""
             sql = (
                 f"CREATE ALERT {target} WAREHOUSE = {quote_ident(warehouse_name)} "
-                f"SCHEDULE = {quote_literal(schedule)} IF(EXISTS({condition_sql})) THEN {action_sql}{comm_clause}"
+                f"SCHEDULE = {quote_literal(schedule)}{comm_clause} IF(EXISTS({condition_sql})) THEN {action_sql}"
             )
             res = client.execute_query(sql)
             return {"status": "success", "alert": target, "result": res.get("data")}
