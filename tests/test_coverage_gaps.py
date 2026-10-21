@@ -66,6 +66,7 @@ def test_switch_connection(monkeypatch: pytest.MonkeyPatch) -> None:
     switched = SnowflakeConfig(account="other", user="usr", connection_name="prod")
 
     monkeypatch.setattr(SnowflakeConfig, "from_env_or_config", classmethod(lambda cls, **kwargs: switched))
+    monkeypatch.setattr(SnowflakeConfig, "connection_exists", classmethod(lambda cls, name, path=None: True))
 
     def _connect(self: SnowflakeClient) -> MagicMock:
         conn = MagicMock()
@@ -90,7 +91,10 @@ def test_list_available_connections_and_first_profile(tmp_path: Path, monkeypatc
     other = tmp_path / "other.toml"
     other.write_text('[dev]\naccount = "b"\nuser = "v"\n', encoding="utf-8")
     monkeypatch.setenv("SNOWFLAKE_CONNECTIONS_FILE", str(other))
-    assert SnowflakeConfig.list_available_connections(str(good)) == ["prod", "note"]
+    monkeypatch.setenv("SNOWFLAKE_HOME", str(tmp_path / "no-home"))
+    monkeypatch.setenv("HOME", str(tmp_path / "no-user"))
+    # Every candidate is read, as connection_exists does: config_path first, then the env file.
+    assert SnowflakeConfig.list_available_connections(str(good)) == ["prod", "note", "dev"]
     monkeypatch.delenv("SNOWFLAKE_CONNECTIONS_FILE", raising=False)
 
     # A bad file is skipped, then the scanner tries SNOWFLAKE_HOME and, separately,
@@ -207,7 +211,9 @@ async def test_alert_destructive_sql_and_user_password_redaction() -> None:
     with pytest.raises(SafetyViolationError, match="confirm=True"):
         await tools["alerts_create_alert"].fn("A", "WH", "1 MIN", "SELECT 1", "DELETE FROM t", confirm=False)
 
-    created = await tools["governance_create_user"].fn(user_name="U", password="s3cret")
+    with pytest.raises(ToolError) as created_exc:
+        await tools["governance_create_user"].fn(user_name="U", password="s3cret")
+    created = json.loads(str(created_exc.value))
     assert created["status"] == "error"
     assert "s3cret" not in created["error"]
     assert "[REDACTED]" in created["error"]
@@ -232,8 +238,9 @@ async def test_list_connections_error_and_warehouse_restore(monkeypatch: pytest.
         "snowflake_mcp.tools.governance.SnowflakeConfig.list_available_connections",
         lambda config_path=None: (_ for _ in ()).throw(RuntimeError("unreadable")),
     )
-    listed = await tools["governance_list_connections"].fn()
-    assert listed["status"] == "error"
+    with pytest.raises(ToolError) as listed_exc:
+        await tools["governance_list_connections"].fn()
+    assert json.loads(str(listed_exc.value)) == {"status": "error", "error": "unreadable"}
 
     with pytest.raises(ToolError) as exc_info:
         await tools["recipes_warehouse_scale_and_execute"].fn("WH", "LARGE", "SELECT 1", True, confirm=True)

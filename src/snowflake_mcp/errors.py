@@ -455,6 +455,32 @@ def redact_error_value(value: Any) -> Any:
     return value
 
 
+def status_error(error: Exception | str, **details: Any) -> ToolError:
+    """Return a ``ToolError`` whose text is the redacted ``{"status": "error", "error": ...}`` JSON.
+
+    Tool handlers raise it for a failed call, so the client receives a ``tools/call`` result
+    with ``isError: true`` (MCP 2026-07-28, Tools, Error Handling:
+    https://modelcontextprotocol.io/specification/2026-07-28/server/tools#error-handling).
+    FastMCP turns a raised ``ToolError`` into that result and keeps its message
+    (https://gofastmcp.com/servers/tools#error-handling). The text keeps the payload these
+    tools used to return as a successful result, and the same shape ``SafetyViolationError``
+    already carries, so clients that parse the body still find ``status`` and ``error``.
+    Extra keyword ``details`` are added to the payload. The payload is redacted value by value
+    (``redact_error_value``) before ``json.dumps``. Build it inside the ``except`` block and
+    raise it ``from None`` after the block, so the unredacted original never rides along::
+
+        except Exception as e:
+            failure = status_error(e)
+        raise failure from None
+    """
+    if isinstance(error, ToolError) and not details:
+        # Already a tool error (a ``SafetyViolationError`` from a gate inside the try block):
+        # pass it through rather than nest its JSON inside another payload.
+        return error
+    payload: dict[str, Any] = {"status": "error", "error": str(error), **details}
+    return ToolError(json.dumps(redact_error_value(payload)))
+
+
 def redact_error_payload(value: object) -> object:
     """Redact secret-bearing values inside error-shaped tool payloads.
 

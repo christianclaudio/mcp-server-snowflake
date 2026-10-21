@@ -6,8 +6,14 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import SnowflakeClient
-from snowflake_mcp.errors import SafetyViolationError
+from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal, show_sql
+from snowflake_mcp.errors import SafetyViolationError, status_error
+
+
+def _qualified(name: str) -> str:
+    """Quote each part of a possibly dotted object name with ``quote_ident``."""
+    parts = [p.strip().strip('"') for p in name.split(".") if p.strip()]
+    return ".".join(quote_ident(p) for p in parts) if parts else quote_ident(name)
 
 
 def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
@@ -26,20 +32,13 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            if db and sch:
-                sql = f'SHOW TAGS IN SCHEMA "{db}"."{sch}"'
-            elif db:
-                sql = f'SHOW TAGS IN DATABASE "{db}"'
-            else:
-                sql = "SHOW TAGS"
-
-            if pattern:
-                sql += f" LIKE '{pattern}'"
+            sql = show_sql("TAGS", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
             return {"status": "success", "tags": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="describe_tag",
@@ -54,19 +53,15 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            if db and sch:
-                sql = f'SHOW TAGS LIKE \'{tag_name}\' IN SCHEMA "{db}"."{sch}"'
-            elif db:
-                sql = f"SHOW TAGS LIKE '{tag_name}' IN DATABASE \"{db}\""
-            else:
-                sql = f"SHOW TAGS LIKE '{tag_name}'"
+            sql = show_sql("TAGS", pattern=tag_name, database=db, schema=sch)
 
             res = client.execute_query(sql)
             data = res.get("data", [])
             details = data[0] if data else {}
             return {"status": "success", "tag": tag_name, "details": details}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="get_object_tag_references",
@@ -80,12 +75,13 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             sql = (
                 f"SELECT * FROM TABLE(SNOWFLAKE.INFORMATION_SCHEMA.TAG_REFERENCES("
-                f"'{object_name}', '{object_domain.upper()}'))"
+                f"{quote_literal(object_name)}, {quote_literal(object_domain.upper())}))"
             )
             res = client.execute_query(sql)
             return {"status": "success", "object_name": object_name, "tags": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="set_object_tag",
@@ -117,14 +113,15 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         }
         domain_upper = object_domain.strip().upper()
         if domain_upper not in allowed_domains:
-            return {
-                "status": "error",
-                "error": f"Invalid object_domain '{object_domain}'. Allowed: {', '.join(sorted(allowed_domains))}",
-            }
+            raise status_error(
+                f"Invalid object_domain '{object_domain}'. Allowed: {', '.join(sorted(allowed_domains))}"
+            )
 
         try:
-            val_escaped = tag_value.replace("'", "''")
-            sql = f"ALTER {domain_upper} {object_name} SET TAG {tag_name} = '{val_escaped}'"
+            sql = (
+                f"ALTER {domain_upper} {_qualified(object_name)} SET TAG {_qualified(tag_name)} = "
+                f"{quote_literal(tag_value)}"
+            )
             res = client.execute_query(sql)
             return {
                 "status": "success",
@@ -134,4 +131,5 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
                 "result": res.get("data"),
             }
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None

@@ -34,11 +34,41 @@ def quote_ident(name: str) -> str:
 
 
 def quote_literal(val: Any) -> str:
-    """Safely format a string literal for Snowflake SQL statements."""
+    """Safely format a string literal for Snowflake SQL statements.
+
+    Snowflake reads backslash escape sequences inside single-quoted string constants, and
+    both ``\\\\`` (a backslash) and ``''`` (a single quote) are supported there
+    (https://docs.snowflake.com/en/sql-reference/data-types-text#escape-sequences-in-single-quoted-string-constants).
+    Backslashes are doubled first, then single quotes, so the constant holds ``val`` exactly:
+    a trailing backslash cannot escape the closing quote, and ``\\'`` cannot end the literal.
+    """
     if val is None:
         return "NULL"
-    s = str(val).replace("'", "''")
+    s = str(val).replace("\\", "\\\\").replace("'", "''")
     return f"'{s}'"
+
+
+def show_sql(
+    objects: str,
+    *,
+    pattern: str | None = None,
+    database: str | None = None,
+    schema: str | None = None,
+) -> str:
+    """Build ``SHOW <objects> [LIKE '<pattern>'] [IN SCHEMA <db>.<schema> | IN DATABASE <db>]``.
+
+    Snowflake's SHOW grammar puts ``LIKE`` before ``IN``
+    (https://docs.snowflake.com/en/sql-reference/sql/show-views); ``SHOW ... IN ... LIKE`` is
+    a syntax error. A schema without a database adds no scope, so the session default applies.
+    """
+    sql = f"SHOW {objects}"
+    if pattern:
+        sql += f" LIKE {quote_literal(pattern)}"
+    if database and schema:
+        sql += f" IN SCHEMA {quote_ident(database)}.{quote_ident(schema)}"
+    elif database:
+        sql += f" IN DATABASE {quote_ident(database)}"
+    return sql
 
 
 class _ScanError(Exception):
@@ -538,7 +568,19 @@ class SnowflakeClient:
             cursor.close()
 
     def switch_connection(self, connection_name: str, config_path: str | None = None) -> SnowflakeConfig:
-        """Switch active Snowflake session to a different connection profile safely."""
+        """Switch active Snowflake session to a different connection profile safely.
+
+        A name no connections.toml defines is refused before anything changes.
+        ``from_env_or_config`` would otherwise fall back to the environment config and
+        report a switch that never happened.
+        """
+        if not SnowflakeConfig.connection_exists(connection_name, config_path):
+            available = SnowflakeConfig.list_available_connections(config_path)
+            listed = ", ".join(available) if available else "none"
+            raise ValueError(
+                f"Connection profile '{connection_name}' was not found in connections.toml. "
+                f"Available profiles: {listed}."
+            )
         new_config = SnowflakeConfig.from_env_or_config(connection_name=connection_name, config_path=config_path)
         # Test connection validity before replacing current active session
         temp_client = SnowflakeClient(config=new_config)

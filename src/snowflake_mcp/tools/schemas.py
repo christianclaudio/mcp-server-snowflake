@@ -6,8 +6,16 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import SnowflakeClient
-from snowflake_mcp.errors import SafetyViolationError
+from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal, show_sql
+from snowflake_mcp.errors import SafetyViolationError, status_error
+
+
+def qualify_schema_target(name: str, database: str | None = None) -> str:
+    """Quote a schema name with ``quote_ident`` per part, prefixing ``database`` unless dotted."""
+    if "." in name:
+        parts = [p.strip().strip('"') for p in name.split(".") if p.strip()]
+        return ".".join(quote_ident(p) for p in parts)
+    return f"{quote_ident(database)}.{quote_ident(name)}" if database else quote_ident(name)
 
 
 def register_schema_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
@@ -24,16 +32,12 @@ def register_schema_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         """List schemas in database."""
         try:
             db_target = database or client.config.database
-            if db_target:
-                sql = f'SHOW SCHEMAS IN DATABASE "{db_target}"'
-            else:
-                sql = "SHOW SCHEMAS"
-            if pattern:
-                sql += f" LIKE '{pattern}'"
+            sql = show_sql("SCHEMAS", pattern=pattern, database=db_target)
             res = client.execute_query(sql)
             return {"status": "success", "database": db_target, "schemas": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="describe_schema",
@@ -46,12 +50,13 @@ def register_schema_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         """Describe schema."""
         try:
             db = database or client.config.database
-            target = f'"{db}"."{schema_name}"' if db else f'"{schema_name}"'
+            target = qualify_schema_target(schema_name, db)
             sql = f"DESCRIBE SCHEMA {target}"
             res = client.execute_query(sql)
             return {"status": "success", "schema": target, "details": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="create_schema",
@@ -68,14 +73,15 @@ def register_schema_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             raise SafetyViolationError("Denied in read-only mode.")
         try:
             db = database or client.config.database
-            target = f'"{db}"."{name}"' if db else f'"{name}"'
+            target = qualify_schema_target(name, db)
             exists_clause = "IF NOT EXISTS " if if_not_exists else ""
-            comment_clause = f" COMMENT = '{comment}'" if comment else ""
+            comment_clause = f" COMMENT = {quote_literal(comment)}" if comment else ""
             sql = f"CREATE SCHEMA {exists_clause}{target}{comment_clause}"
             res = client.execute_query(sql)
             return {"status": "success", "schema": target, "result": res.get("data")}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="clone_schema",
@@ -91,13 +97,14 @@ def register_schema_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             raise SafetyViolationError("Denied in read-only mode.")
         try:
             db = database or client.config.database
-            src = f'"{db}"."{source_schema}"' if db and "." not in source_schema else source_schema
-            tgt = f'"{db}"."{target_schema}"' if db and "." not in target_schema else target_schema
+            src = qualify_schema_target(source_schema, db)
+            tgt = qualify_schema_target(target_schema, db)
             sql = f"CREATE SCHEMA {tgt} CLONE {src}"
             res = client.execute_query(sql)
             return {"status": "success", "source": src, "target": tgt, "result": res.get("data")}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="drop_schema",
@@ -116,12 +123,13 @@ def register_schema_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             raise SafetyViolationError(message, status="requires_confirmation")
         try:
             db = database or client.config.database
-            target = f'"{db}"."{name}"' if db else f'"{name}"'
+            target = qualify_schema_target(name, db)
             sql = f"DROP SCHEMA IF EXISTS {target}"
             res = client.execute_query(sql)
             return {"status": "success", "schema": target, "result": res.get("data")}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="undrop_schema",
@@ -136,9 +144,10 @@ def register_schema_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             raise SafetyViolationError("Denied in read-only mode.")
         try:
             db = database or client.config.database
-            target = f'"{db}"."{name}"' if db else f'"{name}"'
+            target = qualify_schema_target(name, db)
             sql = f"UNDROP SCHEMA {target}"
             res = client.execute_query(sql)
             return {"status": "success", "schema": target, "result": res.get("data")}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None

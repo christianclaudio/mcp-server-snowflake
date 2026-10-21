@@ -8,6 +8,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from fastmcp import Client
 from fastmcp.exceptions import NotFoundError, ToolError
 from fastmcp.server.middleware import MiddlewareContext
 from snowflake.connector.errors import ForbiddenError, ProgrammingError, TooManyRequests
@@ -484,8 +485,10 @@ async def test_tool_error_path_redacts_token_forms() -> None:
             "{'api_token': 'SECRET1'} cb=x%3Fsession_token%3DSECRET15%26y%3D1"
         )
     )
-    srv = create_server(client=client)
-    res = await srv.call_tool("queries_query", {"query": "SELECT 1"})
+    async with Client(create_server(client=client)) as mcp_client:
+        res = await mcp_client.call_tool("queries_query", {"query": "SELECT 1"}, raise_on_error=False)
+    assert res.is_error
+    assert res.structured_content is None
     text = res.content[0].text
     payload = json.loads(text)
     assert payload["status"] == "error"
@@ -494,11 +497,8 @@ async def test_tool_error_path_redacts_token_forms() -> None:
         '{"access_token": "[REDACTED]", "refresh_token": "[REDACTED]", "token": "[REDACTED]"} '
         "{'api_token': '[REDACTED]'} cb=x%3Fsession_token%3D[REDACTED]%26y%3D1"
     )
-    assert res.structured_content is not None
-    assert res.structured_content["error"] == payload["error"]
     for secret in ("SECRET1", "SECRET2", "SECRET3", "SECRET4", "SECRET13", "SECRET15"):
         assert secret not in text
-        assert secret not in json.dumps(res.structured_content)
 
 
 def test_error_classes_redact_with_redact_message_and_keep_json_shape() -> None:

@@ -6,7 +6,8 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal
+from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal, show_sql
+from snowflake_mcp.errors import status_error
 
 
 def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
@@ -65,7 +66,8 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
             return results
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="get_column_lineage",
@@ -103,7 +105,8 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
                 "access_history_records": res.get("data", []),
             }
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="list_masking_policies",
@@ -118,20 +121,13 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            if db and sch:
-                sql = f"SHOW MASKING POLICIES IN SCHEMA {quote_ident(db)}.{quote_ident(sch)}"
-            elif db:
-                sql = f"SHOW MASKING POLICIES IN DATABASE {quote_ident(db)}"
-            else:
-                sql = "SHOW MASKING POLICIES"
-
-            if pattern:
-                sql += f" LIKE {quote_literal(pattern)}"
+            sql = show_sql("MASKING POLICIES", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
             return {"status": "success", "masking_policies": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="describe_masking_policy",
@@ -157,7 +153,8 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "masking_policy": target, "details": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="list_row_access_policies",
@@ -172,20 +169,13 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            if db and sch:
-                sql = f"SHOW ROW ACCESS POLICIES IN SCHEMA {quote_ident(db)}.{quote_ident(sch)}"
-            elif db:
-                sql = f"SHOW ROW ACCESS POLICIES IN DATABASE {quote_ident(db)}"
-            else:
-                sql = "SHOW ROW ACCESS POLICIES"
-
-            if pattern:
-                sql += f" LIKE {quote_literal(pattern)}"
+            sql = show_sql("ROW ACCESS POLICIES", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
             return {"status": "success", "row_access_policies": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="describe_row_access_policy",
@@ -211,4 +201,5 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "row_access_policy": target, "details": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None

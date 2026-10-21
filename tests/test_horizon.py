@@ -1,10 +1,22 @@
+import json
+from collections.abc import Awaitable
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from fastmcp.exceptions import ToolError
 
 from snowflake_mcp.config import SnowflakeConfig
 from snowflake_mcp.connection import SnowflakeClient
 from snowflake_mcp.server import create_server
+
+
+async def _tool_error(call: Awaitable[Any]) -> dict[str, Any]:
+    """Await a tool call that must fail with an isError result and return its JSON payload."""
+    with pytest.raises(ToolError) as excinfo:
+        await call
+    payload: dict[str, Any] = json.loads(str(excinfo.value))
+    return payload
 
 
 @pytest.fixture
@@ -39,7 +51,7 @@ async def test_horizon_object_lineage(mock_client: SnowflakeClient) -> None:
 
     # Error branch
     mock_client.execute_query.side_effect = RuntimeError("DB connection failure")  # type: ignore[attr-defined]
-    res_err = await fn("CUSTOMERS_VIEW")
+    res_err = await _tool_error(fn("CUSTOMERS_VIEW"))
     assert res_err["status"] == "error"
     assert "DB connection failure" in res_err["error"]
 
@@ -59,7 +71,7 @@ async def test_horizon_column_lineage(mock_client: SnowflakeClient) -> None:
 
     # Error branch
     mock_client.execute_query.side_effect = RuntimeError("Access history unavailable")  # type: ignore[attr-defined]
-    res_err = await fn("CUSTOMERS", "EMAIL")
+    res_err = await _tool_error(fn("CUSTOMERS", "EMAIL"))
     assert res_err["status"] == "error"
 
 
@@ -92,8 +104,8 @@ async def test_masking_policies(mock_client: SnowflakeClient) -> None:
 
     # Error branches
     mock_client.execute_query.side_effect = RuntimeError("Failed to list masking policies")  # type: ignore[attr-defined]
-    assert (await fn_list())["status"] == "error"
-    assert (await fn_desc("EMAIL_MASK"))["status"] == "error"
+    assert (await _tool_error(fn_list()))["status"] == "error"
+    assert (await _tool_error(fn_desc("EMAIL_MASK")))["status"] == "error"
 
 
 @pytest.mark.asyncio
@@ -125,8 +137,8 @@ async def test_row_access_policies(mock_client: SnowflakeClient) -> None:
 
     # Error branches
     mock_client.execute_query.side_effect = RuntimeError("Failed to list row policies")  # type: ignore[attr-defined]
-    assert (await fn_list())["status"] == "error"
-    assert (await fn_desc("REGION_ROW_POLICY"))["status"] == "error"
+    assert (await _tool_error(fn_list()))["status"] == "error"
+    assert (await _tool_error(fn_desc("REGION_ROW_POLICY")))["status"] == "error"
 
 
 @pytest.mark.asyncio
@@ -144,8 +156,8 @@ async def test_external_volumes_and_catalog_integrations(mock_client: SnowflakeC
 
     # Error branches
     mock_client.execute_query.side_effect = RuntimeError("Integration failure")  # type: ignore[attr-defined]
-    assert (await fn_vol())["status"] == "error"
-    assert (await fn_cat())["status"] == "error"
+    assert (await _tool_error(fn_vol()))["status"] == "error"
+    assert (await _tool_error(fn_cat()))["status"] == "error"
 
 
 @pytest.mark.asyncio
@@ -170,5 +182,5 @@ async def test_event_tables_and_notification_integrations(mock_client: Snowflake
 
     # Error branches
     mock_client.execute_query.side_effect = RuntimeError("Event table failure")  # type: ignore[attr-defined]
-    assert (await fn_event())["status"] == "error"
-    assert (await fn_notif())["status"] == "error"
+    assert (await _tool_error(fn_event()))["status"] == "error"
+    assert (await _tool_error(fn_notif()))["status"] == "error"

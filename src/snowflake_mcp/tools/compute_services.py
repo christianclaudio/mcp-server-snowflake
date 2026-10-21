@@ -6,8 +6,8 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal
-from snowflake_mcp.errors import SafetyViolationError
+from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal, show_sql
+from snowflake_mcp.errors import SafetyViolationError, status_error
 
 
 def qualify_compute_target(
@@ -45,20 +45,13 @@ def register_compute_service_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            if db and sch:
-                sql = f"SHOW STREAMLITS IN SCHEMA {quote_ident(db)}.{quote_ident(sch)}"
-            elif db:
-                sql = f"SHOW STREAMLITS IN DATABASE {quote_ident(db)}"
-            else:
-                sql = "SHOW STREAMLITS"
-
-            if pattern:
-                sql += f" LIKE {quote_literal(pattern)}"
+            sql = show_sql("STREAMLITS", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
             return {"status": "success", "streamlits": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="describe_streamlit",
@@ -78,7 +71,8 @@ def register_compute_service_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
             res = client.execute_query(sql)
             return {"status": "success", "streamlit": target, "details": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="list_compute_pools",
@@ -93,7 +87,8 @@ def register_compute_service_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
             res = client.execute_query(sql)
             return {"status": "success", "compute_pools": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="describe_compute_pool",
@@ -108,7 +103,8 @@ def register_compute_service_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
             res = client.execute_query(sql)
             return {"status": "success", "compute_pool": pool_name, "details": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="resume_compute_pool",
@@ -125,7 +121,8 @@ def register_compute_service_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
             res = client.execute_query(sql)
             return {"status": "success", "compute_pool": pool_name, "result": res.get("data")}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="suspend_compute_pool",
@@ -142,7 +139,8 @@ def register_compute_service_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
             res = client.execute_query(sql)
             return {"status": "success", "compute_pool": pool_name, "result": res.get("data")}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="list_services",
@@ -157,20 +155,13 @@ def register_compute_service_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            if db and sch:
-                sql = f"SHOW SERVICES IN SCHEMA {quote_ident(db)}.{quote_ident(sch)}"
-            elif db:
-                sql = f"SHOW SERVICES IN DATABASE {quote_ident(db)}"
-            else:
-                sql = "SHOW SERVICES"
-
-            if pattern:
-                sql += f" LIKE {quote_literal(pattern)}"
+            sql = show_sql("SERVICES", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
             return {"status": "success", "services": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="list_image_repositories",
@@ -185,17 +176,10 @@ def register_compute_service_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            if db and sch:
-                sql = f"SHOW IMAGE REPOSITORIES IN SCHEMA {quote_ident(db)}.{quote_ident(sch)}"
-            elif db:
-                sql = f"SHOW IMAGE REPOSITORIES IN DATABASE {quote_ident(db)}"
-            else:
-                sql = "SHOW IMAGE REPOSITORIES"
-
-            if pattern:
-                sql += f" LIKE {quote_literal(pattern)}"
+            sql = show_sql("IMAGE REPOSITORIES", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
             return {"status": "success", "image_repositories": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None

@@ -39,9 +39,9 @@ class SnowflakeConfig(BaseModel):
 
     model_config = {"populate_by_name": True}
 
-    @classmethod
-    def list_available_connections(cls, config_path: str | None = None) -> list[str]:
-        """Scan and return list of profile names found in connections.toml."""
+    @staticmethod
+    def _connections_toml_paths(config_path: str | None = None) -> list[Path]:
+        """Return the connections.toml candidates in lookup order."""
         toml_paths = []
         if config_path:
             toml_paths.append(Path(config_path).expanduser())
@@ -53,16 +53,41 @@ class SnowflakeConfig(BaseModel):
                 Path("~/.snowflake/connections.toml").expanduser(),
             ]
         )
+        return toml_paths
 
-        for p in toml_paths:
+    @classmethod
+    def connection_exists(cls, connection_name: str, config_path: str | None = None) -> bool:
+        """Return whether any connections.toml candidate defines ``connection_name``.
+
+        Uses the same files, in the same order, as ``from_env_or_config``.
+        """
+        for p in cls._connections_toml_paths(config_path):
+            if p.exists():
+                try:
+                    with open(p, "rb") as f:
+                        if isinstance(tomllib.load(f).get(connection_name), dict):
+                            return True
+                except Exception:
+                    pass
+        return False
+
+    @classmethod
+    def list_available_connections(cls, config_path: str | None = None) -> list[str]:
+        """Return the profile names defined across every connections.toml candidate.
+
+        Reads the same files, in the same order, as ``connection_exists``; names are
+        deduplicated, first occurrence first. Unreadable files are skipped.
+        """
+        names: dict[str, None] = {}
+        for p in cls._connections_toml_paths(config_path):
             if p.exists():
                 try:
                     with open(p, "rb") as f:
                         data = tomllib.load(f)
-                        return [k for k, v in data.items() if isinstance(v, dict)]
                 except Exception:
-                    pass
-        return []
+                    continue
+                names.update((k, None) for k, v in data.items() if isinstance(v, dict))
+        return list(names)
 
     @classmethod
     def from_env_or_config(
@@ -77,17 +102,7 @@ class SnowflakeConfig(BaseModel):
             connection_name or os.getenv("SNOWFLAKE_CONNECTION_NAME") or os.getenv("SNOWFLAKE_DEFAULT_CONNECTION_NAME")
         )
 
-        toml_paths = []
-        if config_path:
-            toml_paths.append(Path(config_path).expanduser())
-        if os.getenv("SNOWFLAKE_CONNECTIONS_FILE"):
-            toml_paths.append(Path(os.getenv("SNOWFLAKE_CONNECTIONS_FILE", "")).expanduser())
-        toml_paths.extend(
-            [
-                Path(os.getenv("SNOWFLAKE_HOME", "~/.snowflake")).expanduser() / "connections.toml",
-                Path("~/.snowflake/connections.toml").expanduser(),
-            ]
-        )
+        toml_paths = cls._connections_toml_paths(config_path)
 
         available_profiles: list[str] = []
         resolved_profile: str | None = target_conn

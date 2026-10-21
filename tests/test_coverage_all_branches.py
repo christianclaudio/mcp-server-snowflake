@@ -127,6 +127,8 @@ async def test_all_tools_success_and_error_branches(
             res_ro = await fn_ro(**args_kwargs)
         except SafetyViolationError:
             continue
+        except ToolError as exc:  # tool execution errors are isError results; the text is the JSON payload
+            res_ro = json.loads(str(exc))
         assert isinstance(res_ro, dict), f"Tool {name} readonly branch did not return dict: {res_ro}"
         assert (
             res_ro.get("status")

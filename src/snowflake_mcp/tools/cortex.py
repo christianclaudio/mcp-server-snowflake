@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import SnowflakeClient
+from snowflake_mcp.connection import SnowflakeClient, quote_literal
+from snowflake_mcp.errors import status_error
 
 
 def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
@@ -24,8 +26,7 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Execute Cortex AI LLM completion."""
         try:
-            escaped_prompt = prompt.replace("'", "''")
-            sql = f"SELECT SNOWFLAKE.CORTEX.COMPLETE('{model}', '{escaped_prompt}') AS response"
+            sql = f"SELECT SNOWFLAKE.CORTEX.COMPLETE({quote_literal(model)}, {quote_literal(prompt)}) AS response"
             res = client.execute_query(sql)
             data = res.get("data", [])
             response_text = data[0].get("RESPONSE") or data[0].get("response") if data else ""
@@ -35,7 +36,8 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
                 "response": response_text,
             }
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="summarize",
@@ -46,14 +48,14 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Summarize text using Cortex AI."""
         try:
-            escaped = text.replace("'", "''")
-            sql = f"SELECT SNOWFLAKE.CORTEX.SUMMARIZE('{escaped}') AS summary"
+            sql = f"SELECT SNOWFLAKE.CORTEX.SUMMARIZE({quote_literal(text)}) AS summary"
             res = client.execute_query(sql)
             data = res.get("data", [])
             summary = data[0].get("SUMMARY") or data[0].get("summary") if data else ""
             return {"status": "success", "summary": summary}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="sentiment",
@@ -64,14 +66,14 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Analyze sentiment."""
         try:
-            escaped = text.replace("'", "''")
-            sql = f"SELECT SNOWFLAKE.CORTEX.SENTIMENT('{escaped}') AS sentiment"
+            sql = f"SELECT SNOWFLAKE.CORTEX.SENTIMENT({quote_literal(text)}) AS sentiment"
             res = client.execute_query(sql)
             data = res.get("data", [])
             score = data[0].get("SENTIMENT") or data[0].get("sentiment") if data else 0.0
             return {"status": "success", "sentiment_score": score}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="extract_answer",
@@ -83,15 +85,17 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Extract answer from document."""
         try:
-            escaped_doc = source_text.replace("'", "''")
-            escaped_q = question.replace("'", "''")
-            sql = f"SELECT SNOWFLAKE.CORTEX.EXTRACT_ANSWER('{escaped_doc}', '{escaped_q}') AS answer"
+            sql = (
+                f"SELECT SNOWFLAKE.CORTEX.EXTRACT_ANSWER({quote_literal(source_text)}, "
+                f"{quote_literal(question)}) AS answer"
+            )
             res = client.execute_query(sql)
             data = res.get("data", [])
             ans = data[0].get("ANSWER") or data[0].get("answer") if data else ""
             return {"status": "success", "question": question, "answer": ans}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="translate",
@@ -104,14 +108,17 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Translate text."""
         try:
-            escaped = text.replace("'", "''")
-            sql = f"SELECT SNOWFLAKE.CORTEX.TRANSLATE('{escaped}', '{source_language}', '{target_language}') AS translation"
+            sql = (
+                f"SELECT SNOWFLAKE.CORTEX.TRANSLATE({quote_literal(text)}, {quote_literal(source_language)}, "
+                f"{quote_literal(target_language)}) AS translation"
+            )
             res = client.execute_query(sql)
             data = res.get("data", [])
             trans = data[0].get("TRANSLATION") or data[0].get("translation") if data else ""
             return {"status": "success", "translated_text": trans}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="search",
@@ -125,16 +132,21 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Query Cortex Search Service."""
         try:
-            cols_str = f", columns => {columns}" if columns else ""
-            escaped_query = query.replace("'", "''")
+            # SEARCH_PREVIEW takes the service name and one JSON object string with
+            # query, columns and limit
+            # (https://docs.snowflake.com/en/sql-reference/functions/search_preview-snowflake-cortex).
+            params: dict[str, Any] = {"query": query, "limit": limit}
+            if columns:
+                params["columns"] = list(columns)
             sql = (
-                f"SELECT PARSE_JSON(SNOWFLAKE.CORTEX.SEARCH_PREVIEW('{service_name}', "
-                f"'{escaped_query}'{cols_str})) AS results"
+                f"SELECT PARSE_JSON(SNOWFLAKE.CORTEX.SEARCH_PREVIEW({quote_literal(service_name)}, "
+                f"{quote_literal(json.dumps(params))})) AS results"
             )
             res = client.execute_query(sql)
             return {"status": "success", "service_name": service_name, "results": res.get("data")}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="embed_text_768",
@@ -146,14 +158,14 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Generate text embedding vector."""
         try:
-            escaped = text.replace("'", "''")
-            sql = f"SELECT SNOWFLAKE.CORTEX.EMBED_TEXT_768('{model}', '{escaped}') AS embedding"
+            sql = f"SELECT SNOWFLAKE.CORTEX.EMBED_TEXT_768({quote_literal(model)}, {quote_literal(text)}) AS embedding"
             res = client.execute_query(sql)
             data = res.get("data", [])
             emb = data[0].get("EMBEDDING") or data[0].get("embedding") if data else []
             return {"status": "success", "model": model, "embedding": emb}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="analyst_query",
@@ -166,8 +178,8 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         """Query Cortex Analyst."""
         try:
             model_ctx = f"Given semantic model {semantic_model_path}, " if semantic_model_path else ""
-            prompt = f"{model_ctx}answer the following analytical request: {question}".replace("'", "''")
-            sql = f"SELECT SNOWFLAKE.CORTEX.COMPLETE('llama3.3-70b', '{prompt}') AS answer"
+            prompt = f"{model_ctx}answer the following analytical request: {question}"
+            sql = f"SELECT SNOWFLAKE.CORTEX.COMPLETE('llama3.3-70b', {quote_literal(prompt)}) AS answer"
             res = client.execute_query(sql)
             data = res.get("data", [])
             ans = data[0].get("ANSWER") or data[0].get("answer") if data else ""
@@ -179,4 +191,5 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
                 "execution_mode": "cortex_complete_semantic_fallback",
             }
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None

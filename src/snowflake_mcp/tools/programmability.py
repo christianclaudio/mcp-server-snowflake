@@ -7,7 +7,8 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal
+from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal, show_sql
+from snowflake_mcp.errors import status_error
 
 ALLOWED_ARG_TYPE_PATTERN = re.compile(
     r"^[A-Z0-9_]+(\s*\(\s*\d+(\s*,\s*\d+)?\s*\))?(\s*\[\s*\])?$",
@@ -90,20 +91,13 @@ def register_programmability_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            if db and sch:
-                sql = f"SHOW PROCEDURES IN SCHEMA {quote_ident(db)}.{quote_ident(sch)}"
-            elif db:
-                sql = f"SHOW PROCEDURES IN DATABASE {quote_ident(db)}"
-            else:
-                sql = "SHOW PROCEDURES"
-
-            if pattern:
-                sql += f" LIKE {quote_literal(pattern)}"
+            sql = show_sql("PROCEDURES", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
             return {"status": "success", "procedures": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="describe_procedure",
@@ -123,7 +117,8 @@ def register_programmability_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
             res = client.execute_query(sql)
             return {"status": "success", "procedure": target, "details": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="list_functions",
@@ -138,20 +133,13 @@ def register_programmability_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            if db and sch:
-                sql = f"SHOW USER FUNCTIONS IN SCHEMA {quote_ident(db)}.{quote_ident(sch)}"
-            elif db:
-                sql = f"SHOW USER FUNCTIONS IN DATABASE {quote_ident(db)}"
-            else:
-                sql = "SHOW USER FUNCTIONS"
-
-            if pattern:
-                sql += f" LIKE {quote_literal(pattern)}"
+            sql = show_sql("USER FUNCTIONS", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
             return {"status": "success", "functions": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="describe_function",
@@ -171,7 +159,8 @@ def register_programmability_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
             res = client.execute_query(sql)
             return {"status": "success", "function": target, "details": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="list_secrets",
@@ -186,20 +175,13 @@ def register_programmability_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            if db and sch:
-                sql = f"SHOW SECRETS IN SCHEMA {quote_ident(db)}.{quote_ident(sch)}"
-            elif db:
-                sql = f"SHOW SECRETS IN DATABASE {quote_ident(db)}"
-            else:
-                sql = "SHOW SECRETS"
-
-            if pattern:
-                sql += f" LIKE {quote_literal(pattern)}"
+            sql = show_sql("SECRETS", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
             return {"status": "success", "secrets": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="describe_secret",
@@ -223,7 +205,8 @@ def register_programmability_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
             res = client.execute_query(sql)
             return {"status": "success", "secret": target, "details": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="list_sequences",
@@ -238,20 +221,13 @@ def register_programmability_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            if db and sch:
-                sql = f"SHOW SEQUENCES IN SCHEMA {quote_ident(db)}.{quote_ident(sch)}"
-            elif db:
-                sql = f"SHOW SEQUENCES IN DATABASE {quote_ident(db)}"
-            else:
-                sql = "SHOW SEQUENCES"
-
-            if pattern:
-                sql += f" LIKE {quote_literal(pattern)}"
+            sql = show_sql("SEQUENCES", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
             return {"status": "success", "sequences": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="list_integrations",
@@ -262,16 +238,19 @@ def register_programmability_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
         pattern: str | None = None,
     ) -> dict[str, Any]:
         """List integrations."""
+        # Validate before the try block, so the error is not re-wrapped by its handler.
+        if integration_type:
+            allowed_types = {"API", "STORAGE", "NOTIFICATION", "SECURITY", "CATALOG", "EXTERNAL_ACCESS"}
+            cleaned_type = "_".join(integration_type.strip().upper().split())
+            if cleaned_type not in allowed_types:
+                raise status_error(
+                    f"Invalid integration_type '{integration_type}'. Allowed: {', '.join(sorted(allowed_types))}"
+                )
         try:
             if integration_type:
-                allowed_types = {"API", "STORAGE", "NOTIFICATION", "SECURITY", "CATALOG", "EXTERNAL_ACCESS"}
-                cleaned_type = integration_type.strip().upper()
-                if cleaned_type not in allowed_types:
-                    return {
-                        "status": "error",
-                        "error": f"Invalid integration_type '{integration_type}'. Allowed: {', '.join(sorted(allowed_types))}",
-                    }
-                sql = f"SHOW {cleaned_type} INTEGRATIONS"
+                # The keyword is two words: SHOW EXTERNAL ACCESS INTEGRATIONS
+                # (https://docs.snowflake.com/en/sql-reference/sql/show-integrations).
+                sql = f"SHOW {cleaned_type.replace('_', ' ')} INTEGRATIONS"
             else:
                 sql = "SHOW INTEGRATIONS"
             if pattern:
@@ -279,7 +258,8 @@ def register_programmability_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
             res = client.execute_query(sql)
             return {"status": "success", "integrations": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="list_event_tables",
@@ -294,20 +274,13 @@ def register_programmability_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            if db and sch:
-                sql = f"SHOW EVENT TABLES IN SCHEMA {quote_ident(db)}.{quote_ident(sch)}"
-            elif db:
-                sql = f"SHOW EVENT TABLES IN DATABASE {quote_ident(db)}"
-            else:
-                sql = "SHOW EVENT TABLES"
-
-            if pattern:
-                sql += f" LIKE {quote_literal(pattern)}"
+            sql = show_sql("EVENT TABLES", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
             return {"status": "success", "event_tables": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="list_notification_integrations",
@@ -324,4 +297,5 @@ def register_programmability_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
             res = client.execute_query(sql)
             return {"status": "success", "notification_integrations": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None

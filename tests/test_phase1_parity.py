@@ -151,8 +151,12 @@ async def test_tool_failures_are_redacted_tool_errors() -> None:
         "password=s3cretvalue snowflake://USER:SuperSecret@acct token=pat_abcdefghijklmnopqrstuvwxyz"
     )
     srv = create_server(client=client)
-    returned = await srv.call_tool("queries_query", {"query": "SELECT 1"})
-    text = returned.content[0].text
+    # A handler failure is a tool execution error: isError true, the JSON payload as text.
+    returned = await _post_tool(srv, "queries_query", {"query": "SELECT 1"})
+    assert "error" not in returned
+    assert returned["result"]["isError"] is True
+    assert "structuredContent" not in returned["result"]
+    text = returned["result"]["content"][0]["text"]
     assert "s3cretvalue" not in text
     assert "SuperSecret" not in text
     assert "pat_abcdefghijklmnopqrstuvwxyz" not in text

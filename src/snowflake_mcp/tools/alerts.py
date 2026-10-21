@@ -13,8 +13,9 @@ from snowflake_mcp.connection import (
     quote_ident,
     quote_literal,
     read_only_enabled,
+    show_sql,
 )
-from snowflake_mcp.errors import SafetyViolationError
+from snowflake_mcp.errors import SafetyViolationError, status_error
 
 
 def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
@@ -33,20 +34,13 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            if db and sch:
-                sql = f"SHOW ALERTS IN SCHEMA {quote_ident(db)}.{quote_ident(sch)}"
-            elif db:
-                sql = f"SHOW ALERTS IN DATABASE {quote_ident(db)}"
-            else:
-                sql = "SHOW ALERTS"
-
-            if pattern:
-                sql += f" LIKE {quote_literal(pattern)}"
+            sql = show_sql("ALERTS", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
             return {"status": "success", "alerts": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="describe_alert",
@@ -70,7 +64,8 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "alert": target, "details": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="create_alert",
@@ -105,15 +100,19 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
                 if db and sch
                 else quote_ident(alert_name)
             )
+            # CREATE ALERT takes COMMENT with the other properties, before IF(EXISTS(...)) THEN;
+            # after the action it is a syntax error
+            # (https://docs.snowflake.com/en/sql-reference/sql/create-alert).
             comm_clause = f" COMMENT = {quote_literal(comment)}" if comment else ""
             sql = (
                 f"CREATE ALERT {target} WAREHOUSE = {quote_ident(warehouse_name)} "
-                f"SCHEDULE = {quote_literal(schedule)} IF(EXISTS({condition_sql})) THEN {action_sql}{comm_clause}"
+                f"SCHEDULE = {quote_literal(schedule)}{comm_clause} IF(EXISTS({condition_sql})) THEN {action_sql}"
             )
             res = client.execute_query(sql)
             return {"status": "success", "alert": target, "result": res.get("data")}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="drop_alert",
@@ -143,7 +142,8 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "alert": target, "result": res.get("data")}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="resume_alert",
@@ -169,7 +169,8 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "alert": target, "result": res.get("data")}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="suspend_alert",
@@ -195,4 +196,5 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "alert": target, "result": res.get("data")}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None

@@ -83,6 +83,10 @@ These five tools use `expect: success`. The first four return an empty success f
 
 Most other missing-object describe tools stay `rejected`.
 
+### Lineage without the ACCOUNT_USAGE grant (`_ACCOUNT_USAGE_TOOLS`)
+
+`horizon_get_object_lineage` and `horizon_get_column_lineage` read `SNOWFLAKE.ACCOUNT_USAGE`. With a role that has the grant (IMPORTED PRIVILEGES on database `SNOWFLAKE`), the call runs and must succeed. Without it, the expected result is `isError` with Snowflake's privilege error (`Schema 'SNOWFLAKE.ACCOUNT_USAGE' does not exist or not authorized`); that passes. Any other error fails.
+
 ### Rejection markers
 
 `_rejection_markers` is the global list plus that tool's extra list. Per-tool markers do not replace the global list.
