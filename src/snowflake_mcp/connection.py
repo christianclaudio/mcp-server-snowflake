@@ -561,7 +561,19 @@ class SnowflakeClient:
             cursor.close()
 
     def switch_connection(self, connection_name: str, config_path: str | None = None) -> SnowflakeConfig:
-        """Switch active Snowflake session to a different connection profile safely."""
+        """Switch active Snowflake session to a different connection profile safely.
+
+        A name no connections.toml defines is refused before anything changes.
+        ``from_env_or_config`` would otherwise fall back to the environment config and
+        report a switch that never happened.
+        """
+        if not SnowflakeConfig.connection_exists(connection_name, config_path):
+            available = SnowflakeConfig.list_available_connections(config_path)
+            listed = ", ".join(available) if available else "none"
+            raise ValueError(
+                f"Connection profile '{connection_name}' was not found in connections.toml. "
+                f"Available profiles: {listed}."
+            )
         new_config = SnowflakeConfig.from_env_or_config(connection_name=connection_name, config_path=config_path)
         # Test connection validity before replacing current active session
         temp_client = SnowflakeClient(config=new_config)

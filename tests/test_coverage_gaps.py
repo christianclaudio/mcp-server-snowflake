@@ -66,6 +66,7 @@ def test_switch_connection(monkeypatch: pytest.MonkeyPatch) -> None:
     switched = SnowflakeConfig(account="other", user="usr", connection_name="prod")
 
     monkeypatch.setattr(SnowflakeConfig, "from_env_or_config", classmethod(lambda cls, **kwargs: switched))
+    monkeypatch.setattr(SnowflakeConfig, "connection_exists", classmethod(lambda cls, name, path=None: True))
 
     def _connect(self: SnowflakeClient) -> MagicMock:
         conn = MagicMock()
