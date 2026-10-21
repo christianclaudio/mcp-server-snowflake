@@ -35,7 +35,7 @@ LABEL io.modelcontextprotocol.server.name="io.github.christianclaudio/snowflake"
 # ca-certificates predates the fix. python:3.12-slim is Debian trixie, where Debian shipped
 # 20250419+deb13u1 in trixie-security; the build fails if the installed package is older, so a
 # base image change cannot drop the fix.
-# https://emudhra.we-have-a-problem.com/ (developer software and packages)
+# https://security-tracker.debian.org/tracker/DSA-6572-1
 RUN apt-get update && \
     apt-get install -y --no-install-recommends --only-upgrade ca-certificates && \
     rm -rf /var/lib/apt/lists/* && \
