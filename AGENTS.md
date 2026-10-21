@@ -46,6 +46,7 @@ The default `tools/list` is one flat catalog of all 140 tools. `RegexSearchTrans
    - Write strongly-typed function with exhaustive docstring.
    - Use `client.execute_query(sql, params)` on `SnowflakeClient` with SQL parameter bindings to prevent SQL injection.
    - For destructive operations (`DROP`, `TRUNCATE`, `ALTER`, DML, task execution, warehouse scale-and-execute, query cancel, transaction rollback), require `confirm: bool = False`.
+   - Build `SHOW` statements with `show_sql` (`connection.py`): Snowflake requires `LIKE '<pattern>'` before `IN <scope>` ([SHOW VIEWS](https://docs.snowflake.com/en/sql-reference/sql/show-views)).
 2. **Register Tool in Domain Module**:
    - Add the tool function inside `register_<name>_tools(mcp, client)`, where `<name>` is usually the singular of the module (for example `register_query_tools` in `queries.py`), with a bare local `name` (no `snowflake_` prefix and no domain prefix).
    - `create_server` mounts that module's FastMCP with `namespace=<domain>`. Clients see `{domain}_{name}` on one flat `tools/list` unless tool search is enabled.

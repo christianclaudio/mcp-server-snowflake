@@ -6,7 +6,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal
+from snowflake_mcp.connection import SnowflakeClient, quote_ident, show_sql
 from snowflake_mcp.errors import SafetyViolationError
 
 VALID_DDL_OBJECT_TYPES = {
@@ -58,15 +58,7 @@ def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            if db and sch:
-                sql = f"SHOW TABLES IN SCHEMA {quote_ident(db)}.{quote_ident(sch)}"
-            elif db:
-                sql = f"SHOW TABLES IN DATABASE {quote_ident(db)}"
-            else:
-                sql = "SHOW TABLES"
-
-            if pattern:
-                sql += f" LIKE {quote_literal(pattern)}"
+            sql = show_sql("TABLES", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
             return {"status": "success", "tables": res.get("data", [])}
@@ -86,15 +78,7 @@ def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            if db and sch:
-                sql = f"SHOW VIEWS IN SCHEMA {quote_ident(db)}.{quote_ident(sch)}"
-            elif db:
-                sql = f"SHOW VIEWS IN DATABASE {quote_ident(db)}"
-            else:
-                sql = "SHOW VIEWS"
-
-            if pattern:
-                sql += f" LIKE {quote_literal(pattern)}"
+            sql = show_sql("VIEWS", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
             return {"status": "success", "views": res.get("data", [])}

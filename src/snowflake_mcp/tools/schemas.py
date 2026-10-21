@@ -6,7 +6,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import SnowflakeClient
+from snowflake_mcp.connection import SnowflakeClient, show_sql
 from snowflake_mcp.errors import SafetyViolationError
 
 
@@ -24,12 +24,7 @@ def register_schema_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         """List schemas in database."""
         try:
             db_target = database or client.config.database
-            if db_target:
-                sql = f'SHOW SCHEMAS IN DATABASE "{db_target}"'
-            else:
-                sql = "SHOW SCHEMAS"
-            if pattern:
-                sql += f" LIKE '{pattern}'"
+            sql = show_sql("SCHEMAS", pattern=pattern, database=db_target)
             res = client.execute_query(sql)
             return {"status": "success", "database": db_target, "schemas": res.get("data", [])}
         except Exception as e:

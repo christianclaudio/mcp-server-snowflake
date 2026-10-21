@@ -6,7 +6,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal
+from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal, show_sql
 from snowflake_mcp.errors import SafetyViolationError
 
 
@@ -51,15 +51,7 @@ def register_stage_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            if db and sch:
-                sql = f"SHOW STAGES IN SCHEMA {quote_ident(db)}.{quote_ident(sch)}"
-            elif db:
-                sql = f"SHOW STAGES IN DATABASE {quote_ident(db)}"
-            else:
-                sql = "SHOW STAGES"
-
-            if pattern:
-                sql += f" LIKE {quote_literal(pattern)}"
+            sql = show_sql("STAGES", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
             return {"status": "success", "stages": res.get("data", [])}

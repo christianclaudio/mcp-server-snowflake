@@ -6,7 +6,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import SnowflakeClient
+from snowflake_mcp.connection import SnowflakeClient, show_sql
 from snowflake_mcp.errors import SafetyViolationError
 
 
@@ -26,15 +26,7 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            if db and sch:
-                sql = f'SHOW TAGS IN SCHEMA "{db}"."{sch}"'
-            elif db:
-                sql = f'SHOW TAGS IN DATABASE "{db}"'
-            else:
-                sql = "SHOW TAGS"
-
-            if pattern:
-                sql += f" LIKE '{pattern}'"
+            sql = show_sql("TAGS", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
             return {"status": "success", "tags": res.get("data", [])}
@@ -54,12 +46,7 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            if db and sch:
-                sql = f'SHOW TAGS LIKE \'{tag_name}\' IN SCHEMA "{db}"."{sch}"'
-            elif db:
-                sql = f"SHOW TAGS LIKE '{tag_name}' IN DATABASE \"{db}\""
-            else:
-                sql = f"SHOW TAGS LIKE '{tag_name}'"
+            sql = show_sql("TAGS", pattern=tag_name, database=db, schema=sch)
 
             res = client.execute_query(sql)
             data = res.get("data", [])

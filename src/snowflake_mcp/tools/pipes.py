@@ -12,6 +12,7 @@ from snowflake_mcp.connection import (
     quote_ident,
     quote_literal,
     read_only_enabled,
+    show_sql,
 )
 from snowflake_mcp.errors import SafetyViolationError
 
@@ -32,15 +33,7 @@ def register_pipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            if db and sch:
-                sql = f"SHOW PIPES IN SCHEMA {quote_ident(db)}.{quote_ident(sch)}"
-            elif db:
-                sql = f"SHOW PIPES IN DATABASE {quote_ident(db)}"
-            else:
-                sql = "SHOW PIPES"
-
-            if pattern:
-                sql += f" LIKE {quote_literal(pattern)}"
+            sql = show_sql("PIPES", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
             return {"status": "success", "pipes": res.get("data", [])}

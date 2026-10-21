@@ -7,7 +7,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal
+from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal, show_sql
 
 ALLOWED_ARG_TYPE_PATTERN = re.compile(
     r"^[A-Z0-9_]+(\s*\(\s*\d+(\s*,\s*\d+)?\s*\))?(\s*\[\s*\])?$",
@@ -90,15 +90,7 @@ def register_programmability_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            if db and sch:
-                sql = f"SHOW PROCEDURES IN SCHEMA {quote_ident(db)}.{quote_ident(sch)}"
-            elif db:
-                sql = f"SHOW PROCEDURES IN DATABASE {quote_ident(db)}"
-            else:
-                sql = "SHOW PROCEDURES"
-
-            if pattern:
-                sql += f" LIKE {quote_literal(pattern)}"
+            sql = show_sql("PROCEDURES", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
             return {"status": "success", "procedures": res.get("data", [])}
@@ -138,15 +130,7 @@ def register_programmability_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            if db and sch:
-                sql = f"SHOW USER FUNCTIONS IN SCHEMA {quote_ident(db)}.{quote_ident(sch)}"
-            elif db:
-                sql = f"SHOW USER FUNCTIONS IN DATABASE {quote_ident(db)}"
-            else:
-                sql = "SHOW USER FUNCTIONS"
-
-            if pattern:
-                sql += f" LIKE {quote_literal(pattern)}"
+            sql = show_sql("USER FUNCTIONS", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
             return {"status": "success", "functions": res.get("data", [])}
@@ -186,15 +170,7 @@ def register_programmability_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            if db and sch:
-                sql = f"SHOW SECRETS IN SCHEMA {quote_ident(db)}.{quote_ident(sch)}"
-            elif db:
-                sql = f"SHOW SECRETS IN DATABASE {quote_ident(db)}"
-            else:
-                sql = "SHOW SECRETS"
-
-            if pattern:
-                sql += f" LIKE {quote_literal(pattern)}"
+            sql = show_sql("SECRETS", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
             return {"status": "success", "secrets": res.get("data", [])}
@@ -238,15 +214,7 @@ def register_programmability_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            if db and sch:
-                sql = f"SHOW SEQUENCES IN SCHEMA {quote_ident(db)}.{quote_ident(sch)}"
-            elif db:
-                sql = f"SHOW SEQUENCES IN DATABASE {quote_ident(db)}"
-            else:
-                sql = "SHOW SEQUENCES"
-
-            if pattern:
-                sql += f" LIKE {quote_literal(pattern)}"
+            sql = show_sql("SEQUENCES", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
             return {"status": "success", "sequences": res.get("data", [])}
@@ -294,15 +262,7 @@ def register_programmability_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            if db and sch:
-                sql = f"SHOW EVENT TABLES IN SCHEMA {quote_ident(db)}.{quote_ident(sch)}"
-            elif db:
-                sql = f"SHOW EVENT TABLES IN DATABASE {quote_ident(db)}"
-            else:
-                sql = "SHOW EVENT TABLES"
-
-            if pattern:
-                sql += f" LIKE {quote_literal(pattern)}"
+            sql = show_sql("EVENT TABLES", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
             return {"status": "success", "event_tables": res.get("data", [])}

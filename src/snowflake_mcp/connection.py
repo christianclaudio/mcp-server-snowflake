@@ -41,6 +41,29 @@ def quote_literal(val: Any) -> str:
     return f"'{s}'"
 
 
+def show_sql(
+    objects: str,
+    *,
+    pattern: str | None = None,
+    database: str | None = None,
+    schema: str | None = None,
+) -> str:
+    """Build ``SHOW <objects> [LIKE '<pattern>'] [IN SCHEMA <db>.<schema> | IN DATABASE <db>]``.
+
+    Snowflake's SHOW grammar puts ``LIKE`` before ``IN``
+    (https://docs.snowflake.com/en/sql-reference/sql/show-views); ``SHOW ... IN ... LIKE`` is
+    a syntax error. A schema without a database adds no scope, so the session default applies.
+    """
+    sql = f"SHOW {objects}"
+    if pattern:
+        sql += f" LIKE {quote_literal(pattern)}"
+    if database and schema:
+        sql += f" IN SCHEMA {quote_ident(database)}.{quote_ident(schema)}"
+    elif database:
+        sql += f" IN DATABASE {quote_ident(database)}"
+    return sql
+
+
 class _ScanError(Exception):
     """The SQL text could not be tokenized safely."""
 
