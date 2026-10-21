@@ -11,18 +11,6 @@ from snowflake_mcp.connection import SnowflakeClient, quote_literal
 from snowflake_mcp.errors import status_error
 
 
-def _sql_string(value: str) -> str:
-    """Quote ``value`` as a Snowflake single-quoted string constant.
-
-    Snowflake reads backslash escape sequences inside single-quoted constants
-    (https://docs.snowflake.com/en/sql-reference/data-types-text#escape-sequences-in-single-quoted-string-constants),
-    so backslashes are doubled before ``quote_literal`` doubles the single quotes. The
-    constant then holds ``value`` exactly: a JSON ``\\"`` stays ``\\"``, and a trailing
-    backslash cannot escape the closing quote.
-    """
-    return quote_literal(value.replace("\\", "\\\\"))
-
-
 def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     """Register Cortex AI, Search, Translation, Embeddings, and NLP tools."""
 
@@ -38,8 +26,7 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Execute Cortex AI LLM completion."""
         try:
-            escaped_prompt = prompt.replace("'", "''")
-            sql = f"SELECT SNOWFLAKE.CORTEX.COMPLETE({_sql_string(model)}, '{escaped_prompt}') AS response"
+            sql = f"SELECT SNOWFLAKE.CORTEX.COMPLETE({quote_literal(model)}, {quote_literal(prompt)}) AS response"
             res = client.execute_query(sql)
             data = res.get("data", [])
             response_text = data[0].get("RESPONSE") or data[0].get("response") if data else ""
@@ -61,8 +48,7 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Summarize text using Cortex AI."""
         try:
-            escaped = text.replace("'", "''")
-            sql = f"SELECT SNOWFLAKE.CORTEX.SUMMARIZE('{escaped}') AS summary"
+            sql = f"SELECT SNOWFLAKE.CORTEX.SUMMARIZE({quote_literal(text)}) AS summary"
             res = client.execute_query(sql)
             data = res.get("data", [])
             summary = data[0].get("SUMMARY") or data[0].get("summary") if data else ""
@@ -80,8 +66,7 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Analyze sentiment."""
         try:
-            escaped = text.replace("'", "''")
-            sql = f"SELECT SNOWFLAKE.CORTEX.SENTIMENT('{escaped}') AS sentiment"
+            sql = f"SELECT SNOWFLAKE.CORTEX.SENTIMENT({quote_literal(text)}) AS sentiment"
             res = client.execute_query(sql)
             data = res.get("data", [])
             score = data[0].get("SENTIMENT") or data[0].get("sentiment") if data else 0.0
@@ -100,9 +85,10 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Extract answer from document."""
         try:
-            escaped_doc = source_text.replace("'", "''")
-            escaped_q = question.replace("'", "''")
-            sql = f"SELECT SNOWFLAKE.CORTEX.EXTRACT_ANSWER('{escaped_doc}', '{escaped_q}') AS answer"
+            sql = (
+                f"SELECT SNOWFLAKE.CORTEX.EXTRACT_ANSWER({quote_literal(source_text)}, "
+                f"{quote_literal(question)}) AS answer"
+            )
             res = client.execute_query(sql)
             data = res.get("data", [])
             ans = data[0].get("ANSWER") or data[0].get("answer") if data else ""
@@ -122,10 +108,9 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Translate text."""
         try:
-            escaped = text.replace("'", "''")
             sql = (
-                f"SELECT SNOWFLAKE.CORTEX.TRANSLATE('{escaped}', {_sql_string(source_language)}, "
-                f"{_sql_string(target_language)}) AS translation"
+                f"SELECT SNOWFLAKE.CORTEX.TRANSLATE({quote_literal(text)}, {quote_literal(source_language)}, "
+                f"{quote_literal(target_language)}) AS translation"
             )
             res = client.execute_query(sql)
             data = res.get("data", [])
@@ -154,8 +139,8 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             if columns:
                 params["columns"] = list(columns)
             sql = (
-                f"SELECT PARSE_JSON(SNOWFLAKE.CORTEX.SEARCH_PREVIEW({_sql_string(service_name)}, "
-                f"{_sql_string(json.dumps(params))})) AS results"
+                f"SELECT PARSE_JSON(SNOWFLAKE.CORTEX.SEARCH_PREVIEW({quote_literal(service_name)}, "
+                f"{quote_literal(json.dumps(params))})) AS results"
             )
             res = client.execute_query(sql)
             return {"status": "success", "service_name": service_name, "results": res.get("data")}
@@ -173,8 +158,7 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Generate text embedding vector."""
         try:
-            escaped = text.replace("'", "''")
-            sql = f"SELECT SNOWFLAKE.CORTEX.EMBED_TEXT_768({_sql_string(model)}, '{escaped}') AS embedding"
+            sql = f"SELECT SNOWFLAKE.CORTEX.EMBED_TEXT_768({quote_literal(model)}, {quote_literal(text)}) AS embedding"
             res = client.execute_query(sql)
             data = res.get("data", [])
             emb = data[0].get("EMBEDDING") or data[0].get("embedding") if data else []
@@ -194,8 +178,8 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         """Query Cortex Analyst."""
         try:
             model_ctx = f"Given semantic model {semantic_model_path}, " if semantic_model_path else ""
-            prompt = f"{model_ctx}answer the following analytical request: {question}".replace("'", "''")
-            sql = f"SELECT SNOWFLAKE.CORTEX.COMPLETE('llama3.3-70b', '{prompt}') AS answer"
+            prompt = f"{model_ctx}answer the following analytical request: {question}"
+            sql = f"SELECT SNOWFLAKE.CORTEX.COMPLETE('llama3.3-70b', {quote_literal(prompt)}) AS answer"
             res = client.execute_query(sql)
             data = res.get("data", [])
             ans = data[0].get("ANSWER") or data[0].get("answer") if data else ""

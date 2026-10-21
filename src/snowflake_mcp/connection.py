@@ -34,10 +34,17 @@ def quote_ident(name: str) -> str:
 
 
 def quote_literal(val: Any) -> str:
-    """Safely format a string literal for Snowflake SQL statements."""
+    """Safely format a string literal for Snowflake SQL statements.
+
+    Snowflake reads backslash escape sequences inside single-quoted string constants, and
+    both ``\\\\`` (a backslash) and ``''`` (a single quote) are supported there
+    (https://docs.snowflake.com/en/sql-reference/data-types-text#escape-sequences-in-single-quoted-string-constants).
+    Backslashes are doubled first, then single quotes, so the constant holds ``val`` exactly:
+    a trailing backslash cannot escape the closing quote, and ``\\'`` cannot end the literal.
+    """
     if val is None:
         return "NULL"
-    s = str(val).replace("'", "''")
+    s = str(val).replace("\\", "\\\\").replace("'", "''")
     return f"'{s}'"
 
 

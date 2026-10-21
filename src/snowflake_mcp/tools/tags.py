@@ -6,8 +6,14 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import SnowflakeClient, show_sql
+from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal, show_sql
 from snowflake_mcp.errors import SafetyViolationError, status_error
+
+
+def _qualified(name: str) -> str:
+    """Quote each part of a possibly dotted object name with ``quote_ident``."""
+    parts = [p.strip().strip('"') for p in name.split(".") if p.strip()]
+    return ".".join(quote_ident(p) for p in parts) if parts else quote_ident(name)
 
 
 def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
@@ -69,7 +75,7 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             sql = (
                 f"SELECT * FROM TABLE(SNOWFLAKE.INFORMATION_SCHEMA.TAG_REFERENCES("
-                f"'{object_name}', '{object_domain.upper()}'))"
+                f"{quote_literal(object_name)}, {quote_literal(object_domain.upper())}))"
             )
             res = client.execute_query(sql)
             return {"status": "success", "object_name": object_name, "tags": res.get("data", [])}
@@ -112,8 +118,10 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             )
 
         try:
-            val_escaped = tag_value.replace("'", "''")
-            sql = f"ALTER {domain_upper} {object_name} SET TAG {tag_name} = '{val_escaped}'"
+            sql = (
+                f"ALTER {domain_upper} {_qualified(object_name)} SET TAG {_qualified(tag_name)} = "
+                f"{quote_literal(tag_value)}"
+            )
             res = client.execute_query(sql)
             return {
                 "status": "success",

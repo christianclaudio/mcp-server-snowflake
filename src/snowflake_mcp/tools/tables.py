@@ -6,7 +6,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import SnowflakeClient, quote_ident, show_sql
+from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal, show_sql
 from snowflake_mcp.errors import SafetyViolationError, status_error
 
 VALID_DDL_OBJECT_TYPES = {
@@ -121,8 +121,7 @@ def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         if obj_type not in VALID_DDL_OBJECT_TYPES:
             raise status_error(f"Invalid object_type '{object_type}'.")
         try:
-            escaped_name = object_name.replace("'", "''")
-            sql = f"SELECT GET_DDL('{obj_type}', '{escaped_name}') AS ddl"
+            sql = f"SELECT GET_DDL('{obj_type}', {quote_literal(object_name)}) AS ddl"
             res = client.execute_query(sql)
             data = res.get("data", [])
             ddl_text = data[0].get("DDL") or data[0].get("ddl") if data else ""
