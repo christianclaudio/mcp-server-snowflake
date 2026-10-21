@@ -7,7 +7,7 @@ from typing import Any
 from fastmcp import FastMCP
 
 from snowflake_mcp.connection import SnowflakeClient, quote_ident, show_sql
-from snowflake_mcp.errors import SafetyViolationError
+from snowflake_mcp.errors import SafetyViolationError, status_error
 
 VALID_DDL_OBJECT_TYPES = {
     "TABLE",
@@ -63,7 +63,8 @@ def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "tables": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="list_views",
@@ -83,7 +84,8 @@ def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "views": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="describe_table",
@@ -103,7 +105,8 @@ def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "table": target, "columns": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="get_table_ddl",
@@ -116,7 +119,7 @@ def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         """Get object DDL."""
         obj_type = object_type.strip().upper()
         if obj_type not in VALID_DDL_OBJECT_TYPES:
-            return {"status": "error", "error": f"Invalid object_type '{object_type}'."}
+            raise status_error(f"Invalid object_type '{object_type}'.")
         try:
             escaped_name = object_name.replace("'", "''")
             sql = f"SELECT GET_DDL('{obj_type}', '{escaped_name}') AS ddl"
@@ -125,7 +128,8 @@ def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             ddl_text = data[0].get("DDL") or data[0].get("ddl") if data else ""
             return {"status": "success", "object_name": object_name, "ddl": ddl_text}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="sample_table",
@@ -145,7 +149,8 @@ def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res["table_name"] = table_name
             return res
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="create_table",
@@ -170,7 +175,8 @@ def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "table": target, "result": res.get("data")}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="drop_table",
@@ -192,7 +198,8 @@ def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "table": table_name, "result": res.get("data")}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="undrop_table",
@@ -210,7 +217,8 @@ def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "table": table_name, "result": res.get("data")}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="truncate_table",
@@ -232,7 +240,8 @@ def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "table": table_name, "result": res.get("data")}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="clone_table",
@@ -252,4 +261,5 @@ def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "source": source_table, "target": target_table, "result": res.get("data")}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None

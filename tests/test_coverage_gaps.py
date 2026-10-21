@@ -208,7 +208,9 @@ async def test_alert_destructive_sql_and_user_password_redaction() -> None:
     with pytest.raises(SafetyViolationError, match="confirm=True"):
         await tools["alerts_create_alert"].fn("A", "WH", "1 MIN", "SELECT 1", "DELETE FROM t", confirm=False)
 
-    created = await tools["governance_create_user"].fn(user_name="U", password="s3cret")
+    with pytest.raises(ToolError) as created_exc:
+        await tools["governance_create_user"].fn(user_name="U", password="s3cret")
+    created = json.loads(str(created_exc.value))
     assert created["status"] == "error"
     assert "s3cret" not in created["error"]
     assert "[REDACTED]" in created["error"]
@@ -233,8 +235,9 @@ async def test_list_connections_error_and_warehouse_restore(monkeypatch: pytest.
         "snowflake_mcp.tools.governance.SnowflakeConfig.list_available_connections",
         lambda config_path=None: (_ for _ in ()).throw(RuntimeError("unreadable")),
     )
-    listed = await tools["governance_list_connections"].fn()
-    assert listed["status"] == "error"
+    with pytest.raises(ToolError) as listed_exc:
+        await tools["governance_list_connections"].fn()
+    assert json.loads(str(listed_exc.value)) == {"status": "error", "error": "unreadable"}
 
     with pytest.raises(ToolError) as exc_info:
         await tools["recipes_warehouse_scale_and_execute"].fn("WH", "LARGE", "SELECT 1", True, confirm=True)

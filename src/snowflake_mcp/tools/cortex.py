@@ -8,6 +8,7 @@ from typing import Any
 from fastmcp import FastMCP
 
 from snowflake_mcp.connection import SnowflakeClient, quote_literal
+from snowflake_mcp.errors import status_error
 
 
 def _sql_string(value: str) -> str:
@@ -48,7 +49,8 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
                 "response": response_text,
             }
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="summarize",
@@ -66,7 +68,8 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             summary = data[0].get("SUMMARY") or data[0].get("summary") if data else ""
             return {"status": "success", "summary": summary}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="sentiment",
@@ -84,7 +87,8 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             score = data[0].get("SENTIMENT") or data[0].get("sentiment") if data else 0.0
             return {"status": "success", "sentiment_score": score}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="extract_answer",
@@ -104,7 +108,8 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             ans = data[0].get("ANSWER") or data[0].get("answer") if data else ""
             return {"status": "success", "question": question, "answer": ans}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="translate",
@@ -127,7 +132,8 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             trans = data[0].get("TRANSLATION") or data[0].get("translation") if data else ""
             return {"status": "success", "translated_text": trans}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="search",
@@ -154,7 +160,8 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "service_name": service_name, "results": res.get("data")}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="embed_text_768",
@@ -173,7 +180,8 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             emb = data[0].get("EMBEDDING") or data[0].get("embedding") if data else []
             return {"status": "success", "model": model, "embedding": emb}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="analyst_query",
@@ -199,4 +207,5 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
                 "execution_mode": "cortex_complete_semantic_fallback",
             }
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None

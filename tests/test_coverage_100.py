@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
+from fastmcp.exceptions import ToolError
 
 from snowflake_mcp.cli import main as cli_main
 from snowflake_mcp.config import SnowflakeConfig
@@ -235,7 +236,8 @@ async def test_tools_missing_branches() -> None:
 
     # programmability: integration types valid, invalid and pattern
     await tools["programmability_list_integrations"].fn(integration_type="STORAGE", pattern="S3%")
-    await tools["programmability_list_integrations"].fn(integration_type="INVALID_TYPE")
+    with pytest.raises(ToolError, match="Invalid integration_type 'INVALID_TYPE'"):
+        await tools["programmability_list_integrations"].fn(integration_type="INVALID_TYPE")
 
     # query history normal & fallback
     await tools["queries_get_query_history"].fn(limit=20)

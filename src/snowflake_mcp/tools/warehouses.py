@@ -7,7 +7,7 @@ from typing import Any
 from fastmcp import FastMCP
 
 from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal
-from snowflake_mcp.errors import SafetyViolationError
+from snowflake_mcp.errors import SafetyViolationError, status_error
 
 VALID_WAREHOUSE_SIZES = {
     "XSMALL",
@@ -46,7 +46,8 @@ def register_warehouse_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "warehouses": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="describe_warehouse",
@@ -63,7 +64,8 @@ def register_warehouse_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             wh_info = data[0] if data else None
             return {"status": "success", "warehouse": warehouse_name, "details": wh_info}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="create_warehouse",
@@ -82,7 +84,7 @@ def register_warehouse_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             raise SafetyViolationError("Denied in read-only mode.")
         size_upper = warehouse_size.strip().upper()
         if size_upper not in VALID_WAREHOUSE_SIZES:
-            return {"status": "error", "error": f"Invalid warehouse_size '{warehouse_size}'."}
+            raise status_error(f"Invalid warehouse_size '{warehouse_size}'.")
         try:
             exists_clause = "IF NOT EXISTS " if if_not_exists else ""
             auto_res_str = "TRUE" if auto_resume else "FALSE"
@@ -95,7 +97,8 @@ def register_warehouse_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "warehouse": warehouse_name, "result": res.get("data")}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="drop_warehouse",
@@ -116,7 +119,8 @@ def register_warehouse_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "warehouse": warehouse_name, "result": res.get("data")}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="resume_warehouse",
@@ -133,7 +137,8 @@ def register_warehouse_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "warehouse": warehouse_name, "result": res.get("data")}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="suspend_warehouse",
@@ -150,7 +155,8 @@ def register_warehouse_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "warehouse": warehouse_name, "result": res.get("data")}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="resize_warehouse",
@@ -165,7 +171,7 @@ def register_warehouse_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             raise SafetyViolationError("Denied in read-only mode.")
         size_upper = size.strip().upper()
         if size_upper not in VALID_WAREHOUSE_SIZES:
-            return {"status": "error", "error": f"Invalid warehouse size '{size}'."}
+            raise status_error(f"Invalid warehouse size '{size}'.")
         try:
             sql = f"ALTER WAREHOUSE {quote_ident(warehouse_name)} SET WAREHOUSE_SIZE = '{size_upper}'"
             res = client.execute_query(sql)
@@ -176,7 +182,8 @@ def register_warehouse_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
                 "result": res.get("data"),
             }
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="get_warehouse_load_history",
@@ -206,4 +213,5 @@ def register_warehouse_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
                     "load_history_notice": f"Restricted load history access ({primary_error}). Returned warehouse metadata.",
                 }
             except Exception as e:
-                return {"status": "error", "error": f"{primary_error}; fallback failed: {e}"}
+                failure = status_error(f"{primary_error}; fallback failed: {e}")
+        raise failure from None

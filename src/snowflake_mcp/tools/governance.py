@@ -8,7 +8,7 @@ from fastmcp import FastMCP
 
 from snowflake_mcp.config import SnowflakeConfig
 from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal
-from snowflake_mcp.errors import SafetyViolationError
+from snowflake_mcp.errors import SafetyViolationError, status_error
 
 
 def register_governance_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
@@ -36,7 +36,8 @@ def register_governance_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
                 "context": ctx,
             }
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="list_connections",
@@ -52,7 +53,8 @@ def register_governance_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
                 "available_profiles": profiles,
             }
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="use_connection",
@@ -71,7 +73,8 @@ def register_governance_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
                 "warehouse": new_cfg.warehouse,
             }
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="list_roles",
@@ -86,7 +89,8 @@ def register_governance_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "roles": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="describe_role",
@@ -101,7 +105,8 @@ def register_governance_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "role": role_name, "details": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="create_role",
@@ -122,7 +127,8 @@ def register_governance_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "role": role_name, "result": res.get("data")}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="drop_role",
@@ -143,7 +149,8 @@ def register_governance_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "role": role_name, "result": res.get("data")}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="list_users",
@@ -158,7 +165,8 @@ def register_governance_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "users": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="describe_user",
@@ -173,7 +181,8 @@ def register_governance_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "user": user_name, "details": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="create_user",
@@ -206,7 +215,8 @@ def register_governance_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             err_msg = str(e)
             if password:
                 err_msg = err_msg.replace(password, "[REDACTED]")
-            return {"status": "error", "error": err_msg}
+            failure = status_error(err_msg)
+        raise failure from None
 
     @mcp.tool(
         name="list_grants_to_role",
@@ -221,7 +231,8 @@ def register_governance_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "role": role_name, "grants": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="list_grants_to_user",
@@ -236,4 +247,5 @@ def register_governance_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "user": user_name, "grants": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None

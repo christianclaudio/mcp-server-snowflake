@@ -15,7 +15,7 @@ from snowflake_mcp.connection import (
     read_only_enabled,
     show_sql,
 )
-from snowflake_mcp.errors import SafetyViolationError
+from snowflake_mcp.errors import SafetyViolationError, status_error
 
 
 def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
@@ -39,7 +39,8 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "alerts": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="describe_alert",
@@ -63,7 +64,8 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "alert": target, "details": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="create_alert",
@@ -109,7 +111,8 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "alert": target, "result": res.get("data")}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="drop_alert",
@@ -139,7 +142,8 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "alert": target, "result": res.get("data")}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="resume_alert",
@@ -165,7 +169,8 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "alert": target, "result": res.get("data")}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="suspend_alert",
@@ -191,4 +196,5 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "alert": target, "result": res.get("data")}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None

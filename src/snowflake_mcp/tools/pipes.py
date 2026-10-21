@@ -14,7 +14,7 @@ from snowflake_mcp.connection import (
     read_only_enabled,
     show_sql,
 )
-from snowflake_mcp.errors import SafetyViolationError
+from snowflake_mcp.errors import SafetyViolationError, status_error
 
 
 def register_pipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
@@ -38,7 +38,8 @@ def register_pipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "pipes": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="describe_pipe",
@@ -62,7 +63,8 @@ def register_pipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "pipe": target, "details": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="create_pipe",
@@ -94,7 +96,8 @@ def register_pipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "pipe": target, "result": res.get("data")}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="drop_pipe",
@@ -124,7 +127,8 @@ def register_pipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "pipe": target, "result": res.get("data")}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="get_pipe_status",
@@ -144,4 +148,5 @@ def register_pipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "pipe": target, "pipe_status": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None

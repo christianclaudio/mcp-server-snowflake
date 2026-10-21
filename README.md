@@ -91,7 +91,7 @@ Some describe and lineage tools return an empty success for a missing name. That
 
 `horizon_get_column_lineage` returns `status: success` when its `SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY` query succeeds. That query does not filter on the supplied table or column name, so the payload can still contain recent access-history rows when that name is missing. The live harness still uses `expect: success` because the call succeeds. That is harness policy, not an empty-payload claim.
 
-Most other missing-object describe tools still reject: the handler returns `status: error`, and the live harness records `expect: rejected`. The fixture table and marker lists are in [TESTING.md](TESTING.md) under **Live e2e expect policy**.
+Most other missing-object describe tools still reject: the call is a tool error result (`isError: true`) whose text is the `{"status": "error", "error": ...}` JSON, and the live harness records `expect: rejected`. The fixture table and marker lists are in [TESTING.md](TESTING.md) under **Live e2e expect policy**.
 
 ### Programmatic access tokens and `ROLE_RESTRICTION`
 

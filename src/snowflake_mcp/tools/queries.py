@@ -13,7 +13,7 @@ from snowflake_mcp.connection import (
     quote_literal,
     read_only_enabled,
 )
-from snowflake_mcp.errors import SafetyViolationError
+from snowflake_mcp.errors import SafetyViolationError, status_error
 
 
 def register_query_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
@@ -35,7 +35,8 @@ def register_query_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res["status"] = "success"
             return res
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="execute_dml",
@@ -59,7 +60,8 @@ def register_query_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res["status"] = "success"
             return res
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="cancel_query",
@@ -80,7 +82,8 @@ def register_query_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(cancel_sql)
             return {"status": "success", "query_id": query_id, "result": res.get("data")}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="get_query_history",
@@ -111,7 +114,8 @@ def register_query_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
                 res["warning"] = f"QUERY_HISTORY_BY_USER fallback: {primary_error}"
                 return res
             except Exception as e:
-                return {"status": "error", "error": f"{primary_error}; fallback failed: {e}"}
+                failure = status_error(f"{primary_error}; fallback failed: {e}")
+        raise failure from None
 
     @mcp.tool(
         name="get_query_plan",
@@ -127,7 +131,8 @@ def register_query_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "query_plan": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="get_query_operator_stats",
@@ -142,7 +147,8 @@ def register_query_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "query_id": query_id, "operator_stats": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="begin_transaction",
@@ -156,7 +162,8 @@ def register_query_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query("BEGIN")
             return {"status": "success", "result": res.get("data")}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="commit_transaction",
@@ -170,7 +177,8 @@ def register_query_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query("COMMIT")
             return {"status": "success", "result": res.get("data")}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="rollback_transaction",
@@ -187,4 +195,5 @@ def register_query_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query("ROLLBACK")
             return {"status": "success", "result": res.get("data")}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None

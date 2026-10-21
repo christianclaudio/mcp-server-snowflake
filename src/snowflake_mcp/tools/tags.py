@@ -7,7 +7,7 @@ from typing import Any
 from fastmcp import FastMCP
 
 from snowflake_mcp.connection import SnowflakeClient, show_sql
-from snowflake_mcp.errors import SafetyViolationError
+from snowflake_mcp.errors import SafetyViolationError, status_error
 
 
 def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
@@ -31,7 +31,8 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "tags": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="describe_tag",
@@ -53,7 +54,8 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             details = data[0] if data else {}
             return {"status": "success", "tag": tag_name, "details": details}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="get_object_tag_references",
@@ -72,7 +74,8 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "object_name": object_name, "tags": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="set_object_tag",
@@ -104,10 +107,9 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         }
         domain_upper = object_domain.strip().upper()
         if domain_upper not in allowed_domains:
-            return {
-                "status": "error",
-                "error": f"Invalid object_domain '{object_domain}'. Allowed: {', '.join(sorted(allowed_domains))}",
-            }
+            raise status_error(
+                f"Invalid object_domain '{object_domain}'. Allowed: {', '.join(sorted(allowed_domains))}"
+            )
 
         try:
             val_escaped = tag_value.replace("'", "''")
@@ -121,4 +123,5 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
                 "result": res.get("data"),
             }
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None

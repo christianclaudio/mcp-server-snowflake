@@ -7,6 +7,7 @@ from typing import Any
 from fastmcp import FastMCP
 
 from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal, show_sql
+from snowflake_mcp.errors import status_error
 
 
 def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
@@ -65,7 +66,8 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
             return results
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="get_column_lineage",
@@ -103,7 +105,8 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
                 "access_history_records": res.get("data", []),
             }
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="list_masking_policies",
@@ -123,7 +126,8 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "masking_policies": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="describe_masking_policy",
@@ -149,7 +153,8 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "masking_policy": target, "details": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="list_row_access_policies",
@@ -169,7 +174,8 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "row_access_policies": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="describe_row_access_policy",
@@ -195,4 +201,5 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "row_access_policy": target, "details": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None

@@ -7,7 +7,7 @@ from typing import Any
 from fastmcp import FastMCP
 
 from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal, show_sql
-from snowflake_mcp.errors import SafetyViolationError
+from snowflake_mcp.errors import SafetyViolationError, status_error
 
 
 def qualify_compute_target(
@@ -50,7 +50,8 @@ def register_compute_service_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
             res = client.execute_query(sql)
             return {"status": "success", "streamlits": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="describe_streamlit",
@@ -70,7 +71,8 @@ def register_compute_service_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
             res = client.execute_query(sql)
             return {"status": "success", "streamlit": target, "details": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="list_compute_pools",
@@ -85,7 +87,8 @@ def register_compute_service_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
             res = client.execute_query(sql)
             return {"status": "success", "compute_pools": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="describe_compute_pool",
@@ -100,7 +103,8 @@ def register_compute_service_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
             res = client.execute_query(sql)
             return {"status": "success", "compute_pool": pool_name, "details": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="resume_compute_pool",
@@ -117,7 +121,8 @@ def register_compute_service_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
             res = client.execute_query(sql)
             return {"status": "success", "compute_pool": pool_name, "result": res.get("data")}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="suspend_compute_pool",
@@ -134,7 +139,8 @@ def register_compute_service_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
             res = client.execute_query(sql)
             return {"status": "success", "compute_pool": pool_name, "result": res.get("data")}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="list_services",
@@ -154,7 +160,8 @@ def register_compute_service_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
             res = client.execute_query(sql)
             return {"status": "success", "services": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="list_image_repositories",
@@ -174,4 +181,5 @@ def register_compute_service_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
             res = client.execute_query(sql)
             return {"status": "success", "image_repositories": res.get("data", [])}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None

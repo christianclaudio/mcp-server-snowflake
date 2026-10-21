@@ -1,6 +1,8 @@
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
+from fastmcp.exceptions import ToolError
 
 from snowflake_mcp.cli import main
 from snowflake_mcp.config import SnowflakeConfig
@@ -57,7 +59,12 @@ async def test_all_128_tools_execution(client: SnowflakeClient) -> None:
                 else:
                     kwargs[p_name] = "TEST"
 
-            res = await fn(**kwargs)
+            try:
+                res = await fn(**kwargs)
+            except ToolError as tool_exc:
+                # A tool execution error is an isError result; its text is the JSON error payload.
+                res = json.loads(str(tool_exc))
+                assert res["status"] == "error", f"Unexpected tool error payload from {name}: {res}"
             assert isinstance(res, dict), f"Expected dict response from {name}"
         except Exception as exc:  # noqa: BLE001
             failures.append(f"{name}: {exc!r}")

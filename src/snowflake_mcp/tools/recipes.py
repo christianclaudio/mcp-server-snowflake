@@ -16,7 +16,7 @@ from snowflake_mcp.connection import (
     quote_literal,
     read_only_enabled,
 )
-from snowflake_mcp.errors import SafetyViolationError, redact_error_payload
+from snowflake_mcp.errors import SafetyViolationError, redact_error_payload, status_error
 from snowflake_mcp.tools.tables import qualify_table_target
 from snowflake_mcp.tools.warehouses import VALID_WAREHOUSE_SIZES
 
@@ -54,7 +54,8 @@ def register_recipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
                 "active_warehouse_status": wh_info,
             }
         except Exception as e:
-            return {"status": "error", "healthy": False, "error": str(e)}
+            failure = status_error(e, healthy=False)
+        raise failure from None
 
     @mcp.tool(
         name="inspect_table_with_sample",
@@ -87,7 +88,8 @@ def register_recipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
                 "sample_preview": sample_data,
             }
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="profile_table",
@@ -126,7 +128,8 @@ def register_recipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
                 "columns": col_names,
             }
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="warehouse_scale_and_execute",
@@ -242,10 +245,9 @@ def register_recipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         if at_or_before:
             clean_tt = at_or_before.strip()
             if not re.match(r"^(AT|BEFORE)\s*\(.*?\)$", clean_tt, re.IGNORECASE):
-                return {
-                    "status": "error",
-                    "error": "Invalid at_or_before clause. Must be 'AT(TIMESTAMP => ...)' or 'BEFORE(STATEMENT => ...)'",
-                }
+                raise status_error(
+                    "Invalid at_or_before clause. Must be 'AT(TIMESTAMP => ...)' or 'BEFORE(STATEMENT => ...)'"
+                )
 
         try:
             src = qualify_table_target(source_table)
@@ -255,7 +257,8 @@ def register_recipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "source": source_table, "target": target_table, "result": res.get("data")}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="export_query_to_stage",
@@ -278,7 +281,8 @@ def register_recipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "stage_target": target, "result": res.get("data")}
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
 
     @mcp.tool(
         name="account_usage_summary",
@@ -301,7 +305,8 @@ def register_recipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
                 res = client.execute_query(fallback_sql)
                 return {"status": "success", "warehouses_summary": res.get("data", [])}
             except Exception as e:
-                return {"status": "error", "error": str(e)}
+                failure = status_error(e)
+            raise failure from None
 
     @mcp.tool(
         name="discover_schema_lineage",
@@ -340,4 +345,5 @@ def register_recipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
                 "views": [v.get("name") for v in views],
             }
         except Exception as e:
-            return {"status": "error", "error": str(e)}
+            failure = status_error(e)
+        raise failure from None
