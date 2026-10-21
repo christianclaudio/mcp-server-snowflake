@@ -2,11 +2,24 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import SnowflakeClient
+from snowflake_mcp.connection import SnowflakeClient, quote_literal
+
+
+def _sql_string(value: str) -> str:
+    """Quote ``value`` as a Snowflake single-quoted string constant.
+
+    Snowflake reads backslash escape sequences inside single-quoted constants
+    (https://docs.snowflake.com/en/sql-reference/data-types-text#escape-sequences-in-single-quoted-string-constants),
+    so backslashes are doubled before ``quote_literal`` doubles the single quotes. The
+    constant then holds ``value`` exactly: a JSON ``\\"`` stays ``\\"``, and a trailing
+    backslash cannot escape the closing quote.
+    """
+    return quote_literal(value.replace("\\", "\\\\"))
 
 
 def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
@@ -25,7 +38,7 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         """Execute Cortex AI LLM completion."""
         try:
             escaped_prompt = prompt.replace("'", "''")
-            sql = f"SELECT SNOWFLAKE.CORTEX.COMPLETE('{model}', '{escaped_prompt}') AS response"
+            sql = f"SELECT SNOWFLAKE.CORTEX.COMPLETE({_sql_string(model)}, '{escaped_prompt}') AS response"
             res = client.execute_query(sql)
             data = res.get("data", [])
             response_text = data[0].get("RESPONSE") or data[0].get("response") if data else ""
@@ -105,7 +118,10 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         """Translate text."""
         try:
             escaped = text.replace("'", "''")
-            sql = f"SELECT SNOWFLAKE.CORTEX.TRANSLATE('{escaped}', '{source_language}', '{target_language}') AS translation"
+            sql = (
+                f"SELECT SNOWFLAKE.CORTEX.TRANSLATE('{escaped}', {_sql_string(source_language)}, "
+                f"{_sql_string(target_language)}) AS translation"
+            )
             res = client.execute_query(sql)
             data = res.get("data", [])
             trans = data[0].get("TRANSLATION") or data[0].get("translation") if data else ""
@@ -125,11 +141,15 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Query Cortex Search Service."""
         try:
-            cols_str = f", columns => {columns}" if columns else ""
-            escaped_query = query.replace("'", "''")
+            # SEARCH_PREVIEW takes the service name and one JSON object string with
+            # query, columns and limit
+            # (https://docs.snowflake.com/en/sql-reference/functions/search_preview-snowflake-cortex).
+            params: dict[str, Any] = {"query": query, "limit": limit}
+            if columns:
+                params["columns"] = list(columns)
             sql = (
-                f"SELECT PARSE_JSON(SNOWFLAKE.CORTEX.SEARCH_PREVIEW('{service_name}', "
-                f"'{escaped_query}'{cols_str})) AS results"
+                f"SELECT PARSE_JSON(SNOWFLAKE.CORTEX.SEARCH_PREVIEW({_sql_string(service_name)}, "
+                f"{_sql_string(json.dumps(params))})) AS results"
             )
             res = client.execute_query(sql)
             return {"status": "success", "service_name": service_name, "results": res.get("data")}
@@ -147,7 +167,7 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         """Generate text embedding vector."""
         try:
             escaped = text.replace("'", "''")
-            sql = f"SELECT SNOWFLAKE.CORTEX.EMBED_TEXT_768('{model}', '{escaped}') AS embedding"
+            sql = f"SELECT SNOWFLAKE.CORTEX.EMBED_TEXT_768({_sql_string(model)}, '{escaped}') AS embedding"
             res = client.execute_query(sql)
             data = res.get("data", [])
             emb = data[0].get("EMBEDDING") or data[0].get("embedding") if data else []
