@@ -14,6 +14,7 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from fastmcp.exceptions import ToolError
 from mcp.types import CallToolResult, TextContent
 
 from snowflake_mcp.config import SnowflakeConfig
@@ -249,6 +250,10 @@ _TOOL_REJECTION_MARKERS: dict[str, tuple[str, ...]] = {
     ),
 }
 _CONFIRM_MARKERS = ("requires_confirmation", "denied in read-only", "read-only")
+# Lineage tools read SNOWFLAKE.ACCOUNT_USAGE. A role without that grant gets isError with this
+# privilege error, which is the expected result there; with the grant the call must succeed.
+_ACCOUNT_USAGE_TOOLS = frozenset({"horizon_get_object_lineage", "horizon_get_column_lineage"})
+_ACCOUNT_USAGE_DENIED_MARKERS = ("schema 'snowflake.account_usage' does not exist or not authorized",)
 _CORTEX_UNAVAILABLE_MARKERS = ("unknown function", "cortex not enabled", "not available")
 
 
@@ -259,6 +264,10 @@ def _contains_any(text: str, markers: tuple[str, ...]) -> bool:
 
 def _rejection_markers(tool_name: str) -> tuple[str, ...]:
     return _SAFE_REJECTION_MARKERS + _TOOL_REJECTION_MARKERS.get(tool_name, ())
+
+
+def _account_usage_denied(tool_name: str, text: str) -> bool:
+    return tool_name in _ACCOUNT_USAGE_TOOLS and _contains_any(text, _ACCOUNT_USAGE_DENIED_MARKERS)
 
 
 def _cortex_skip_requested() -> bool:
@@ -298,6 +307,8 @@ async def dispatch_tool_call(srv: Any, tool_name: str, is_destructive: bool) -> 
         return ("FAIL", True, f"SafetyViolationError: {_redact_secrets(message)}")
     except Exception as exc:
         message = str(exc)
+        if expect == "success" and _account_usage_denied(tool_name, message):
+            return ("PASS", True, None)
         if expect == "cortex" and _contains_any(message, _CORTEX_UNAVAILABLE_MARKERS):
             return ("SKIP", True, CORTEX_SKIP_REASON)
         if expect == "rejected" and _contains_any(message, _rejection_markers(tool_name)):
@@ -335,6 +346,8 @@ async def dispatch_tool_call(srv: Any, tool_name: str, is_destructive: bool) -> 
         return ("PASS", False, None)
 
     is_err = bool(res.is_error)
+    if is_err and _account_usage_denied(tool_name, body):
+        return ("PASS", True, None)
     return ("FAIL" if is_err else "PASS", is_err, None)
 
 
@@ -427,6 +440,51 @@ _EMPTY_SUCCESS_TOOLS = (
     "horizon_get_object_lineage",
     "horizon_get_column_lineage",
 )
+
+
+_DENIED = (
+    "002003 (02000): SQL compilation error:\\nSchema 'SNOWFLAKE.ACCOUNT_USAGE' does not exist or not "
+    "authorized. Your primary role NEXUS_RO must have USAGE or any other privilege granted on SCHEMA "
+    "SNOWFLAKE.ACCOUNT_USAGE."
+)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name", sorted(_ACCOUNT_USAGE_TOOLS))
+async def test_lineage_expects_the_account_usage_privilege_error_without_the_grant(name: str) -> None:
+    """Without the grant the lineage call is isError with the privilege error; other errors still fail."""
+    mock_srv = AsyncMock()
+    mock_srv.call_tool.side_effect = ToolError(f'{{"status": "error", "error": "{_DENIED}"}}')
+    assert await dispatch_tool_call(mock_srv, name, is_destructive=False) == ("PASS", True, None)
+
+    mock_srv.call_tool.side_effect = None
+    mock_srv.call_tool.return_value = CallToolResult(
+        content=[TextContent(type="text", text=f'{{"status": "error", "error": "{_DENIED}"}}')], is_error=True
+    )
+    assert await dispatch_tool_call(mock_srv, name, is_destructive=False) == ("PASS", True, None)
+
+    # With the grant the call runs for real and must succeed.
+    mock_srv.call_tool.return_value = CallToolResult(
+        content=[TextContent(type="text", text='{"status": "success", "upstream": []}')], is_error=False
+    )
+    assert await dispatch_tool_call(mock_srv, name, is_destructive=False) == ("PASS", False, None)
+
+    # Any other error is a real failure.
+    mock_srv.call_tool.return_value = CallToolResult(
+        content=[TextContent(type="text", text='{"status": "error", "error": "warehouse suspended"}')], is_error=True
+    )
+    assert (await dispatch_tool_call(mock_srv, name, is_destructive=False))[0] == "FAIL"
+    mock_srv.call_tool.side_effect = ToolError('{"status": "error", "error": "syntax error"}')
+    assert (await dispatch_tool_call(mock_srv, name, is_destructive=False))[0] == "FAIL"
+
+
+@pytest.mark.asyncio
+async def test_account_usage_error_does_not_pass_other_success_tools() -> None:
+    mock_srv = AsyncMock()
+    mock_srv.call_tool.return_value = CallToolResult(
+        content=[TextContent(type="text", text=f'{{"status": "error", "error": "{_DENIED}"}}')], is_error=True
+    )
+    assert (await dispatch_tool_call(mock_srv, "warehouses_list_warehouses", is_destructive=False))[0] == "FAIL"
 
 
 @pytest.mark.asyncio

@@ -143,7 +143,7 @@ def register_query_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Get query operator statistics via GET_QUERY_OPERATOR_STATS."""
         try:
-            sql = f"SELECT * FROM TABLE(GET_QUERY_OPERATOR_STATS('{query_id}'))"
+            sql = f"SELECT * FROM TABLE(GET_QUERY_OPERATOR_STATS({quote_literal(query_id)}))"
             res = client.execute_query(sql)
             return {"status": "success", "query_id": query_id, "operator_stats": res.get("data", [])}
         except Exception as e:

@@ -241,14 +241,16 @@ def register_programmability_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
         # Validate before the try block, so the error is not re-wrapped by its handler.
         if integration_type:
             allowed_types = {"API", "STORAGE", "NOTIFICATION", "SECURITY", "CATALOG", "EXTERNAL_ACCESS"}
-            cleaned_type = integration_type.strip().upper()
+            cleaned_type = "_".join(integration_type.strip().upper().split())
             if cleaned_type not in allowed_types:
                 raise status_error(
                     f"Invalid integration_type '{integration_type}'. Allowed: {', '.join(sorted(allowed_types))}"
                 )
         try:
             if integration_type:
-                sql = f"SHOW {cleaned_type} INTEGRATIONS"
+                # The keyword is two words: SHOW EXTERNAL ACCESS INTEGRATIONS
+                # (https://docs.snowflake.com/en/sql-reference/sql/show-integrations).
+                sql = f"SHOW {cleaned_type.replace('_', ' ')} INTEGRATIONS"
             else:
                 sql = "SHOW INTEGRATIONS"
             if pattern:
