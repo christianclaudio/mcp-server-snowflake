@@ -178,7 +178,11 @@ def ident_error(error: Exception) -> ToolError:
     return status_error(error)
 
 
-_DROP_NOOP_MARK = "does not exist, statement succeeded"
+_DROP_NOOP_MARKS = ("already dropped)", "does not exist, statement succeeded")
+"""Status text of a ``DROP ... IF EXISTS`` that found nothing: the current reply, then a legacy form."""
+
+_DROP_DONE_MARK = "successfully dropped."
+"""Status text of a ``DROP`` that removed the object."""
 
 DROP_NOOP_HINT = f"Nothing was dropped. {IDENT_HINT}"
 """The ``hint`` a ``DROP ... IF EXISTS`` result carries when the named object did not exist."""
@@ -188,16 +192,29 @@ def drop_result(result: dict[str, Any]) -> dict[str, Any]:
     """A ``DROP ... IF EXISTS`` tool result with ``dropped`` added.
 
     Snowflake answers a drop of a missing object with a success status row such as
-    ``MY_TABLE does not exist, statement succeeded.``, so ``ident_error`` never sees it.
-    That result stays a success, with ``dropped: false`` and ``hint`` (``DROP_NOOP_HINT``)
-    added, since an unquoted lowercase or mixed-case name names a different, uppercase
-    object. Any other reply gets ``dropped: true``. The rest of ``result`` is unchanged.
+    ``Drop statement executed successfully (MY_TABLE already dropped).``
+    (https://docs.snowflake.com/en/sql-reference/sql/drop-table), or in an older form
+    ``MY_TABLE does not exist, statement succeeded.``, so ``ident_error`` never sees it. The
+    status values are matched case-insensitively, without parsing the name:
+
+    - a no-op reply in any row gives ``dropped: false`` and ``hint`` (``DROP_NOOP_HINT``), since
+      an unquoted lowercase or mixed-case name names a different, uppercase object;
+    - otherwise ``... successfully dropped.`` gives ``dropped: true``;
+    - otherwise (no rows, or a reply not recognized) ``dropped`` is ``None``, never a guess.
+
+    The result stays a success, and the rest of ``result`` is unchanged.
     """
     rows = result.get("result")
-    replies = [str(v) for row in rows if isinstance(row, dict) for v in row.values()] if isinstance(rows, list) else []
-    if any(_DROP_NOOP_MARK in reply.lower() for reply in replies):
+    replies = (
+        [str(v).lower() for row in rows if isinstance(row, dict) for v in row.values()]
+        if isinstance(rows, list)
+        else []
+    )
+    if any(mark in reply for reply in replies for mark in _DROP_NOOP_MARKS):
         return {**result, "dropped": False, "hint": DROP_NOOP_HINT}
-    return {**result, "dropped": True}
+    if any(_DROP_DONE_MARK in reply for reply in replies):
+        return {**result, "dropped": True}
+    return {**result, "dropped": None}
 
 
 def quote_literal(val: Any) -> str:

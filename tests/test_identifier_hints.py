@@ -68,15 +68,67 @@ def test_drop_result_reports_dropped() -> None:
     base = {"status": "success", "table": "my_table"}
     gone = [{"status": "MY_TABLE successfully dropped."}]
     assert drop_result({**base, "result": gone}) == {**base, "result": gone, "dropped": True}
-    missing = [{"status": "MY_TABLE does not exist, statement succeeded."}]
+    missing = [{"status": "Drop statement executed successfully (MY_TABLE already dropped)."}]
     assert drop_result({**base, "result": missing}) == {
         **base,
         "result": missing,
         "dropped": False,
         "hint": DROP_NOOP_HINT,
     }
-    # No status rows at all is a drop that Snowflake did not call a no-op.
-    assert drop_result({**base, "result": None}) == {**base, "result": None, "dropped": True}
+
+
+def test_drop_result_matches_case_insensitively() -> None:
+    upper = [{"status": "DROP STATEMENT EXECUTED SUCCESSFULLY (MY_TABLE ALREADY DROPPED)."}]
+    assert drop_result({"result": upper})["dropped"] is False
+    assert drop_result({"result": [{"status": "MY_TABLE SUCCESSFULLY DROPPED."}]})["dropped"] is True
+
+
+def test_drop_result_keeps_the_legacy_noop_form() -> None:
+    legacy = [{"status": "MY_TABLE does not exist, statement succeeded."}]
+    assert drop_result({"status": "success", "result": legacy}) == {
+        "status": "success",
+        "result": legacy,
+        "dropped": False,
+        "hint": DROP_NOOP_HINT,
+    }
+
+
+@pytest.mark.parametrize(
+    "rows",
+    [
+        None,
+        [],
+        [{}],
+        [{"status": ""}],
+        [{"status": "Statement executed successfully."}],
+        "not rows",
+        ["MY_TABLE successfully dropped."],
+    ],
+)
+def test_drop_result_never_claims_a_drop_it_cannot_read(rows: Any) -> None:
+    base = {"status": "success", "table": "my_table", "result": rows}
+    assert drop_result(base) == {**base, "dropped": None}
+
+
+def test_drop_result_keeps_an_unknown_reply_visible() -> None:
+    unknown = [{"status": "Statement executed successfully."}]
+    out = drop_result({"status": "success", "result": unknown})
+    assert out["dropped"] is None
+    assert "hint" not in out
+    assert out["result"] == [{"status": "Statement executed successfully."}]
+    empty = drop_result({"status": "success", "result": [{"status": ""}]})
+    assert empty["dropped"] is None
+    assert empty["result"] == [{"status": ""}]
+    no_rows = drop_result({"status": "success"})
+    assert no_rows == {"status": "success", "dropped": None}
+
+
+def test_drop_result_noop_wins_over_a_drop_row() -> None:
+    rows = [
+        {"status": "A successfully dropped."},
+        {"status": "Drop statement executed successfully (B already dropped)."},
+    ]
+    assert drop_result({"result": rows}) == {"result": rows, "dropped": False, "hint": DROP_NOOP_HINT}
 
 
 def test_ident_error_adds_the_hint_only_for_not_found() -> None:
@@ -116,7 +168,7 @@ class _Snowflake:
             dropped = (
                 "my_table successfully dropped."
                 if '"my_table"' in sql
-                else "MY_TABLE does not exist, statement succeeded."
+                else "Drop statement executed successfully (MY_TABLE already dropped)."
             )
             self._rows = [{"status": dropped}]
             return
@@ -181,7 +233,7 @@ async def test_round_trip_of_a_quoted_lowercase_table() -> None:
     assert noop.structured_content == {
         "status": "success",
         "table": "my_table",
-        "result": [{"status": "MY_TABLE does not exist, statement succeeded."}],
+        "result": [{"status": "Drop statement executed successfully (MY_TABLE already dropped)."}],
         "dropped": False,
         "hint": DROP_NOOP_HINT,
     }
@@ -272,7 +324,9 @@ _DROP_TOOLS = {
     ("reply", "added"),
     [
         ("X successfully dropped.", {"dropped": True}),
+        ("Drop statement executed successfully (X already dropped).", {"dropped": False, "hint": DROP_NOOP_HINT}),
         ("X does not exist, statement succeeded.", {"dropped": False, "hint": DROP_NOOP_HINT}),
+        ("Statement executed successfully.", {"dropped": None}),
     ],
 )
 async def test_every_drop_tool_reports_dropped(tool: str, reply: str, added: dict[str, Any]) -> None:
