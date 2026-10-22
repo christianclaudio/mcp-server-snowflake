@@ -6,7 +6,17 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal, resolve_ident, show_sql, split_ident
+from snowflake_mcp.connection import (
+    Identifier,
+    OptionalIdentifier,
+    SnowflakeClient,
+    ident_error,
+    quote_ident,
+    quote_literal,
+    resolve_ident,
+    show_sql,
+    split_ident,
+)
 from snowflake_mcp.errors import status_error
 
 
@@ -18,10 +28,10 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Retrieve upstream source and downstream dependent object lineage from Snowflake Horizon.",
     )
     async def snowflake_get_object_lineage(
-        object_name: str,
+        object_name: Identifier,
         direction: str = "both",
-        database: str | None = None,
-        schema_name: str | None = None,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
         """Retrieve upstream and downstream object dependencies from Account Usage."""
         try:
@@ -80,8 +90,8 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Trace origin and transformation lineage for a column using Snowflake Horizon Access History.",
     )
     async def snowflake_get_column_lineage(
-        table_name: str,
-        column_name: str,
+        table_name: Identifier,
+        column_name: Identifier,
         database: str | None = None,
         schema_name: str | None = None,
         days: int = 30,
@@ -119,8 +129,8 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="List column masking policies in the account, database, or schema.",
     )
     async def snowflake_list_masking_policies(
-        database: str | None = None,
-        schema_name: str | None = None,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
         pattern: str | None = None,
     ) -> dict[str, Any]:
         """List masking policies."""
@@ -132,7 +142,7 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "masking_policies": res.get("data", [])}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -140,9 +150,9 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Describe signature, return type, and body of a masking policy.",
     )
     async def snowflake_describe_masking_policy(
-        policy_name: str,
-        database: str | None = None,
-        schema_name: str | None = None,
+        policy_name: Identifier,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
         """Describe masking policy."""
         try:
@@ -159,7 +169,7 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "masking_policy": target, "details": res.get("data", [])}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -167,8 +177,8 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="List row access policies defined in the account, database, or schema.",
     )
     async def snowflake_list_row_access_policies(
-        database: str | None = None,
-        schema_name: str | None = None,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
         pattern: str | None = None,
     ) -> dict[str, Any]:
         """List row access policies."""
@@ -180,7 +190,7 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "row_access_policies": res.get("data", [])}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -188,9 +198,9 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Describe signature, filter expression, and comment of a row access policy.",
     )
     async def snowflake_describe_row_access_policy(
-        policy_name: str,
-        database: str | None = None,
-        schema_name: str | None = None,
+        policy_name: Identifier,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
         """Describe row access policy."""
         try:
@@ -207,5 +217,5 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "row_access_policy": target, "details": res.get("data", [])}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None

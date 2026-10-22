@@ -6,7 +6,15 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import SnowflakeClient, qualify_ident, quote_literal, show_sql
+from snowflake_mcp.connection import (
+    Identifier,
+    OptionalIdentifier,
+    SnowflakeClient,
+    ident_error,
+    qualify_ident,
+    quote_literal,
+    show_sql,
+)
 from snowflake_mcp.errors import SafetyViolationError, status_error
 
 
@@ -27,8 +35,8 @@ def register_dynamic_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="List dynamic tables with lag targets, refresh mode, and last refresh status.",
     )
     async def snowflake_list_dynamic_tables(
-        database: str | None = None,
-        schema_name: str | None = None,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
         pattern: str | None = None,
     ) -> dict[str, Any]:
         """List dynamic tables."""
@@ -40,7 +48,7 @@ def register_dynamic_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "dynamic_tables": res.get("data", [])}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -48,9 +56,9 @@ def register_dynamic_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Describe dynamic table definition, target lag, warehouse, and query text.",
     )
     async def snowflake_describe_dynamic_table(
-        table_name: str,
-        database: str | None = None,
-        schema_name: str | None = None,
+        table_name: Identifier,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
         """Describe dynamic table."""
         try:
@@ -61,7 +69,7 @@ def register_dynamic_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "dynamic_table": target, "details": res.get("data", [])}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -69,9 +77,9 @@ def register_dynamic_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Trigger an immediate manual refresh of a dynamic table.",
     )
     async def snowflake_refresh_dynamic_table(
-        table_name: str,
-        database: str | None = None,
-        schema_name: str | None = None,
+        table_name: Identifier,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
         """Manually refresh dynamic table."""
         if client.config.read_only:
@@ -84,7 +92,7 @@ def register_dynamic_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "dynamic_table": target, "result": res.get("data")}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -92,9 +100,9 @@ def register_dynamic_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Resume scheduling and lag monitoring for a dynamic table.",
     )
     async def snowflake_resume_dynamic_table(
-        table_name: str,
-        database: str | None = None,
-        schema_name: str | None = None,
+        table_name: Identifier,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
         """Resume dynamic table."""
         if client.config.read_only:
@@ -107,7 +115,7 @@ def register_dynamic_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "dynamic_table": target, "result": res.get("data")}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -115,9 +123,9 @@ def register_dynamic_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Suspend automated refresh and lag evaluation for a dynamic table.",
     )
     async def snowflake_suspend_dynamic_table(
-        table_name: str,
-        database: str | None = None,
-        schema_name: str | None = None,
+        table_name: Identifier,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
         """Suspend dynamic table."""
         if client.config.read_only:
@@ -130,7 +138,7 @@ def register_dynamic_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "dynamic_table": target, "result": res.get("data")}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -138,8 +146,8 @@ def register_dynamic_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="List Apache Iceberg tables in the account, database, or schema.",
     )
     async def snowflake_list_iceberg_tables(
-        database: str | None = None,
-        schema_name: str | None = None,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
         pattern: str | None = None,
     ) -> dict[str, Any]:
         """List Iceberg tables."""
@@ -151,7 +159,7 @@ def register_dynamic_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "iceberg_tables": res.get("data", [])}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -159,9 +167,9 @@ def register_dynamic_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Describe schema, catalog integration, and external volume of an Iceberg table.",
     )
     async def snowflake_describe_iceberg_table(
-        table_name: str,
-        database: str | None = None,
-        schema_name: str | None = None,
+        table_name: Identifier,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
         """Describe Iceberg table."""
         try:
@@ -172,7 +180,7 @@ def register_dynamic_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "iceberg_table": target, "details": res.get("data", [])}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(

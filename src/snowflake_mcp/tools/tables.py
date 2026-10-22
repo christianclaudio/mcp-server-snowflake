@@ -6,7 +6,15 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import SnowflakeClient, qualify_ident, quote_literal, show_sql
+from snowflake_mcp.connection import (
+    Identifier,
+    OptionalIdentifier,
+    SnowflakeClient,
+    ident_error,
+    qualify_ident,
+    quote_literal,
+    show_sql,
+)
 from snowflake_mcp.errors import SafetyViolationError, status_error
 
 VALID_DDL_OBJECT_TYPES = {
@@ -40,8 +48,8 @@ def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="List tables in a database schema with row counts and bytes.",
     )
     async def snowflake_list_tables(
-        database: str | None = None,
-        schema_name: str | None = None,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
         pattern: str | None = None,
     ) -> dict[str, Any]:
         """List tables."""
@@ -53,7 +61,7 @@ def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "tables": res.get("data", [])}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -61,8 +69,8 @@ def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="List views in a database schema.",
     )
     async def snowflake_list_views(
-        database: str | None = None,
-        schema_name: str | None = None,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
         pattern: str | None = None,
     ) -> dict[str, Any]:
         """List views."""
@@ -74,7 +82,7 @@ def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "views": res.get("data", [])}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -82,9 +90,9 @@ def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Describe column definitions, data types, nullability, and primary keys for a table or view.",
     )
     async def snowflake_describe_table(
-        table_name: str,
-        database: str | None = None,
-        schema_name: str | None = None,
+        table_name: Identifier,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
         """Describe table schema."""
         try:
@@ -95,7 +103,7 @@ def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "table": target, "columns": res.get("data", [])}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -125,7 +133,7 @@ def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Preview sample rows from a table (default 10 rows).",
     )
     async def snowflake_sample_table(
-        table_name: str,
+        table_name: Identifier,
         sample_size: int = 10,
     ) -> dict[str, Any]:
         """Sample rows from table."""
@@ -138,7 +146,7 @@ def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res["table_name"] = table_name
             return res
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -146,10 +154,10 @@ def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Create a table in Snowflake with specified column definitions SQL.",
     )
     async def snowflake_create_table(
-        table_name: str,
+        table_name: Identifier,
         columns_sql: str,
-        database: str | None = None,
-        schema_name: str | None = None,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
         if_not_exists: bool = True,
     ) -> dict[str, Any]:
         """Create table."""
@@ -164,7 +172,7 @@ def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "table": target, "result": res.get("data")}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -172,7 +180,7 @@ def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Drop a table in Snowflake. Requires confirmation flag.",
     )
     async def snowflake_drop_table(
-        table_name: str,
+        table_name: Identifier,
         confirm: bool = False,
     ) -> dict[str, Any]:
         """Drop table."""
@@ -187,7 +195,7 @@ def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "table": table_name, "result": res.get("data")}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -195,7 +203,7 @@ def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Restore a recently dropped table using Time Travel.",
     )
     async def snowflake_undrop_table(
-        table_name: str,
+        table_name: Identifier,
     ) -> dict[str, Any]:
         """Undrop table."""
         if client.config.read_only:
@@ -206,7 +214,7 @@ def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "table": table_name, "result": res.get("data")}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -214,7 +222,7 @@ def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Truncate all data rows from a table while preserving schema. Requires confirmation.",
     )
     async def snowflake_truncate_table(
-        table_name: str,
+        table_name: Identifier,
         confirm: bool = False,
     ) -> dict[str, Any]:
         """Truncate table."""
@@ -229,7 +237,7 @@ def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "table": table_name, "result": res.get("data")}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -237,8 +245,8 @@ def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Create a zero-copy clone of an existing table.",
     )
     async def snowflake_clone_table(
-        source_table: str,
-        target_table: str,
+        source_table: Identifier,
+        target_table: Identifier,
     ) -> dict[str, Any]:
         """Clone table zero-copy."""
         if client.config.read_only:
@@ -250,5 +258,5 @@ def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "source": source_table, "target": target_table, "result": res.get("data")}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None

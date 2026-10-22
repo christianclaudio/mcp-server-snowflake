@@ -7,7 +7,14 @@ from typing import Any
 from fastmcp import FastMCP
 
 from snowflake_mcp.config import SnowflakeConfig
-from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal
+from snowflake_mcp.connection import (
+    Identifier,
+    OptionalIdentifier,
+    SnowflakeClient,
+    ident_error,
+    quote_ident,
+    quote_literal,
+)
 from snowflake_mcp.errors import SafetyViolationError, status_error
 
 
@@ -113,7 +120,7 @@ def register_governance_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Create a new role in Snowflake.",
     )
     async def snowflake_create_role(
-        role_name: str,
+        role_name: Identifier,
         comment: str | None = None,
         if_not_exists: bool = True,
     ) -> dict[str, Any]:
@@ -127,7 +134,7 @@ def register_governance_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "role": role_name, "result": res.get("data")}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -135,7 +142,7 @@ def register_governance_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Drop a role in Snowflake. Requires confirmation.",
     )
     async def snowflake_drop_role(
-        role_name: str,
+        role_name: Identifier,
         confirm: bool = False,
     ) -> dict[str, Any]:
         """Drop role."""
@@ -149,7 +156,7 @@ def register_governance_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "role": role_name, "result": res.get("data")}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -173,7 +180,7 @@ def register_governance_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Describe user properties, email, disabled status, and default warehouse/role.",
     )
     async def snowflake_describe_user(
-        user_name: str,
+        user_name: Identifier,
     ) -> dict[str, Any]:
         """Describe user."""
         try:
@@ -181,7 +188,7 @@ def register_governance_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "user": user_name, "details": res.get("data", [])}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -189,10 +196,10 @@ def register_governance_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Create a new Snowflake user with default role and warehouse.",
     )
     async def snowflake_create_user(
-        user_name: str,
+        user_name: Identifier,
         password: str | None = None,
-        default_role: str | None = None,
-        default_warehouse: str | None = None,
+        default_role: OptionalIdentifier = None,
+        default_warehouse: OptionalIdentifier = None,
         comment: str | None = None,
         if_not_exists: bool = True,
     ) -> dict[str, Any]:
@@ -223,7 +230,7 @@ def register_governance_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="List privileges granted to a specific role.",
     )
     async def snowflake_list_grants_to_role(
-        role_name: str,
+        role_name: Identifier,
     ) -> dict[str, Any]:
         """List grants to role."""
         try:
@@ -231,7 +238,7 @@ def register_governance_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "role": role_name, "grants": res.get("data", [])}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -239,7 +246,7 @@ def register_governance_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="List roles granted to a specific user.",
     )
     async def snowflake_list_grants_to_user(
-        user_name: str,
+        user_name: Identifier,
     ) -> dict[str, Any]:
         """List grants to user."""
         try:
@@ -247,5 +254,5 @@ def register_governance_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "user": user_name, "grants": res.get("data", [])}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None

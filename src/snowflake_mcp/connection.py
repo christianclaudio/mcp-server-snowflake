@@ -6,17 +6,25 @@ import logging
 import os
 import re
 from dataclasses import dataclass
-from typing import Any
+from typing import Annotated, Any
 
 import snowflake.connector
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
+from fastmcp.exceptions import ToolError
+from pydantic import Field
 from snowflake.connector import SnowflakeConnection
 from snowflake.connector.cursor import DictCursor
 from snowflake.core import Root
 
 from snowflake_mcp.config import SnowflakeConfig
-from snowflake_mcp.errors import AuthenticationError, SafetyViolationError, map_connector_error
+from snowflake_mcp.errors import (
+    AuthenticationError,
+    ResourceNotFoundError,
+    SafetyViolationError,
+    map_connector_error,
+    status_error,
+)
 
 logger = logging.getLogger("snowflake_mcp")
 
@@ -110,6 +118,33 @@ def qualify_ident(name: str, *prefix: str | None) -> str:
     if len(parts) == 1:
         parts = [resolve_ident(p) for p in prefix if p] + parts
     return ".".join(_quote_resolved(p) for p in parts)
+
+
+IDENT_HINT = (
+    "Unquoted names resolve to uppercase, so wrap any name that isn't all uppercase, "
+    "or that contains a dot, in double quotes exactly as a list tool returned it."
+)
+"""The one sentence every identifier argument's description and the not-found error carry."""
+
+Identifier = Annotated[str, Field(description=IDENT_HINT)]
+"""A tool argument naming a Snowflake object; resolved by ``split_ident`` rules."""
+
+OptionalIdentifier = Annotated[str | None, Field(description=IDENT_HINT)]
+"""An optional ``Identifier`` argument (for example ``database`` or ``schema_name``)."""
+
+_NOT_FOUND_MARK = "does not exist or not authorized"
+
+
+def ident_error(error: Exception) -> ToolError:
+    """``status_error`` for a tool that takes identifier arguments.
+
+    When Snowflake reports that the named object does not exist or is not authorized, the
+    error text gets ``IDENT_HINT`` appended, since an unquoted lowercase or mixed-case name
+    resolves to a different, uppercase object. Every other error is ``status_error`` as is.
+    """
+    if isinstance(error, ResourceNotFoundError) and _NOT_FOUND_MARK in error.message.lower():
+        return status_error(f"{error.message} {IDENT_HINT}")
+    return status_error(error)
 
 
 def quote_literal(val: Any) -> str:

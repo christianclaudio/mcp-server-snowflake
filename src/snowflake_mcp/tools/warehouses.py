@@ -6,7 +6,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal
+from snowflake_mcp.connection import Identifier, SnowflakeClient, ident_error, quote_ident, quote_literal
 from snowflake_mcp.errors import SafetyViolationError, status_error
 
 VALID_WAREHOUSE_SIZES = {
@@ -72,7 +72,7 @@ def register_warehouse_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Create a new virtual warehouse in Snowflake.",
     )
     async def snowflake_create_warehouse(
-        warehouse_name: str,
+        warehouse_name: Identifier,
         warehouse_size: str = "XSMALL",
         auto_suspend: int = 300,
         auto_resume: bool = True,
@@ -97,7 +97,7 @@ def register_warehouse_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "warehouse": warehouse_name, "result": res.get("data")}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -105,7 +105,7 @@ def register_warehouse_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Drop a virtual warehouse. Requires confirmation.",
     )
     async def snowflake_drop_warehouse(
-        warehouse_name: str,
+        warehouse_name: Identifier,
         confirm: bool = False,
     ) -> dict[str, Any]:
         """Drop warehouse."""
@@ -119,7 +119,7 @@ def register_warehouse_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "warehouse": warehouse_name, "result": res.get("data")}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -127,7 +127,7 @@ def register_warehouse_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Resume a suspended virtual warehouse.",
     )
     async def snowflake_resume_warehouse(
-        warehouse_name: str,
+        warehouse_name: Identifier,
     ) -> dict[str, Any]:
         """Resume warehouse."""
         if client.config.read_only:
@@ -137,7 +137,7 @@ def register_warehouse_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "warehouse": warehouse_name, "result": res.get("data")}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -145,7 +145,7 @@ def register_warehouse_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Suspend an active virtual warehouse to save compute costs.",
     )
     async def snowflake_suspend_warehouse(
-        warehouse_name: str,
+        warehouse_name: Identifier,
     ) -> dict[str, Any]:
         """Suspend warehouse."""
         if client.config.read_only:
@@ -155,7 +155,7 @@ def register_warehouse_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "warehouse": warehouse_name, "result": res.get("data")}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -163,7 +163,7 @@ def register_warehouse_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Change warehouse compute size (XSMALL, SMALL, MEDIUM, LARGE, XLARGE, 2XLARGE, etc.).",
     )
     async def snowflake_resize_warehouse(
-        warehouse_name: str,
+        warehouse_name: Identifier,
         size: str,
     ) -> dict[str, Any]:
         """Resize warehouse size."""
@@ -182,7 +182,7 @@ def register_warehouse_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
                 "result": res.get("data"),
             }
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(

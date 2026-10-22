@@ -10,8 +10,11 @@ from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 
 from snowflake_mcp.connection import (
+    Identifier,
+    OptionalIdentifier,
     SnowflakeClient,
     enforce_caller_read_only_sql,
+    ident_error,
     quote_ident,
     quote_literal,
     read_only_enabled,
@@ -62,9 +65,9 @@ def register_recipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Composite recipe: Describe table schema, row count, column types, and preview sample rows in 1 call.",
     )
     async def snowflake_inspect_table_with_sample(
-        table_name: str,
-        database: str | None = None,
-        schema_name: str | None = None,
+        table_name: Identifier,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
         sample_rows: int = 5,
     ) -> dict[str, Any]:
         """Inspect table columns and preview sample rows."""
@@ -88,7 +91,7 @@ def register_recipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
                 "sample_preview": sample_data,
             }
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -96,9 +99,9 @@ def register_recipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Composite recipe: Profile table metadata, row count, and column inventory.",
     )
     async def snowflake_profile_table(
-        table_name: str,
-        database: str | None = None,
-        schema_name: str | None = None,
+        table_name: Identifier,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
         """Profile table statistics."""
         try:
@@ -128,7 +131,7 @@ def register_recipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
                 "columns": col_names,
             }
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -136,7 +139,7 @@ def register_recipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Composite recipe: Safely scale up a warehouse, run a heavy query, and optionally restore previous size. Requires confirmation.",
     )
     async def snowflake_warehouse_scale_and_execute(
-        warehouse_name: str,
+        warehouse_name: Identifier,
         target_size: str,
         query: str,
         restore_previous_size: bool = True,
@@ -234,8 +237,8 @@ def register_recipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Composite recipe: Clone table with Time Travel timestamp or statement ID in 1 call.",
     )
     async def snowflake_clone_table_recipe(
-        source_table: str,
-        target_table: str,
+        source_table: Identifier,
+        target_table: Identifier,
         at_or_before: str | None = None,
     ) -> dict[str, Any]:
         """Clone table with Time Travel."""
@@ -257,7 +260,7 @@ def register_recipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "source": source_table, "target": target_table, "result": res.get("data")}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -313,8 +316,8 @@ def register_recipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Composite recipe: Discover all tables and views in a schema along with their column definitions.",
     )
     async def snowflake_discover_schema_lineage(
-        database: str | None = None,
-        schema_name: str | None = None,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
         """Discover schema lineage."""
         try:
@@ -345,5 +348,5 @@ def register_recipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
                 "views": [v.get("name") for v in views],
             }
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None

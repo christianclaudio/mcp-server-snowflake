@@ -6,7 +6,15 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import SnowflakeClient, qualify_ident, quote_literal, show_sql
+from snowflake_mcp.connection import (
+    Identifier,
+    OptionalIdentifier,
+    SnowflakeClient,
+    ident_error,
+    qualify_ident,
+    quote_literal,
+    show_sql,
+)
 from snowflake_mcp.errors import SafetyViolationError, status_error
 
 
@@ -33,8 +41,8 @@ def register_stage_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="List internal and external stages available in the active database or schema.",
     )
     async def snowflake_list_stages(
-        database: str | None = None,
-        schema_name: str | None = None,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
         pattern: str | None = None,
     ) -> dict[str, Any]:
         """List stages."""
@@ -46,7 +54,7 @@ def register_stage_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "stages": res.get("data", [])}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -54,9 +62,9 @@ def register_stage_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Describe stage location URL, storage integration, and file format properties.",
     )
     async def snowflake_describe_stage(
-        stage_name: str,
-        database: str | None = None,
-        schema_name: str | None = None,
+        stage_name: Identifier,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
         """Describe stage."""
         try:
@@ -67,7 +75,7 @@ def register_stage_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "stage": target, "details": res.get("data", [])}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -75,9 +83,9 @@ def register_stage_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Create an internal named stage in Snowflake.",
     )
     async def snowflake_create_stage(
-        stage_name: str,
-        database: str | None = None,
-        schema_name: str | None = None,
+        stage_name: Identifier,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
         comment: str | None = None,
         if_not_exists: bool = True,
     ) -> dict[str, Any]:
@@ -94,7 +102,7 @@ def register_stage_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "stage": target, "result": res.get("data")}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -102,9 +110,9 @@ def register_stage_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Drop a stage in Snowflake. Requires confirmation.",
     )
     async def snowflake_drop_stage(
-        stage_name: str,
-        database: str | None = None,
-        schema_name: str | None = None,
+        stage_name: Identifier,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
         confirm: bool = False,
     ) -> dict[str, Any]:
         """Drop stage."""
@@ -121,7 +129,7 @@ def register_stage_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "stage": target, "result": res.get("data")}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
