@@ -44,21 +44,25 @@ async def test_create_schema_quotes_the_comment(client: SnowflakeClient) -> None
 @pytest.mark.parametrize(
     ("tool", "kwargs", "expected"),
     [
-        ("schemas_describe_schema", {"schema_name": 'a"b', "database": "DB"}, 'DESCRIBE SCHEMA "DB"."a""b"'),
+        ("schemas_describe_schema", {"schema_name": '"a""b"', "database": "DB"}, 'DESCRIBE SCHEMA "DB"."a""b"'),
         ("schemas_describe_schema", {"schema_name": "OTHER.S"}, 'DESCRIBE SCHEMA "OTHER"."S"'),
         ("schemas_describe_schema", {"schema_name": "S"}, 'DESCRIBE SCHEMA "S"'),
-        ("schemas_create_schema", {"name": 'x"y', "database": 'd"b'}, 'CREATE SCHEMA IF NOT EXISTS "d""b"."x""y"'),
+        (
+            "schemas_create_schema",
+            {"name": '"x""y"', "database": '"d""b"'},
+            'CREATE SCHEMA IF NOT EXISTS "d""b"."x""y"',
+        ),
         ("schemas_create_schema", {"name": "S", "if_not_exists": False}, 'CREATE SCHEMA "S"'),
         (
             "schemas_drop_schema",
-            {"name": 'S"; DROP DATABASE X; --', "database": "DB", "confirm": True},
+            {"name": '"S""; DROP DATABASE X; --"', "database": "DB", "confirm": True},
             'DROP SCHEMA IF EXISTS "DB"."S""; DROP DATABASE X; --"',
         ),
         ("schemas_undrop_schema", {"name": '"DB"."S"'}, 'UNDROP SCHEMA "DB"."S"'),
-        ("schemas_undrop_schema", {"name": 'S"', "database": "DB"}, 'UNDROP SCHEMA "DB"."S"""'),
+        ("schemas_undrop_schema", {"name": '"S"""', "database": "DB"}, 'UNDROP SCHEMA "DB"."S"""'),
         (
             "schemas_clone_schema",
-            {"source_schema": 'SRC_DB.a"b', "target_schema": "T", "database": "DB"},
+            {"source_schema": 'SRC_DB."a""b"', "target_schema": "T", "database": "DB"},
             'CREATE SCHEMA "DB"."T" CLONE "SRC_DB"."a""b"',
         ),
         (

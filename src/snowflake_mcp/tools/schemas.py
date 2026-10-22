@@ -6,16 +6,13 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal, show_sql
+from snowflake_mcp.connection import SnowflakeClient, qualify_ident, quote_literal, show_sql
 from snowflake_mcp.errors import SafetyViolationError, status_error
 
 
 def qualify_schema_target(name: str, database: str | None = None) -> str:
     """Quote a schema name with ``quote_ident`` per part, prefixing ``database`` unless dotted."""
-    if "." in name:
-        parts = [p.strip().strip('"') for p in name.split(".") if p.strip()]
-        return ".".join(quote_ident(p) for p in parts)
-    return f"{quote_ident(database)}.{quote_ident(name)}" if database else quote_ident(name)
+    return qualify_ident(name, database)
 
 
 def register_schema_tools(mcp: FastMCP, client: SnowflakeClient) -> None:

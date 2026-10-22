@@ -9,6 +9,7 @@ from fastmcp import FastMCP
 from snowflake_mcp.connection import (
     SnowflakeClient,
     enforce_read_only_sql,
+    qualify_ident,
     quote_ident,
     quote_literal,
     read_only_enabled,
@@ -23,17 +24,7 @@ def qualify_task_target(
     schema_name: str | None = None,
 ) -> str:
     """Qualify task target identifier safely."""
-    if "." in task_name:
-        parts = [p.strip().strip('"') for p in task_name.split(".") if p.strip()]
-        return ".".join(quote_ident(p) for p in parts)
-
-    parts = []
-    if database:
-        parts.append(quote_ident(database))
-    if schema_name:
-        parts.append(quote_ident(schema_name))
-    parts.append(quote_ident(task_name))
-    return ".".join(parts)
+    return qualify_ident(task_name, database, schema_name)
 
 
 def register_task_tools(mcp: FastMCP, client: SnowflakeClient) -> None:

@@ -6,7 +6,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal, show_sql
+from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal, resolve_ident, show_sql, split_ident
 from snowflake_mcp.errors import status_error
 
 
@@ -25,7 +25,13 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Retrieve upstream and downstream object dependencies from Account Usage."""
         try:
-            clean_name = object_name.strip().strip('"').upper()
+            # A dotted name supplies its own database and schema; otherwise the arguments do.
+            name_parts = split_ident(object_name)
+            clean_name = name_parts[-1]
+            db_filter = name_parts[-3] if len(name_parts) >= 3 else (resolve_ident(database) if database else None)
+            sch_filter = (
+                name_parts[-2] if len(name_parts) >= 2 else (resolve_ident(schema_name) if schema_name else None)
+            )
             dir_mode = direction.strip().lower()
 
             results: dict[str, Any] = {
@@ -43,10 +49,10 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
                     "FROM SNOWFLAKE.ACCOUNT_USAGE.OBJECT_DEPENDENCIES "
                     f"WHERE REFERENCING_OBJECT_NAME = {quote_literal(clean_name)}"
                 )
-                if database:
-                    up_sql += f" AND REFERENCING_DATABASE = {quote_literal(database.upper())}"
-                if schema_name:
-                    up_sql += f" AND REFERENCING_SCHEMA = {quote_literal(schema_name.upper())}"
+                if db_filter:
+                    up_sql += f" AND REFERENCING_DATABASE = {quote_literal(db_filter)}"
+                if sch_filter:
+                    up_sql += f" AND REFERENCING_SCHEMA = {quote_literal(sch_filter)}"
                 up_res = client.execute_query(up_sql)
                 results["upstream_sources"] = up_res.get("data", [])
 
@@ -57,10 +63,10 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
                     "FROM SNOWFLAKE.ACCOUNT_USAGE.OBJECT_DEPENDENCIES "
                     f"WHERE REFERENCED_OBJECT_NAME = {quote_literal(clean_name)}"
                 )
-                if database:
-                    down_sql += f" AND REFERENCED_DATABASE = {quote_literal(database.upper())}"
-                if schema_name:
-                    down_sql += f" AND REFERENCED_SCHEMA = {quote_literal(schema_name.upper())}"
+                if db_filter:
+                    down_sql += f" AND REFERENCED_DATABASE = {quote_literal(db_filter)}"
+                if sch_filter:
+                    down_sql += f" AND REFERENCED_SCHEMA = {quote_literal(sch_filter)}"
                 down_res = client.execute_query(down_sql)
                 results["downstream_dependents"] = down_res.get("data", [])
 
@@ -83,8 +89,8 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Trace column data origin and modifications."""
         try:
-            clean_tbl = table_name.strip().strip('"').upper()
-            clean_col = column_name.strip().strip('"').upper()
+            clean_tbl = ".".join(split_ident(table_name))
+            clean_col = resolve_ident(column_name)
             max_rows = max(1, min(limit, 50))
             lookback_days = max(1, min(days, 365))
 

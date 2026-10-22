@@ -6,7 +6,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import SnowflakeClient, quote_ident, show_sql
+from snowflake_mcp.connection import SnowflakeClient, qualify_ident, show_sql
 from snowflake_mcp.errors import SafetyViolationError, status_error
 
 
@@ -16,17 +16,7 @@ def qualify_stream_target(
     schema_name: str | None = None,
 ) -> str:
     """Qualify stream target identifier safely."""
-    if "." in stream_name:
-        parts = [p.strip().strip('"') for p in stream_name.split(".") if p.strip()]
-        return ".".join(quote_ident(p) for p in parts)
-
-    parts = []
-    if database:
-        parts.append(quote_ident(database))
-    if schema_name:
-        parts.append(quote_ident(schema_name))
-    parts.append(quote_ident(stream_name))
-    return ".".join(parts)
+    return qualify_ident(stream_name, database, schema_name)
 
 
 def register_stream_tools(mcp: FastMCP, client: SnowflakeClient) -> None:

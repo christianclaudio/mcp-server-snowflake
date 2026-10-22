@@ -6,14 +6,13 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal, show_sql
+from snowflake_mcp.connection import SnowflakeClient, qualify_ident, quote_literal, show_sql
 from snowflake_mcp.errors import SafetyViolationError, status_error
 
 
 def _qualified(name: str) -> str:
     """Quote each part of a possibly dotted object name with ``quote_ident``."""
-    parts = [p.strip().strip('"') for p in name.split(".") if p.strip()]
-    return ".".join(quote_ident(p) for p in parts) if parts else quote_ident(name)
+    return qualify_ident(name)
 
 
 def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:

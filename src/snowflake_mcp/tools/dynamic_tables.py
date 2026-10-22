@@ -6,7 +6,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal, show_sql
+from snowflake_mcp.connection import SnowflakeClient, qualify_ident, quote_literal, show_sql
 from snowflake_mcp.errors import SafetyViolationError, status_error
 
 
@@ -16,17 +16,7 @@ def qualify_dynamic_table_target(
     schema_name: str | None = None,
 ) -> str:
     """Qualify dynamic or iceberg table target identifier safely."""
-    if "." in table_name:
-        parts = [p.strip().strip('"') for p in table_name.split(".") if p.strip()]
-        return ".".join(quote_ident(p) for p in parts)
-
-    parts = []
-    if database:
-        parts.append(quote_ident(database))
-    if schema_name:
-        parts.append(quote_ident(schema_name))
-    parts.append(quote_ident(table_name))
-    return ".".join(parts)
+    return qualify_ident(table_name, database, schema_name)
 
 
 def register_dynamic_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:

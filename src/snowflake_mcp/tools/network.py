@@ -6,7 +6,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal, show_sql
+from snowflake_mcp.connection import SnowflakeClient, qualify_ident, quote_ident, quote_literal, show_sql
 from snowflake_mcp.errors import status_error
 
 
@@ -16,17 +16,7 @@ def qualify_policy_target(
     schema_name: str | None = None,
 ) -> str:
     """Qualify policy or rule target identifier safely."""
-    if "." in name:
-        parts = [p.strip().strip('"') for p in name.split(".") if p.strip()]
-        return ".".join(quote_ident(p) for p in parts)
-
-    parts = []
-    if database:
-        parts.append(quote_ident(database))
-    if schema_name:
-        parts.append(quote_ident(schema_name))
-    parts.append(quote_ident(name))
-    return ".".join(parts)
+    return qualify_ident(name, database, schema_name)
 
 
 def register_network_tools(mcp: FastMCP, client: SnowflakeClient) -> None:

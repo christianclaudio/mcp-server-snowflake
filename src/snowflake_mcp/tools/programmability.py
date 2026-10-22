@@ -7,7 +7,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal, show_sql
+from snowflake_mcp.connection import SnowflakeClient, qualify_ident, quote_ident, quote_literal, show_sql
 from snowflake_mcp.errors import status_error
 
 ALLOWED_ARG_TYPE_PATTERN = re.compile(
@@ -30,17 +30,7 @@ def validate_and_quote_routine_signature(
     raw_name = match.group(1).strip()
     raw_args = match.group(3)
 
-    if "." in raw_name:
-        parts = [p.strip().strip('"') for p in raw_name.split(".") if p.strip()]
-        name_part = ".".join(quote_ident(p) for p in parts)
-    else:
-        parts = []
-        if database:
-            parts.append(quote_ident(database))
-        if schema_name:
-            parts.append(quote_ident(schema_name))
-        parts.append(quote_ident(raw_name))
-        name_part = ".".join(parts)
+    name_part = qualify_ident(raw_name, database, schema_name)
 
     if raw_args is None or not raw_args.strip():
         return f"{name_part}()"

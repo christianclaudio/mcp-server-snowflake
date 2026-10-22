@@ -23,14 +23,93 @@ logger = logging.getLogger("snowflake_mcp")
 _IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_$.]*$")
 
 
-def quote_ident(name: str) -> str:
-    """Safely format and quote a Snowflake SQL identifier."""
-    name = str(name).strip()
-    if not name:
+def split_ident(name: str) -> list[str]:
+    """Split a possibly dotted Snowflake object name into its resolved identifier parts.
+
+    Follows Snowflake's identifier rules
+    (https://docs.snowflake.com/en/sql-reference/identifiers-syntax): a part in double quotes is
+    kept exactly, may contain ``.``, and spells a literal ``"`` as ``""``; an unquoted part is
+    resolved to uppercase. Dots split parts only outside double quotes, and whitespace around a
+    part is ignored. Raises ``ValueError`` for an unterminated quote, an empty part, a ``"``
+    inside an unquoted part, or text after a closing quote.
+    """
+    text = str(name)
+    if not text.strip():
         raise ValueError("Identifier name cannot be empty")
-    # If standard uppercase or alphanumeric without spaces/quotes, return or safely double-quote
-    clean = name.replace('"', '""')
-    return f'"{clean}"'
+    parts: list[str] = []
+    i, n = 0, len(text)
+    while True:
+        while i < n and text[i].isspace():
+            i += 1
+        if i < n and text[i] == '"':
+            i += 1
+            buf: list[str] = []
+            while True:
+                if i >= n:
+                    raise ValueError(f"Unterminated quoted identifier in {text!r}")
+                if text[i] == '"':
+                    if text.startswith('""', i):
+                        buf.append('"')
+                        i += 2
+                        continue
+                    i += 1
+                    break
+                buf.append(text[i])
+                i += 1
+            part = "".join(buf)
+            if not part:
+                raise ValueError(f"Empty quoted identifier in {text!r}")
+            while i < n and text[i].isspace():
+                i += 1
+            if i < n and text[i] != ".":
+                raise ValueError(f"Unexpected text after a quoted identifier in {text!r}")
+        else:
+            start = i
+            while i < n and text[i] not in '."':
+                i += 1
+            if i < n and text[i] == '"':
+                raise ValueError(f"Double quote inside an unquoted identifier in {text!r}")
+            part = text[start:i].strip().upper()
+            if not part:
+                raise ValueError(f"Empty identifier part in {text!r}")
+        parts.append(part)
+        if i >= n:
+            return parts
+        i += 1  # the "." between parts
+
+
+def _quote_resolved(part: str) -> str:
+    """Double-quote an already resolved identifier, doubling any ``"`` inside it."""
+    return '"' + part.replace('"', '""') + '"'
+
+
+def resolve_ident(name: str) -> str:
+    """Resolve one (undotted) identifier as Snowflake does: quoted kept exactly, unquoted uppercased."""
+    parts = split_ident(name)
+    if len(parts) != 1:
+        raise ValueError(f"Expected a single identifier, got {name!r}; double-quote a name that contains '.'")
+    return parts[0]
+
+
+def quote_ident(name: str) -> str:
+    """Resolve one Snowflake identifier (see ``split_ident``) and return it safely double-quoted.
+
+    ``orders`` becomes ``"ORDERS"`` (unquoted names resolve to uppercase), ``"Orders"`` stays
+    ``"Orders"``, and ``"a""b"`` stays ``"a""b"``.
+    """
+    return _quote_resolved(resolve_ident(name))
+
+
+def qualify_ident(name: str, *prefix: str | None) -> str:
+    """Quote a possibly dotted object name part by part.
+
+    A single-part *name* is prefixed with each non-empty *prefix* (for example database, then
+    schema), each resolved as one identifier; a dotted *name* is used as given.
+    """
+    parts = split_ident(name)
+    if len(parts) == 1:
+        parts = [resolve_ident(p) for p in prefix if p] + parts
+    return ".".join(_quote_resolved(p) for p in parts)
 
 
 def quote_literal(val: Any) -> str:
