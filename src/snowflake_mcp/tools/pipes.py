@@ -7,8 +7,12 @@ from typing import Any
 from fastmcp import FastMCP
 
 from snowflake_mcp.connection import (
+    Identifier,
+    OptionalIdentifier,
     SnowflakeClient,
+    drop_result,
     enforce_read_only_sql,
+    ident_error,
     quote_ident,
     quote_literal,
     read_only_enabled,
@@ -25,8 +29,8 @@ def register_pipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="List Snowpipes configured in a database or schema.",
     )
     async def snowflake_list_pipes(
-        database: str | None = None,
-        schema_name: str | None = None,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
         pattern: str | None = None,
     ) -> dict[str, Any]:
         """List pipes."""
@@ -38,7 +42,7 @@ def register_pipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "pipes": res.get("data", [])}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -46,9 +50,9 @@ def register_pipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Describe pipe definition and COPY statement.",
     )
     async def snowflake_describe_pipe(
-        pipe_name: str,
-        database: str | None = None,
-        schema_name: str | None = None,
+        pipe_name: Identifier,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
         """Describe pipe."""
         try:
@@ -63,7 +67,7 @@ def register_pipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "pipe": target, "details": res.get("data", [])}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -71,11 +75,11 @@ def register_pipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Create a Snowpipe for continuous ingestion.",
     )
     async def snowflake_create_pipe(
-        pipe_name: str,
+        pipe_name: Identifier,
         copy_statement: str,
         auto_ingest: bool = False,
-        database: str | None = None,
-        schema_name: str | None = None,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
         if_not_exists: bool = True,
     ) -> dict[str, Any]:
         """Create pipe."""
@@ -96,7 +100,7 @@ def register_pipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "pipe": target, "result": res.get("data")}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -104,9 +108,9 @@ def register_pipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Drop a Snowpipe. Requires confirmation.",
     )
     async def snowflake_drop_pipe(
-        pipe_name: str,
-        database: str | None = None,
-        schema_name: str | None = None,
+        pipe_name: Identifier,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
         confirm: bool = False,
     ) -> dict[str, Any]:
         """Drop pipe."""
@@ -125,9 +129,9 @@ def register_pipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             )
             sql = f"DROP PIPE IF EXISTS {target}"
             res = client.execute_query(sql)
-            return {"status": "success", "pipe": target, "result": res.get("data")}
+            return drop_result({"status": "success", "pipe": target, "result": res.get("data")})
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(

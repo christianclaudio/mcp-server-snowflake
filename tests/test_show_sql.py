@@ -70,8 +70,8 @@ def test_show_sql_builder() -> None:
     # A schema without a database adds no scope (the session default applies), as before.
     assert show_sql("TABLES", pattern="T%", schema="S") == "SHOW TABLES LIKE 'T%'"
     # The pattern is a quoted literal and the scope parts are quoted identifiers.
-    assert show_sql("TAGS", pattern="it's", database='d"b', schema="s") == (
-        'SHOW TAGS LIKE \'it\'\'s\' IN SCHEMA "d""b"."s"'
+    assert show_sql("TAGS", pattern="it's", database='"d""b"', schema="s") == (
+        'SHOW TAGS LIKE \'it\'\'s\' IN SCHEMA "d""b"."S"'
     )
 
 

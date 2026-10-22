@@ -7,14 +7,19 @@ from typing import Any
 from fastmcp import FastMCP
 
 from snowflake_mcp.connection import (
+    Identifier,
+    OptionalIdentifier,
     SnowflakeClient,
+    drop_result,
     enforce_read_only_sql,
+    ident_error,
+    qualify_ident,
     quote_ident,
     quote_literal,
     read_only_enabled,
     show_sql,
 )
-from snowflake_mcp.errors import SafetyViolationError, status_error
+from snowflake_mcp.errors import SafetyViolationError
 
 
 def qualify_task_target(
@@ -23,17 +28,7 @@ def qualify_task_target(
     schema_name: str | None = None,
 ) -> str:
     """Qualify task target identifier safely."""
-    if "." in task_name:
-        parts = [p.strip().strip('"') for p in task_name.split(".") if p.strip()]
-        return ".".join(quote_ident(p) for p in parts)
-
-    parts = []
-    if database:
-        parts.append(quote_ident(database))
-    if schema_name:
-        parts.append(quote_ident(schema_name))
-    parts.append(quote_ident(task_name))
-    return ".".join(parts)
+    return qualify_ident(task_name, database, schema_name)
 
 
 def register_task_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
@@ -44,8 +39,8 @@ def register_task_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="List tasks in a database or schema with schedule, state, and predecessor info.",
     )
     async def snowflake_list_tasks(
-        database: str | None = None,
-        schema_name: str | None = None,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
         pattern: str | None = None,
     ) -> dict[str, Any]:
         """List tasks."""
@@ -57,7 +52,7 @@ def register_task_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "tasks": res.get("data", [])}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -65,9 +60,9 @@ def register_task_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Describe task definition, schedule, warehouse, and definition SQL.",
     )
     async def snowflake_describe_task(
-        task_name: str,
-        database: str | None = None,
-        schema_name: str | None = None,
+        task_name: Identifier,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
         """Describe task."""
         try:
@@ -78,7 +73,7 @@ def register_task_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "task": target, "details": res.get("data", [])}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -86,12 +81,12 @@ def register_task_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Create a scheduled or serverless task in Snowflake.",
     )
     async def snowflake_create_task(
-        task_name: str,
+        task_name: Identifier,
         sql_statement: str,
         schedule: str | None = None,
-        warehouse: str | None = None,
-        database: str | None = None,
-        schema_name: str | None = None,
+        warehouse: OptionalIdentifier = None,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
         if_not_exists: bool = True,
     ) -> dict[str, Any]:
         """Create task."""
@@ -109,7 +104,7 @@ def register_task_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "task": target, "result": res.get("data")}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -117,9 +112,9 @@ def register_task_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Drop a task in Snowflake. Requires confirmation.",
     )
     async def snowflake_drop_task(
-        task_name: str,
-        database: str | None = None,
-        schema_name: str | None = None,
+        task_name: Identifier,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
         confirm: bool = False,
     ) -> dict[str, Any]:
         """Drop task."""
@@ -134,9 +129,9 @@ def register_task_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             target = qualify_task_target(task_name, database=db, schema_name=sch)
             sql = f"DROP TASK IF EXISTS {target}"
             res = client.execute_query(sql)
-            return {"status": "success", "task": target, "result": res.get("data")}
+            return drop_result({"status": "success", "task": target, "result": res.get("data")})
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -144,9 +139,9 @@ def register_task_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Resume a suspended task.",
     )
     async def snowflake_resume_task(
-        task_name: str,
-        database: str | None = None,
-        schema_name: str | None = None,
+        task_name: Identifier,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
         """Resume task."""
         if client.config.read_only:
@@ -159,7 +154,7 @@ def register_task_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "task": target, "result": res.get("data")}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -167,9 +162,9 @@ def register_task_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Suspend an active scheduled task.",
     )
     async def snowflake_suspend_task(
-        task_name: str,
-        database: str | None = None,
-        schema_name: str | None = None,
+        task_name: Identifier,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
         """Suspend task."""
         if client.config.read_only:
@@ -182,7 +177,7 @@ def register_task_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "task": target, "result": res.get("data")}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -190,9 +185,9 @@ def register_task_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Trigger an immediate one-time execution of a task. Requires confirmation.",
     )
     async def snowflake_execute_task(
-        task_name: str,
-        database: str | None = None,
-        schema_name: str | None = None,
+        task_name: Identifier,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
         confirm: bool = False,
     ) -> dict[str, Any]:
         """Execute task immediately."""
@@ -209,5 +204,5 @@ def register_task_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "task": target, "result": res.get("data")}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None

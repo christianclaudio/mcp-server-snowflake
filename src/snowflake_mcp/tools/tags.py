@@ -6,14 +6,21 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal, show_sql
+from snowflake_mcp.connection import (
+    Identifier,
+    OptionalIdentifier,
+    SnowflakeClient,
+    ident_error,
+    qualify_ident,
+    quote_literal,
+    show_sql,
+)
 from snowflake_mcp.errors import SafetyViolationError, status_error
 
 
 def _qualified(name: str) -> str:
     """Quote each part of a possibly dotted object name with ``quote_ident``."""
-    parts = [p.strip().strip('"') for p in name.split(".") if p.strip()]
-    return ".".join(quote_ident(p) for p in parts) if parts else quote_ident(name)
+    return qualify_ident(name)
 
 
 def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
@@ -24,8 +31,8 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="List object tags defined in a database or schema.",
     )
     async def snowflake_list_tags(
-        database: str | None = None,
-        schema_name: str | None = None,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
         pattern: str | None = None,
     ) -> dict[str, Any]:
         """List tags."""
@@ -37,7 +44,7 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "tags": res.get("data", [])}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -46,8 +53,8 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     )
     async def snowflake_describe_tag(
         tag_name: str,
-        database: str | None = None,
-        schema_name: str | None = None,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
         """Describe tag via SHOW TAGS."""
         try:
@@ -60,7 +67,7 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             details = data[0] if data else {}
             return {"status": "success", "tag": tag_name, "details": details}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -88,8 +95,8 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Set or assign a tag value on a Snowflake object (TABLE, SCHEMA, DATABASE, etc.).",
     )
     async def snowflake_set_object_tag(
-        object_name: str,
-        tag_name: str,
+        object_name: Identifier,
+        tag_name: Identifier,
         tag_value: str,
         object_domain: str = "TABLE",
     ) -> dict[str, Any]:
@@ -131,5 +138,5 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
                 "result": res.get("data"),
             }
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None

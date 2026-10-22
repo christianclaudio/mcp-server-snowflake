@@ -6,7 +6,16 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal, show_sql
+from snowflake_mcp.connection import (
+    Identifier,
+    OptionalIdentifier,
+    SnowflakeClient,
+    ident_error,
+    qualify_ident,
+    quote_ident,
+    quote_literal,
+    show_sql,
+)
 from snowflake_mcp.errors import SafetyViolationError, status_error
 
 
@@ -16,17 +25,7 @@ def qualify_compute_target(
     schema_name: str | None = None,
 ) -> str:
     """Qualify compute target identifier safely."""
-    if "." in name:
-        parts = [p.strip().strip('"') for p in name.split(".") if p.strip()]
-        return ".".join(quote_ident(p) for p in parts)
-
-    parts = []
-    if database:
-        parts.append(quote_ident(database))
-    if schema_name:
-        parts.append(quote_ident(schema_name))
-    parts.append(quote_ident(name))
-    return ".".join(parts)
+    return qualify_ident(name, database, schema_name)
 
 
 def register_compute_service_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
@@ -37,8 +36,8 @@ def register_compute_service_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
         description="List Streamlit applications hosted in Snowflake.",
     )
     async def snowflake_list_streamlits(
-        database: str | None = None,
-        schema_name: str | None = None,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
         pattern: str | None = None,
     ) -> dict[str, Any]:
         """List Streamlit apps."""
@@ -50,7 +49,7 @@ def register_compute_service_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
             res = client.execute_query(sql)
             return {"status": "success", "streamlits": res.get("data", [])}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -58,9 +57,9 @@ def register_compute_service_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
         description="Describe Streamlit application root location, stage, and query warehouse.",
     )
     async def snowflake_describe_streamlit(
-        streamlit_name: str,
-        database: str | None = None,
-        schema_name: str | None = None,
+        streamlit_name: Identifier,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
         """Describe Streamlit app."""
         try:
@@ -71,7 +70,7 @@ def register_compute_service_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
             res = client.execute_query(sql)
             return {"status": "success", "streamlit": target, "details": res.get("data", [])}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -95,7 +94,7 @@ def register_compute_service_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
         description="Describe compute pool instance family, min/max nodes, active nodes, and state.",
     )
     async def snowflake_describe_compute_pool(
-        pool_name: str,
+        pool_name: Identifier,
     ) -> dict[str, Any]:
         """Describe compute pool."""
         try:
@@ -103,7 +102,7 @@ def register_compute_service_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
             res = client.execute_query(sql)
             return {"status": "success", "compute_pool": pool_name, "details": res.get("data", [])}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -111,7 +110,7 @@ def register_compute_service_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
         description="Resume an idle or suspended SPCS compute pool.",
     )
     async def snowflake_resume_compute_pool(
-        pool_name: str,
+        pool_name: Identifier,
     ) -> dict[str, Any]:
         """Resume compute pool."""
         if client.config.read_only:
@@ -121,7 +120,7 @@ def register_compute_service_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
             res = client.execute_query(sql)
             return {"status": "success", "compute_pool": pool_name, "result": res.get("data")}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -129,7 +128,7 @@ def register_compute_service_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
         description="Suspend an active SPCS compute pool to stop node provisioning costs.",
     )
     async def snowflake_suspend_compute_pool(
-        pool_name: str,
+        pool_name: Identifier,
     ) -> dict[str, Any]:
         """Suspend compute pool."""
         if client.config.read_only:
@@ -139,7 +138,7 @@ def register_compute_service_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
             res = client.execute_query(sql)
             return {"status": "success", "compute_pool": pool_name, "result": res.get("data")}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -147,8 +146,8 @@ def register_compute_service_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
         description="List container services running on SPCS compute pools.",
     )
     async def snowflake_list_services(
-        database: str | None = None,
-        schema_name: str | None = None,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
         pattern: str | None = None,
     ) -> dict[str, Any]:
         """List container services."""
@@ -160,7 +159,7 @@ def register_compute_service_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
             res = client.execute_query(sql)
             return {"status": "success", "services": res.get("data", [])}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -168,8 +167,8 @@ def register_compute_service_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
         description="List OCI image repositories in Snowflake.",
     )
     async def snowflake_list_image_repositories(
-        database: str | None = None,
-        schema_name: str | None = None,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
         pattern: str | None = None,
     ) -> dict[str, Any]:
         """List image repositories."""
@@ -181,5 +180,5 @@ def register_compute_service_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
             res = client.execute_query(sql)
             return {"status": "success", "image_repositories": res.get("data", [])}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None

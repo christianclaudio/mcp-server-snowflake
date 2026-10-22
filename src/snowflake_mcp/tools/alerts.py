@@ -7,15 +7,19 @@ from typing import Any
 from fastmcp import FastMCP
 
 from snowflake_mcp.connection import (
+    Identifier,
+    OptionalIdentifier,
     SnowflakeClient,
+    drop_result,
     enforce_read_only_sql,
+    ident_error,
     is_sql_read_only,
     quote_ident,
     quote_literal,
     read_only_enabled,
     show_sql,
 )
-from snowflake_mcp.errors import SafetyViolationError, status_error
+from snowflake_mcp.errors import SafetyViolationError
 
 
 def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
@@ -26,8 +30,8 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="List configured alerts with condition queries, schedules, and state.",
     )
     async def snowflake_list_alerts(
-        database: str | None = None,
-        schema_name: str | None = None,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
         pattern: str | None = None,
     ) -> dict[str, Any]:
         """List alerts."""
@@ -39,7 +43,7 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "alerts": res.get("data", [])}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -47,9 +51,9 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Describe alert condition SQL, action SQL, schedule, and warehouse.",
     )
     async def snowflake_describe_alert(
-        alert_name: str,
-        database: str | None = None,
-        schema_name: str | None = None,
+        alert_name: Identifier,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
         """Describe alert."""
         try:
@@ -64,7 +68,7 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "alert": target, "details": res.get("data", [])}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -72,13 +76,13 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Create an alert with schedule, condition SQL, and action SQL. Destructive actions require confirm=True.",
     )
     async def snowflake_create_alert(
-        alert_name: str,
-        warehouse_name: str,
+        alert_name: Identifier,
+        warehouse_name: Identifier,
         schedule: str,
         condition_sql: str,
         action_sql: str,
-        database: str | None = None,
-        schema_name: str | None = None,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
         comment: str | None = None,
         confirm: bool = False,
     ) -> dict[str, Any]:
@@ -111,7 +115,7 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "alert": target, "result": res.get("data")}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -119,9 +123,9 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Drop an alert in Snowflake. Requires confirmation.",
     )
     async def snowflake_drop_alert(
-        alert_name: str,
-        database: str | None = None,
-        schema_name: str | None = None,
+        alert_name: Identifier,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
         confirm: bool = False,
     ) -> dict[str, Any]:
         """Drop alert."""
@@ -140,9 +144,9 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             )
             sql = f"DROP ALERT IF EXISTS {target}"
             res = client.execute_query(sql)
-            return {"status": "success", "alert": target, "result": res.get("data")}
+            return drop_result({"status": "success", "alert": target, "result": res.get("data")})
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -150,9 +154,9 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Resume a suspended alert.",
     )
     async def snowflake_resume_alert(
-        alert_name: str,
-        database: str | None = None,
-        schema_name: str | None = None,
+        alert_name: Identifier,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
         """Resume alert."""
         if client.config.read_only:
@@ -169,7 +173,7 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "alert": target, "result": res.get("data")}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -177,9 +181,9 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Suspend an active alert.",
     )
     async def snowflake_suspend_alert(
-        alert_name: str,
-        database: str | None = None,
-        schema_name: str | None = None,
+        alert_name: Identifier,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
         """Suspend alert."""
         if client.config.read_only:
@@ -196,5 +200,5 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "alert": target, "result": res.get("data")}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None

@@ -6,7 +6,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal
+from snowflake_mcp.connection import Identifier, SnowflakeClient, drop_result, ident_error, quote_ident, quote_literal
 from snowflake_mcp.errors import SafetyViolationError, status_error
 
 
@@ -34,7 +34,7 @@ def register_database_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Describe properties, owner, retention time, and comment of a database.",
     )
     async def snowflake_describe_database(
-        database_name: str,
+        database_name: Identifier,
     ) -> dict[str, Any]:
         """Describe database properties."""
         try:
@@ -42,7 +42,7 @@ def register_database_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "database": database_name, "details": res.get("data", [])}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -50,7 +50,7 @@ def register_database_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Create a new database in Snowflake.",
     )
     async def snowflake_create_database(
-        name: str,
+        name: Identifier,
         comment: str | None = None,
         data_retention_time_in_days: int | None = None,
         if_not_exists: bool = True,
@@ -70,7 +70,7 @@ def register_database_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "database": name, "result": res.get("data")}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -78,8 +78,8 @@ def register_database_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Create a zero-copy clone of a database in Snowflake.",
     )
     async def snowflake_clone_database(
-        source_database: str,
-        target_database: str,
+        source_database: Identifier,
+        target_database: Identifier,
     ) -> dict[str, Any]:
         """Clone database zero-copy."""
         if client.config.read_only:
@@ -94,7 +94,7 @@ def register_database_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
                 "result": res.get("data"),
             }
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -102,7 +102,7 @@ def register_database_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Drop a database in Snowflake. Requires confirmation flag.",
     )
     async def snowflake_drop_database(
-        name: str,
+        name: Identifier,
         confirm: bool = False,
     ) -> dict[str, Any]:
         """Drop a database with confirmation gate."""
@@ -114,9 +114,9 @@ def register_database_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             sql = f"DROP DATABASE IF EXISTS {quote_ident(name)}"
             res = client.execute_query(sql)
-            return {"status": "success", "database": name, "result": res.get("data")}
+            return drop_result({"status": "success", "database": name, "result": res.get("data")})
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -124,7 +124,7 @@ def register_database_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Restore a recently dropped database using Time Travel.",
     )
     async def snowflake_undrop_database(
-        name: str,
+        name: Identifier,
     ) -> dict[str, Any]:
         """Undrop database."""
         if client.config.read_only:
@@ -134,7 +134,7 @@ def register_database_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "database": name, "result": res.get("data")}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -142,7 +142,7 @@ def register_database_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Retrieve the exact CREATE DATABASE DDL definition.",
     )
     async def snowflake_get_database_ddl(
-        database_name: str,
+        database_name: Identifier,
     ) -> dict[str, Any]:
         """Get database DDL."""
         try:
@@ -153,5 +153,5 @@ def register_database_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             ddl_text = data[0].get("DDL") or data[0].get("ddl") if data else ""
             return {"status": "success", "database": database_name, "ddl": ddl_text}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None

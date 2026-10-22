@@ -166,7 +166,9 @@ async def test_set_object_tag_quotes_identifiers_and_value(client: SnowflakeClie
     sql = _sql(client)
     assert _split(sql) == ('ALTER TABLE "DB"."SCH"."T" SET TAG "GOV"."TAGS"."PII" = ?', [EMBEDDED_ESCAPED_QUOTE])
 
-    await fn(object_name="T; DROP TABLE X; --", tag_name='P"II', tag_value=TRAILING_BACKSLASH, object_domain="schema")
+    await fn(
+        object_name="T; DROP TABLE X; --", tag_name='"P""II"', tag_value=TRAILING_BACKSLASH, object_domain="schema"
+    )
     sql = _sql(client)
     assert sql == 'ALTER SCHEMA "T; DROP TABLE X; --" SET TAG "P""II" = \'C:\\\\temp\\\\\''
     assert _split(sql) == ('ALTER SCHEMA "T; DROP TABLE X; --" SET TAG "P""II" = ?', [TRAILING_BACKSLASH])

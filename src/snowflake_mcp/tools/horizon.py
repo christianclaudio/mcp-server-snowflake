@@ -6,7 +6,17 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal, show_sql
+from snowflake_mcp.connection import (
+    Identifier,
+    OptionalIdentifier,
+    SnowflakeClient,
+    ident_error,
+    quote_ident,
+    quote_literal,
+    resolve_ident,
+    show_sql,
+    split_object_name,
+)
 from snowflake_mcp.errors import status_error
 
 
@@ -18,14 +28,20 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Retrieve upstream source and downstream dependent object lineage from Snowflake Horizon.",
     )
     async def snowflake_get_object_lineage(
-        object_name: str,
+        object_name: Identifier,
         direction: str = "both",
-        database: str | None = None,
-        schema_name: str | None = None,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
         """Retrieve upstream and downstream object dependencies from Account Usage."""
         try:
-            clean_name = object_name.strip().strip('"').upper()
+            # A dotted name supplies its own database and schema; otherwise the arguments do.
+            name_parts = split_object_name(object_name)
+            clean_name = name_parts[-1]
+            db_filter = name_parts[-3] if len(name_parts) >= 3 else (resolve_ident(database) if database else None)
+            sch_filter = (
+                name_parts[-2] if len(name_parts) >= 2 else (resolve_ident(schema_name) if schema_name else None)
+            )
             dir_mode = direction.strip().lower()
 
             results: dict[str, Any] = {
@@ -43,10 +59,10 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
                     "FROM SNOWFLAKE.ACCOUNT_USAGE.OBJECT_DEPENDENCIES "
                     f"WHERE REFERENCING_OBJECT_NAME = {quote_literal(clean_name)}"
                 )
-                if database:
-                    up_sql += f" AND REFERENCING_DATABASE = {quote_literal(database.upper())}"
-                if schema_name:
-                    up_sql += f" AND REFERENCING_SCHEMA = {quote_literal(schema_name.upper())}"
+                if db_filter:
+                    up_sql += f" AND REFERENCING_DATABASE = {quote_literal(db_filter)}"
+                if sch_filter:
+                    up_sql += f" AND REFERENCING_SCHEMA = {quote_literal(sch_filter)}"
                 up_res = client.execute_query(up_sql)
                 results["upstream_sources"] = up_res.get("data", [])
 
@@ -57,10 +73,10 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
                     "FROM SNOWFLAKE.ACCOUNT_USAGE.OBJECT_DEPENDENCIES "
                     f"WHERE REFERENCED_OBJECT_NAME = {quote_literal(clean_name)}"
                 )
-                if database:
-                    down_sql += f" AND REFERENCED_DATABASE = {quote_literal(database.upper())}"
-                if schema_name:
-                    down_sql += f" AND REFERENCED_SCHEMA = {quote_literal(schema_name.upper())}"
+                if db_filter:
+                    down_sql += f" AND REFERENCED_DATABASE = {quote_literal(db_filter)}"
+                if sch_filter:
+                    down_sql += f" AND REFERENCED_SCHEMA = {quote_literal(sch_filter)}"
                 down_res = client.execute_query(down_sql)
                 results["downstream_dependents"] = down_res.get("data", [])
 
@@ -74,8 +90,8 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Trace origin and transformation lineage for a column using Snowflake Horizon Access History.",
     )
     async def snowflake_get_column_lineage(
-        table_name: str,
-        column_name: str,
+        table_name: Identifier,
+        column_name: Identifier,
         database: str | None = None,
         schema_name: str | None = None,
         days: int = 30,
@@ -83,8 +99,8 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Trace column data origin and modifications."""
         try:
-            clean_tbl = table_name.strip().strip('"').upper()
-            clean_col = column_name.strip().strip('"').upper()
+            clean_tbl = ".".join(split_object_name(table_name))
+            clean_col = resolve_ident(column_name)
             max_rows = max(1, min(limit, 50))
             lookback_days = max(1, min(days, 365))
 
@@ -113,8 +129,8 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="List column masking policies in the account, database, or schema.",
     )
     async def snowflake_list_masking_policies(
-        database: str | None = None,
-        schema_name: str | None = None,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
         pattern: str | None = None,
     ) -> dict[str, Any]:
         """List masking policies."""
@@ -126,7 +142,7 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "masking_policies": res.get("data", [])}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -134,9 +150,9 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Describe signature, return type, and body of a masking policy.",
     )
     async def snowflake_describe_masking_policy(
-        policy_name: str,
-        database: str | None = None,
-        schema_name: str | None = None,
+        policy_name: Identifier,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
         """Describe masking policy."""
         try:
@@ -153,7 +169,7 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "masking_policy": target, "details": res.get("data", [])}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -161,8 +177,8 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="List row access policies defined in the account, database, or schema.",
     )
     async def snowflake_list_row_access_policies(
-        database: str | None = None,
-        schema_name: str | None = None,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
         pattern: str | None = None,
     ) -> dict[str, Any]:
         """List row access policies."""
@@ -174,7 +190,7 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "row_access_policies": res.get("data", [])}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -182,9 +198,9 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Describe signature, filter expression, and comment of a row access policy.",
     )
     async def snowflake_describe_row_access_policy(
-        policy_name: str,
-        database: str | None = None,
-        schema_name: str | None = None,
+        policy_name: Identifier,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
         """Describe row access policy."""
         try:
@@ -201,5 +217,5 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "row_access_policy": target, "details": res.get("data", [])}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None

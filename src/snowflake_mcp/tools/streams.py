@@ -6,8 +6,16 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import SnowflakeClient, quote_ident, show_sql
-from snowflake_mcp.errors import SafetyViolationError, status_error
+from snowflake_mcp.connection import (
+    Identifier,
+    OptionalIdentifier,
+    SnowflakeClient,
+    drop_result,
+    ident_error,
+    qualify_ident,
+    show_sql,
+)
+from snowflake_mcp.errors import SafetyViolationError
 
 
 def qualify_stream_target(
@@ -16,17 +24,7 @@ def qualify_stream_target(
     schema_name: str | None = None,
 ) -> str:
     """Qualify stream target identifier safely."""
-    if "." in stream_name:
-        parts = [p.strip().strip('"') for p in stream_name.split(".") if p.strip()]
-        return ".".join(quote_ident(p) for p in parts)
-
-    parts = []
-    if database:
-        parts.append(quote_ident(database))
-    if schema_name:
-        parts.append(quote_ident(schema_name))
-    parts.append(quote_ident(stream_name))
-    return ".".join(parts)
+    return qualify_ident(stream_name, database, schema_name)
 
 
 def register_stream_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
@@ -37,8 +35,8 @@ def register_stream_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="List table/view streams in a database or schema.",
     )
     async def snowflake_list_streams(
-        database: str | None = None,
-        schema_name: str | None = None,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
         pattern: str | None = None,
     ) -> dict[str, Any]:
         """List streams."""
@@ -50,7 +48,7 @@ def register_stream_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "streams": res.get("data", [])}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -58,9 +56,9 @@ def register_stream_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Describe stream metadata, source table, and stale status.",
     )
     async def snowflake_describe_stream(
-        stream_name: str,
-        database: str | None = None,
-        schema_name: str | None = None,
+        stream_name: Identifier,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
         """Describe stream."""
         try:
@@ -71,7 +69,7 @@ def register_stream_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "stream": target, "details": res.get("data", [])}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -79,10 +77,10 @@ def register_stream_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Create a CDC stream on a table or view.",
     )
     async def snowflake_create_stream(
-        stream_name: str,
-        on_table: str,
-        database: str | None = None,
-        schema_name: str | None = None,
+        stream_name: Identifier,
+        on_table: Identifier,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
         append_only: bool = False,
         if_not_exists: bool = True,
     ) -> dict[str, Any]:
@@ -100,7 +98,7 @@ def register_stream_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "stream": target, "result": res.get("data")}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -108,9 +106,9 @@ def register_stream_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Drop a stream. Requires confirmation.",
     )
     async def snowflake_drop_stream(
-        stream_name: str,
-        database: str | None = None,
-        schema_name: str | None = None,
+        stream_name: Identifier,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
         confirm: bool = False,
     ) -> dict[str, Any]:
         """Drop stream."""
@@ -125,9 +123,9 @@ def register_stream_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             target = qualify_stream_target(stream_name, database=db, schema_name=sch)
             sql = f"DROP STREAM IF EXISTS {target}"
             res = client.execute_query(sql)
-            return {"status": "success", "stream": target, "result": res.get("data")}
+            return drop_result({"status": "success", "stream": target, "result": res.get("data")})
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -135,7 +133,7 @@ def register_stream_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Query unconsumed CDC changes recorded in a stream (default 10 rows).",
     )
     async def snowflake_read_stream_changes(
-        stream_name: str,
+        stream_name: Identifier,
         limit: int = 10,
     ) -> dict[str, Any]:
         """Read unconsumed records in stream."""
@@ -148,5 +146,5 @@ def register_stream_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res["stream_name"] = stream_name
             return res
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None

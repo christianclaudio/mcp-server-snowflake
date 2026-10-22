@@ -6,31 +6,215 @@ import logging
 import os
 import re
 from dataclasses import dataclass
-from typing import Any
+from typing import Annotated, Any
 
 import snowflake.connector
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
+from fastmcp.exceptions import ToolError
+from pydantic import Field
 from snowflake.connector import SnowflakeConnection
 from snowflake.connector.cursor import DictCursor
 from snowflake.core import Root
 
 from snowflake_mcp.config import SnowflakeConfig
-from snowflake_mcp.errors import AuthenticationError, SafetyViolationError, map_connector_error
+from snowflake_mcp.errors import (
+    AuthenticationError,
+    ResourceNotFoundError,
+    SafetyViolationError,
+    map_connector_error,
+    status_error,
+)
 
 logger = logging.getLogger("snowflake_mcp")
 
 _IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_$.]*$")
 
 
-def quote_ident(name: str) -> str:
-    """Safely format and quote a Snowflake SQL identifier."""
-    name = str(name).strip()
-    if not name:
+def split_ident(name: str) -> list[str]:
+    """Split a possibly dotted Snowflake object name into its resolved identifier parts.
+
+    Follows Snowflake's identifier rules
+    (https://docs.snowflake.com/en/sql-reference/identifiers-syntax): a part in double quotes is
+    kept exactly, may contain ``.``, and spells a literal ``"`` as ``""``; an unquoted part is
+    resolved to uppercase. Dots split parts only outside double quotes, and whitespace around a
+    part is ignored. Raises ``ValueError`` for an unterminated quote, an empty part, a ``"``
+    inside an unquoted part, or text after a closing quote.
+    """
+    text = str(name)
+    if not text.strip():
         raise ValueError("Identifier name cannot be empty")
-    # If standard uppercase or alphanumeric without spaces/quotes, return or safely double-quote
-    clean = name.replace('"', '""')
-    return f'"{clean}"'
+    parts: list[str] = []
+    i, n = 0, len(text)
+    while True:
+        while i < n and text[i].isspace():
+            i += 1
+        if i < n and text[i] == '"':
+            i += 1
+            buf: list[str] = []
+            while True:
+                if i >= n:
+                    raise ValueError(f"Unterminated quoted identifier in {text!r}")
+                if text[i] == '"':
+                    if text.startswith('""', i):
+                        buf.append('"')
+                        i += 2
+                        continue
+                    i += 1
+                    break
+                buf.append(text[i])
+                i += 1
+            part = "".join(buf)
+            if not part:
+                raise ValueError(f"Empty quoted identifier in {text!r}")
+            while i < n and text[i].isspace():
+                i += 1
+            if i < n and text[i] != ".":
+                raise ValueError(f"Unexpected text after a quoted identifier in {text!r}")
+        else:
+            start = i
+            while i < n and text[i] not in '."':
+                i += 1
+            if i < n and text[i] == '"':
+                raise ValueError(f"Double quote inside an unquoted identifier in {text!r}")
+            part = text[start:i].strip().upper()
+            if not part:
+                raise ValueError(f"Empty identifier part in {text!r}")
+        parts.append(part)
+        if i >= n:
+            return parts
+        i += 1  # the "." between parts
+
+
+MAX_NAME_PARTS = 3
+"""``database.schema.object``: the most parts a Snowflake object name can have."""
+
+
+def split_object_name(name: str) -> list[str]:
+    """``split_ident`` for an object name, refusing more than ``database.schema.object``.
+
+    A Snowflake object name is qualified by at most a database and a schema
+    (https://docs.snowflake.com/en/sql-reference/name-resolution), so a fourth part is refused
+    rather than silently dropped or shifted.
+    """
+    parts = split_ident(name)
+    if len(parts) > MAX_NAME_PARTS:
+        raise ValueError(
+            f"Expected at most database.schema.object, got {name!r}; double-quote a name that contains '.'"
+        )
+    return parts
+
+
+def _quote_resolved(part: str) -> str:
+    """Double-quote an already resolved identifier, doubling any ``"`` inside it."""
+    return '"' + part.replace('"', '""') + '"'
+
+
+def resolve_ident(name: str) -> str:
+    """Resolve one (undotted) identifier as Snowflake does: quoted kept exactly, unquoted uppercased."""
+    parts = split_ident(name)
+    if len(parts) != 1:
+        raise ValueError(f"Expected a single identifier, got {name!r}; double-quote a name that contains '.'")
+    return parts[0]
+
+
+def quote_ident(name: str) -> str:
+    """Resolve one Snowflake identifier (see ``split_ident``) and return it safely double-quoted.
+
+    ``orders`` becomes ``"ORDERS"`` (unquoted names resolve to uppercase), ``"Orders"`` stays
+    ``"Orders"``, and ``"a""b"`` stays ``"a""b"``.
+    """
+    return _quote_resolved(resolve_ident(name))
+
+
+def qualify_ident(name: str, *prefix: str | None) -> str:
+    """Quote a possibly dotted object name part by part.
+
+    A single-part *name* is prefixed with each non-empty *prefix* (for example database, then
+    schema), each resolved as one identifier; a dotted *name* is used as given. Raises
+    ``ValueError`` for more than three parts (see ``split_object_name``).
+    """
+    parts = split_object_name(name)
+    if len(parts) == 1:
+        parts = [resolve_ident(p) for p in prefix if p] + parts
+    return ".".join(_quote_resolved(p) for p in parts)
+
+
+IDENT_HINT = (
+    "Unquoted names resolve to uppercase, so wrap any name that isn't all uppercase, "
+    "or that contains a dot, in double quotes exactly as a list tool returned it."
+)
+"""The full quoting sentence a not-found error from a tool with identifier arguments carries."""
+
+IDENT_ARG_HINT = "Quote names that aren't all uppercase, exactly as list tools return them."
+"""The short description every identifier argument carries; ``IDENT_RULE`` states the full rule."""
+
+IDENT_RULE = (
+    "Snowflake object names: unquoted names resolve to uppercase, so orders means ORDERS. "
+    "A name that itself contains a dot must be in double quotes, since an unquoted dot separates "
+    "database, schema and object. List tools return names exactly as Snowflake stores them; pass "
+    'each one back in double quotes unless it is all uppercase, for example "my_table".'
+)
+"""The full identifier rule, stated once in the server instructions."""
+
+Identifier = Annotated[str, Field(description=IDENT_ARG_HINT)]
+"""A tool argument naming a Snowflake object; resolved by ``split_ident`` rules."""
+
+OptionalIdentifier = Annotated[str | None, Field(description=IDENT_ARG_HINT)]
+"""An optional ``Identifier`` argument (for example ``database`` or ``schema_name``)."""
+
+_NOT_FOUND_MARK = "does not exist or not authorized"
+
+
+def ident_error(error: Exception) -> ToolError:
+    """``status_error`` for a tool that takes identifier arguments.
+
+    When Snowflake reports that the named object does not exist or is not authorized, the
+    error text gets ``IDENT_HINT`` appended, since an unquoted lowercase or mixed-case name
+    resolves to a different, uppercase object. Every other error is ``status_error`` as is.
+    """
+    if isinstance(error, ResourceNotFoundError) and _NOT_FOUND_MARK in error.message.lower():
+        return status_error(f"{error.message} {IDENT_HINT}")
+    return status_error(error)
+
+
+_DROP_NOOP_MARKS = ("already dropped)", "does not exist, statement succeeded")
+"""Status text of a ``DROP ... IF EXISTS`` that found nothing: the current reply, then a legacy form."""
+
+_DROP_DONE_MARK = "successfully dropped."
+"""Status text of a ``DROP`` that removed the object."""
+
+DROP_NOOP_HINT = f"Nothing was dropped. {IDENT_HINT}"
+"""The ``hint`` a ``DROP ... IF EXISTS`` result carries when the named object did not exist."""
+
+
+def drop_result(result: dict[str, Any]) -> dict[str, Any]:
+    """A ``DROP ... IF EXISTS`` tool result with ``dropped`` added.
+
+    Snowflake answers a drop of a missing object with a success status row such as
+    ``Drop statement executed successfully (MY_TABLE already dropped).``
+    (https://docs.snowflake.com/en/sql-reference/sql/drop-table), or in an older form
+    ``MY_TABLE does not exist, statement succeeded.``, so ``ident_error`` never sees it. The
+    status values are matched case-insensitively, without parsing the name:
+
+    - a no-op reply in any row gives ``dropped: false`` and ``hint`` (``DROP_NOOP_HINT``), since
+      an unquoted lowercase or mixed-case name names a different, uppercase object;
+    - otherwise ``... successfully dropped.`` gives ``dropped: true``;
+    - otherwise (no rows, or a reply not recognized) ``dropped`` is ``None``, never a guess.
+
+    The result stays a success, and the rest of ``result`` is unchanged.
+    """
+    rows = result.get("result")
+    replies = (
+        [str(v).lower() for row in rows if isinstance(row, dict) for v in row.values()]
+        if isinstance(rows, list)
+        else []
+    )
+    if any(mark in reply for reply in replies for mark in _DROP_NOOP_MARKS):
+        return {**result, "dropped": False, "hint": DROP_NOOP_HINT}
+    if any(_DROP_DONE_MARK in reply for reply in replies):
+        return {**result, "dropped": True}
+    return {**result, "dropped": None}
 
 
 def quote_literal(val: Any) -> str:

@@ -6,16 +6,22 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import SnowflakeClient, quote_ident, quote_literal, show_sql
-from snowflake_mcp.errors import SafetyViolationError, status_error
+from snowflake_mcp.connection import (
+    Identifier,
+    OptionalIdentifier,
+    SnowflakeClient,
+    drop_result,
+    ident_error,
+    qualify_ident,
+    quote_literal,
+    show_sql,
+)
+from snowflake_mcp.errors import SafetyViolationError
 
 
 def qualify_schema_target(name: str, database: str | None = None) -> str:
     """Quote a schema name with ``quote_ident`` per part, prefixing ``database`` unless dotted."""
-    if "." in name:
-        parts = [p.strip().strip('"') for p in name.split(".") if p.strip()]
-        return ".".join(quote_ident(p) for p in parts)
-    return f"{quote_ident(database)}.{quote_ident(name)}" if database else quote_ident(name)
+    return qualify_ident(name, database)
 
 
 def register_schema_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
@@ -26,7 +32,7 @@ def register_schema_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="List all schemas within a specific database or the current active database.",
     )
     async def snowflake_list_schemas(
-        database: str | None = None,
+        database: OptionalIdentifier = None,
         pattern: str | None = None,
     ) -> dict[str, Any]:
         """List schemas in database."""
@@ -36,7 +42,7 @@ def register_schema_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "database": db_target, "schemas": res.get("data", [])}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -44,8 +50,8 @@ def register_schema_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Describe schema properties, owner, and retention settings.",
     )
     async def snowflake_describe_schema(
-        schema_name: str,
-        database: str | None = None,
+        schema_name: Identifier,
+        database: OptionalIdentifier = None,
     ) -> dict[str, Any]:
         """Describe schema."""
         try:
@@ -55,7 +61,7 @@ def register_schema_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "schema": target, "details": res.get("data", [])}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -63,8 +69,8 @@ def register_schema_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Create a new schema inside a specified database.",
     )
     async def snowflake_create_schema(
-        name: str,
-        database: str | None = None,
+        name: Identifier,
+        database: OptionalIdentifier = None,
         comment: str | None = None,
         if_not_exists: bool = True,
     ) -> dict[str, Any]:
@@ -80,7 +86,7 @@ def register_schema_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "schema": target, "result": res.get("data")}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -88,9 +94,9 @@ def register_schema_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Create a zero-copy clone of a schema.",
     )
     async def snowflake_clone_schema(
-        source_schema: str,
-        target_schema: str,
-        database: str | None = None,
+        source_schema: Identifier,
+        target_schema: Identifier,
+        database: OptionalIdentifier = None,
     ) -> dict[str, Any]:
         """Clone schema zero-copy."""
         if client.config.read_only:
@@ -103,7 +109,7 @@ def register_schema_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "source": src, "target": tgt, "result": res.get("data")}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -111,8 +117,8 @@ def register_schema_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Drop a schema in Snowflake. Requires confirmation flag.",
     )
     async def snowflake_drop_schema(
-        name: str,
-        database: str | None = None,
+        name: Identifier,
+        database: OptionalIdentifier = None,
         confirm: bool = False,
     ) -> dict[str, Any]:
         """Drop a schema with confirmation gate."""
@@ -126,9 +132,9 @@ def register_schema_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             target = qualify_schema_target(name, db)
             sql = f"DROP SCHEMA IF EXISTS {target}"
             res = client.execute_query(sql)
-            return {"status": "success", "schema": target, "result": res.get("data")}
+            return drop_result({"status": "success", "schema": target, "result": res.get("data")})
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -136,8 +142,8 @@ def register_schema_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Restore a recently dropped schema using Time Travel.",
     )
     async def snowflake_undrop_schema(
-        name: str,
-        database: str | None = None,
+        name: Identifier,
+        database: OptionalIdentifier = None,
     ) -> dict[str, Any]:
         """Undrop schema."""
         if client.config.read_only:
@@ -149,5 +155,5 @@ def register_schema_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "schema": target, "result": res.get("data")}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
