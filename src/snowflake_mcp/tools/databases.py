@@ -6,7 +6,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import Identifier, SnowflakeClient, ident_error, quote_ident, quote_literal
+from snowflake_mcp.connection import Identifier, SnowflakeClient, drop_result, ident_error, quote_ident, quote_literal
 from snowflake_mcp.errors import SafetyViolationError, status_error
 
 
@@ -114,7 +114,7 @@ def register_database_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             sql = f"DROP DATABASE IF EXISTS {quote_ident(name)}"
             res = client.execute_query(sql)
-            return {"status": "success", "database": name, "result": res.get("data")}
+            return drop_result({"status": "success", "database": name, "result": res.get("data")})
         except Exception as e:
             failure = ident_error(e)
         raise failure from None

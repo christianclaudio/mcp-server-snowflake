@@ -15,7 +15,7 @@ from mcp.types import CallToolResult, ToolAnnotations
 from snowflake_mcp import __version__
 from snowflake_mcp.auth import SharedTokenVerifier, read_auth_token
 from snowflake_mcp.config import SnowflakeConfig
-from snowflake_mcp.connection import SnowflakeClient
+from snowflake_mcp.connection import IDENT_RULE, SnowflakeClient
 from snowflake_mcp.middleware import (
     ErrorHandlingMiddleware,
     ParentAuditMiddleware,
@@ -335,7 +335,8 @@ def create_server(
         instructions=(
             "Enterprise MCP server for Snowflake data cloud and Cortex AI. Execute queries, manage "
             "databases, schemas, tables, warehouses, tasks, streams, dynamic tables, pipes, alerts, "
-            "governance, SPCS services, procedures, UDFs, secrets, and Cortex AI."
+            "governance, SPCS services, procedures, UDFs, secrets, and Cortex AI. "
+            f"{IDENT_RULE}"
         ),
         lifespan=_server_lifespan,
         cache_ttl=3600,

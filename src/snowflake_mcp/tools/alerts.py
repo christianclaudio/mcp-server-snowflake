@@ -10,6 +10,7 @@ from snowflake_mcp.connection import (
     Identifier,
     OptionalIdentifier,
     SnowflakeClient,
+    drop_result,
     enforce_read_only_sql,
     ident_error,
     is_sql_read_only,
@@ -143,7 +144,7 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             )
             sql = f"DROP ALERT IF EXISTS {target}"
             res = client.execute_query(sql)
-            return {"status": "success", "alert": target, "result": res.get("data")}
+            return drop_result({"status": "success", "alert": target, "result": res.get("data")})
         except Exception as e:
             failure = ident_error(e)
         raise failure from None

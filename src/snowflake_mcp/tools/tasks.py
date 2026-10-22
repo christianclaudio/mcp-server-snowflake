@@ -10,6 +10,7 @@ from snowflake_mcp.connection import (
     Identifier,
     OptionalIdentifier,
     SnowflakeClient,
+    drop_result,
     enforce_read_only_sql,
     ident_error,
     qualify_ident,
@@ -128,7 +129,7 @@ def register_task_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             target = qualify_task_target(task_name, database=db, schema_name=sch)
             sql = f"DROP TASK IF EXISTS {target}"
             res = client.execute_query(sql)
-            return {"status": "success", "task": target, "result": res.get("data")}
+            return drop_result({"status": "success", "task": target, "result": res.get("data")})
         except Exception as e:
             failure = ident_error(e)
         raise failure from None

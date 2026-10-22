@@ -10,6 +10,7 @@ from snowflake_mcp.connection import (
     Identifier,
     OptionalIdentifier,
     SnowflakeClient,
+    drop_result,
     ident_error,
     qualify_ident,
     quote_literal,
@@ -131,7 +132,7 @@ def register_schema_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             target = qualify_schema_target(name, db)
             sql = f"DROP SCHEMA IF EXISTS {target}"
             res = client.execute_query(sql)
-            return {"status": "success", "schema": target, "result": res.get("data")}
+            return drop_result({"status": "success", "schema": target, "result": res.get("data")})
         except Exception as e:
             failure = ident_error(e)
         raise failure from None

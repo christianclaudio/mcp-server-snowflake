@@ -10,6 +10,7 @@ from snowflake_mcp.connection import (
     Identifier,
     OptionalIdentifier,
     SnowflakeClient,
+    drop_result,
     ident_error,
     qualify_ident,
     quote_literal,
@@ -127,7 +128,7 @@ def register_stage_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             target = qualify_stage_target(stage_name, database=db, schema_name=sch)
             sql = f"DROP STAGE IF EXISTS {target}"
             res = client.execute_query(sql)
-            return {"status": "success", "stage": target, "result": res.get("data")}
+            return drop_result({"status": "success", "stage": target, "result": res.get("data")})
         except Exception as e:
             failure = ident_error(e)
         raise failure from None

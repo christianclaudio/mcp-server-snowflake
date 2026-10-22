@@ -11,6 +11,7 @@ from snowflake_mcp.connection import (
     Identifier,
     OptionalIdentifier,
     SnowflakeClient,
+    drop_result,
     ident_error,
     quote_ident,
     quote_literal,
@@ -154,7 +155,7 @@ def register_governance_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             sql = f"DROP ROLE IF EXISTS {quote_ident(role_name)}"
             res = client.execute_query(sql)
-            return {"status": "success", "role": role_name, "result": res.get("data")}
+            return drop_result({"status": "success", "role": role_name, "result": res.get("data")})
         except Exception as e:
             failure = ident_error(e)
         raise failure from None

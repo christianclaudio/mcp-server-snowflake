@@ -6,7 +6,7 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import Identifier, SnowflakeClient, ident_error, quote_ident, quote_literal
+from snowflake_mcp.connection import Identifier, SnowflakeClient, drop_result, ident_error, quote_ident, quote_literal
 from snowflake_mcp.errors import SafetyViolationError, status_error
 
 VALID_WAREHOUSE_SIZES = {
@@ -117,7 +117,7 @@ def register_warehouse_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             sql = f"DROP WAREHOUSE IF EXISTS {quote_ident(warehouse_name)}"
             res = client.execute_query(sql)
-            return {"status": "success", "warehouse": warehouse_name, "result": res.get("data")}
+            return drop_result({"status": "success", "warehouse": warehouse_name, "result": res.get("data")})
         except Exception as e:
             failure = ident_error(e)
         raise failure from None

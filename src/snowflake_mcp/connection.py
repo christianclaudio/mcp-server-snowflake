@@ -124,12 +124,23 @@ IDENT_HINT = (
     "Unquoted names resolve to uppercase, so wrap any name that isn't all uppercase, "
     "or that contains a dot, in double quotes exactly as a list tool returned it."
 )
-"""The one sentence every identifier argument's description and the not-found error carry."""
+"""The full quoting sentence a not-found error from a tool with identifier arguments carries."""
 
-Identifier = Annotated[str, Field(description=IDENT_HINT)]
+IDENT_ARG_HINT = "Quote names that aren't all uppercase, exactly as list tools return them."
+"""The short description every identifier argument carries; ``IDENT_RULE`` states the full rule."""
+
+IDENT_RULE = (
+    "Snowflake object names: unquoted names resolve to uppercase, so orders means ORDERS. "
+    "A name that itself contains a dot must be in double quotes, since an unquoted dot separates "
+    "database, schema and object. List tools return names exactly as Snowflake stores them; pass "
+    'each one back in double quotes unless it is all uppercase, for example "my_table".'
+)
+"""The full identifier rule, stated once in the server instructions."""
+
+Identifier = Annotated[str, Field(description=IDENT_ARG_HINT)]
 """A tool argument naming a Snowflake object; resolved by ``split_ident`` rules."""
 
-OptionalIdentifier = Annotated[str | None, Field(description=IDENT_HINT)]
+OptionalIdentifier = Annotated[str | None, Field(description=IDENT_ARG_HINT)]
 """An optional ``Identifier`` argument (for example ``database`` or ``schema_name``)."""
 
 _NOT_FOUND_MARK = "does not exist or not authorized"
@@ -145,6 +156,28 @@ def ident_error(error: Exception) -> ToolError:
     if isinstance(error, ResourceNotFoundError) and _NOT_FOUND_MARK in error.message.lower():
         return status_error(f"{error.message} {IDENT_HINT}")
     return status_error(error)
+
+
+_DROP_NOOP_MARK = "does not exist, statement succeeded"
+
+DROP_NOOP_HINT = f"Nothing was dropped. {IDENT_HINT}"
+"""The ``hint`` a ``DROP ... IF EXISTS`` result carries when the named object did not exist."""
+
+
+def drop_result(result: dict[str, Any]) -> dict[str, Any]:
+    """A ``DROP ... IF EXISTS`` tool result with ``dropped`` added.
+
+    Snowflake answers a drop of a missing object with a success status row such as
+    ``MY_TABLE does not exist, statement succeeded.``, so ``ident_error`` never sees it.
+    That result stays a success, with ``dropped: false`` and ``hint`` (``DROP_NOOP_HINT``)
+    added, since an unquoted lowercase or mixed-case name names a different, uppercase
+    object. Any other reply gets ``dropped: true``. The rest of ``result`` is unchanged.
+    """
+    rows = result.get("result")
+    replies = [str(v) for row in rows if isinstance(row, dict) for v in row.values()] if isinstance(rows, list) else []
+    if any(_DROP_NOOP_MARK in reply.lower() for reply in replies):
+        return {**result, "dropped": False, "hint": DROP_NOOP_HINT}
+    return {**result, "dropped": True}
 
 
 def quote_literal(val: Any) -> str:
