@@ -318,6 +318,11 @@ async def test_tools_run_the_quote_aware_name(
         ("tasks_drop_task", {"task_name": "DB.SCH.", "confirm": True}),
         ("schemas_drop_schema", {"name": 'S"; DROP DATABASE X; --', "database": "DB", "confirm": True}),
         ("tags_set_object_tag", {"object_name": "T", "tag_name": 'P"II', "tag_value": "v"}),
+        ("schemas_describe_schema", {"schema_name": 'a"b', "database": "DB"}),
+        ("schemas_create_schema", {"name": 'x"y', "database": "DB"}),
+        ("schemas_create_schema", {"name": "X", "database": 'd"b'}),
+        ("schemas_undrop_schema", {"name": 'S"', "database": "DB"}),
+        ("schemas_clone_schema", {"source_schema": 'SRC_DB.a"b', "target_schema": "T", "database": "DB"}),
     ],
 )
 async def test_tools_refuse_malformed_names_without_running_sql(
@@ -362,3 +367,9 @@ async def test_column_lineage_echoes_resolved_names(sf: tuple[SnowflakeClient, A
     res = await _fn(mcp, "horizon_get_column_lineage")("orders", "amount")
     assert res["table_name"] == "ORDERS"
     assert res["column_name"] == "AMOUNT"
+
+
+@pytest.mark.parametrize(("database", "schema"), [('d"b', "s"), ("DB", 's"; DROP DATABASE X; --')])
+def test_show_sql_refuses_raw_quotes_in_scope(database: str, schema: str) -> None:
+    with pytest.raises(ValueError):
+        conn.show_sql("TAGS", pattern="x", database=database, schema=schema)
