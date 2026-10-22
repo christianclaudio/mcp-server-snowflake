@@ -86,6 +86,25 @@ def split_ident(name: str) -> list[str]:
         i += 1  # the "." between parts
 
 
+MAX_NAME_PARTS = 3
+"""``database.schema.object``: the most parts a Snowflake object name can have."""
+
+
+def split_object_name(name: str) -> list[str]:
+    """``split_ident`` for an object name, refusing more than ``database.schema.object``.
+
+    A Snowflake object name is qualified by at most a database and a schema
+    (https://docs.snowflake.com/en/sql-reference/name-resolution), so a fourth part is refused
+    rather than silently dropped or shifted.
+    """
+    parts = split_ident(name)
+    if len(parts) > MAX_NAME_PARTS:
+        raise ValueError(
+            f"Expected at most database.schema.object, got {name!r}; double-quote a name that contains '.'"
+        )
+    return parts
+
+
 def _quote_resolved(part: str) -> str:
     """Double-quote an already resolved identifier, doubling any ``"`` inside it."""
     return '"' + part.replace('"', '""') + '"'
@@ -112,9 +131,10 @@ def qualify_ident(name: str, *prefix: str | None) -> str:
     """Quote a possibly dotted object name part by part.
 
     A single-part *name* is prefixed with each non-empty *prefix* (for example database, then
-    schema), each resolved as one identifier; a dotted *name* is used as given.
+    schema), each resolved as one identifier; a dotted *name* is used as given. Raises
+    ``ValueError`` for more than three parts (see ``split_object_name``).
     """
-    parts = split_ident(name)
+    parts = split_object_name(name)
     if len(parts) == 1:
         parts = [resolve_ident(p) for p in prefix if p] + parts
     return ".".join(_quote_resolved(p) for p in parts)

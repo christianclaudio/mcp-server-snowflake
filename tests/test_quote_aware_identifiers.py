@@ -373,3 +373,68 @@ async def test_column_lineage_echoes_resolved_names(sf: tuple[SnowflakeClient, A
 def test_show_sql_refuses_raw_quotes_in_scope(database: str, schema: str) -> None:
     with pytest.raises(ValueError):
         conn.show_sql("TAGS", pattern="x", database=database, schema=schema)
+
+
+# ---------------------------------------------------------------------------
+# At most database.schema.object
+# (https://docs.snowflake.com/en/sql-reference/name-resolution)
+# ---------------------------------------------------------------------------
+
+FOUR_PARTS = "Expected at most database.schema.object, got 'a.b.c.d'; double-quote a name that contains '.'"
+
+
+@pytest.mark.parametrize("raw", ["a.b.c.d", '"a".b.c.d', "a.b.c.d.e"])
+def test_qualify_ident_refuses_more_than_three_parts(raw: str) -> None:
+    with pytest.raises(ValueError, match="Expected at most database.schema.object"):
+        conn.qualify_ident(raw)
+    with pytest.raises(ValueError, match="Expected at most database.schema.object"):
+        conn.qualify_ident(raw, "db", "sch")
+
+
+def test_four_part_error_text() -> None:
+    with pytest.raises(ValueError) as excinfo:
+        conn.qualify_ident("a.b.c.d")
+    assert str(excinfo.value) == FOUR_PARTS
+
+
+def test_quoted_dot_keeps_three_parts() -> None:
+    assert conn.qualify_ident('db.sch."a.b"') == '"DB"."SCH"."a.b"'
+
+
+@pytest.mark.parametrize(
+    ("tool", "kwargs"),
+    [
+        ("horizon_get_object_lineage", {"object_name": "a.b.c.d"}),
+        ("horizon_get_column_lineage", {"table_name": "a.b.c.d", "column_name": "amount"}),
+    ],
+)
+async def test_lineage_refuses_more_than_three_parts_without_running_sql(
+    sf: tuple[SnowflakeClient, Any], tool: str, kwargs: dict[str, Any]
+) -> None:
+    client, mcp = sf
+    with pytest.raises(ToolError) as excinfo:
+        await _fn(mcp, tool)(**kwargs)
+    payload = json.loads(str(excinfo.value))
+    assert payload["status"] == "error"
+    assert FOUR_PARTS in str(excinfo.value)
+    client.execute_query.assert_not_called()  # type: ignore[attr-defined]
+
+
+async def test_lineage_accepts_a_quoted_dot_in_three_parts(sf: tuple[SnowflakeClient, Any]) -> None:
+    client, mcp = sf
+    res = await _fn(mcp, "horizon_get_object_lineage")('db.sch."a.b"', direction="upstream")
+    sql = _sql(client)
+    assert "REFERENCING_OBJECT_NAME = 'a.b'" in sql
+    assert "REFERENCING_DATABASE = 'DB'" in sql
+    assert "REFERENCING_SCHEMA = 'SCH'" in sql
+    assert res["object_name"] == "a.b"
+    res = await _fn(mcp, "horizon_get_column_lineage")('db.sch."a.b"', "amount")
+    assert res["table_name"] == "DB.SCH.a.b"
+
+
+async def test_four_part_tool_name_refused_through_qualify(sf: tuple[SnowflakeClient, Any]) -> None:
+    client, mcp = sf
+    with pytest.raises(ToolError) as excinfo:
+        await _fn(mcp, "tables_drop_table")(table_name="a.b.c.d", confirm=True)
+    assert FOUR_PARTS in str(excinfo.value)
+    client.execute_query.assert_not_called()  # type: ignore[attr-defined]

@@ -32,7 +32,6 @@ from snowflake_mcp.connection import (
 )
 from snowflake_mcp.errors import ResourceNotFoundError
 from snowflake_mcp.server import create_server
-from snowflake_mcp.tools import horizon
 
 NOT_FOUND = "002003 (42S02): SQL compilation error:\nTable 'DB.SCH.MY_TABLE' does not exist or not authorized."
 
@@ -230,7 +229,6 @@ async def test_hinted_arguments_are_exactly_the_parsed_ones(monkeypatch: pytest.
         return real(name)
 
     monkeypatch.setattr(conn, "split_ident", spy)
-    monkeypatch.setattr(horizon, "split_ident", spy)
     sf = SnowflakeClient(config=SnowflakeConfig(account="acc", user="usr", read_only=False))
     sf.execute_query = MagicMock(return_value={"data": [{"NAME": "X", "DDL": "x"}]})  # type: ignore[method-assign]
     mismatches: dict[str, tuple[set[str], set[str]]] = {}

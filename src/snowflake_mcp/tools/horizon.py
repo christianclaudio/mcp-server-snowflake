@@ -15,7 +15,7 @@ from snowflake_mcp.connection import (
     quote_literal,
     resolve_ident,
     show_sql,
-    split_ident,
+    split_object_name,
 )
 from snowflake_mcp.errors import status_error
 
@@ -36,7 +36,7 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         """Retrieve upstream and downstream object dependencies from Account Usage."""
         try:
             # A dotted name supplies its own database and schema; otherwise the arguments do.
-            name_parts = split_ident(object_name)
+            name_parts = split_object_name(object_name)
             clean_name = name_parts[-1]
             db_filter = name_parts[-3] if len(name_parts) >= 3 else (resolve_ident(database) if database else None)
             sch_filter = (
@@ -99,7 +99,7 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Trace column data origin and modifications."""
         try:
-            clean_tbl = ".".join(split_ident(table_name))
+            clean_tbl = ".".join(split_object_name(table_name))
             clean_col = resolve_ident(column_name)
             max_rows = max(1, min(limit, 50))
             lookback_days = max(1, min(days, 365))
