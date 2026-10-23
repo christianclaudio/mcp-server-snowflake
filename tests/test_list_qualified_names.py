@@ -243,7 +243,7 @@ async def test_describe_tag_refuses_a_malformed_or_four_part_name() -> None:
     run = MagicMock(return_value={"data": []})
     acct.client.execute_query = run  # type: ignore[method-assign]
     async with Client(create_server(client=acct.client)) as client:
-        for bad in ("a.b.c.d", '"unterminated', "DB..T"):
+        for bad in ("a.b.c.d", '"unterminated', "DB...T"):
             result = await client.call_tool("tags_describe_tag", {"tag_name": bad}, raise_on_error=False)
             assert result.is_error, bad
     run.assert_not_called()

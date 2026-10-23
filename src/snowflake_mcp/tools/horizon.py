@@ -42,7 +42,10 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             clean_name = name_parts[-1]
             db_filter = name_parts[-3] if len(name_parts) >= 3 else (resolve_ident(database) if database else None)
             sch_filter = (
-                name_parts[-2] if len(name_parts) >= 2 else (resolve_ident(schema_name) if schema_name else None)
+                # An empty schema (db..name) is the database's PUBLIC schema (see split_ident).
+                (name_parts[-2] or "PUBLIC")
+                if len(name_parts) >= 2
+                else (resolve_ident(schema_name) if schema_name else None)
             )
             dir_mode = direction.strip().lower()
 

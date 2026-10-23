@@ -9,6 +9,7 @@ writes ``"DB".."NAME"``.
 
 from __future__ import annotations
 
+import json
 from unittest.mock import MagicMock
 
 import pytest
@@ -113,3 +114,88 @@ async def test_alert_pipe_secret_and_policy_tools_keep_a_database_only_scope(too
         assert run.call_args.args[0].startswith(f'{prefix}"DB".."OBJ"'), run.call_args.args[0]
         await client.call_tool(tool, {arg: "obj", **args})
         assert run.call_args.args[0].startswith(f'{prefix}"OBJ"'), run.call_args.args[0]
+
+
+RESULT_KEY = {
+    "alerts": "alert",
+    "pipes": "pipe",
+    "programmability": "secret",
+    "horizon_describe_masking_policy": "masking_policy",
+    "horizon_describe_row_access_policy": "row_access_policy",
+}
+
+
+def _result_key(tool: str) -> str:
+    return RESULT_KEY.get(tool) or RESULT_KEY[tool.split("_", 1)[0]]
+
+
+@pytest.mark.parametrize(
+    ("raw", "parts", "want"),
+    [
+        ("db..p", ["DB", "", "P"], '"DB".."P"'),
+        ('"DB".."P"', ["DB", "", "P"], '"DB".."P"'),
+        ('"My.Db".."p q"', ["My.Db", "", "p q"], '"My.Db".."p q"'),
+    ],
+)
+def test_split_and_qualify_accept_an_empty_schema(raw: str, parts: list[str], want: str) -> None:
+    """``<database_name>..<object_name>`` is documented (PUBLIC schema), so it parses and round-trips."""
+    assert conn.split_ident(raw) == parts
+    assert conn.split_object_name(raw) == parts
+    assert conn.qualify_ident(raw, "other", "sch") == want
+    assert conn.qualify_ident(want) == want
+
+
+@pytest.mark.parametrize(
+    "bad", ['""', "", "  ", '"p', 'a"b', ".p", "p.", "db...p", "db..", "..p", "db..p.x", 'db."".p']
+)
+def test_other_empty_or_malformed_parts_are_still_refused(bad: str) -> None:
+    with pytest.raises(ValueError):
+        conn.split_object_name(bad)
+    with pytest.raises(ValueError):
+        conn.qualify_ident(bad)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("name", "literal"),
+    [("db..p", '\'"DB".."P"\''), ('"DB".."P"', '\'"DB".."P"\''), ('"Db"..p', '\'"Db".."P"\'')],
+)
+async def test_get_pipe_status_accepts_a_database_dot_dot_name(name: str, literal: str) -> None:
+    sf = SnowflakeClient(config=SnowflakeConfig(account="acc", user="usr", read_only=False))
+    run = MagicMock(return_value={"data": [{"STATUS": "{}"}]})
+    sf.execute_query = run  # type: ignore[method-assign]
+    async with Client(create_server(client=sf)) as client:
+        result = await client.call_tool("pipes_get_pipe_status", {"pipe_name": name})
+    assert not result.is_error, result.content
+    assert run.call_args.args[0] == f"SELECT SYSTEM$PIPE_STATUS({literal}) AS status"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tool", sorted(ELEVEN))
+async def test_database_only_output_round_trips_back_into_the_tool(tool: str) -> None:
+    """A tool's own ``"DB".."OBJ"`` result, passed back as the name, sends the same target."""
+    arg, args, prefix = ELEVEN[tool]
+    sf = SnowflakeClient(config=SnowflakeConfig(account="acc", user="usr", read_only=False))
+    run = MagicMock(return_value={"data": [{"status": "ok"}]})
+    sf.execute_query = run  # type: ignore[method-assign]
+    async with Client(create_server(client=sf)) as client:
+        first = await client.call_tool(tool, {arg: "obj", "database": "db", **args})
+        target = json.loads(first.content[0].text)[_result_key(tool)]
+        assert target == '"DB".."OBJ"'
+        first_sql = run.call_args.args[0]
+        again = await client.call_tool(tool, {arg: target, **args})
+        assert json.loads(again.content[0].text)[_result_key(tool)] == target
+    assert run.call_args.args[0] == first_sql
+    assert first_sql.startswith(f'{prefix}"DB".."OBJ"')
+
+
+@pytest.mark.asyncio
+async def test_dot_dot_names_mean_public_in_tag_and_lineage_lookups() -> None:
+    sf = SnowflakeClient(config=SnowflakeConfig(account="acc", user="usr", read_only=False))
+    run = MagicMock(return_value={"data": []})
+    sf.execute_query = run  # type: ignore[method-assign]
+    async with Client(create_server(client=sf)) as client:
+        await client.call_tool("tags_describe_tag", {"tag_name": "db..cost_center"})
+        assert run.call_args.args[0] == 'SHOW TAGS LIKE \'COST_CENTER\' IN SCHEMA "DB"."PUBLIC"'
+        await client.call_tool("horizon_get_object_lineage", {"object_name": "db..t", "direction": "upstream"})
+        assert run.call_args.args[0].endswith("AND REFERENCING_DATABASE = 'DB' AND REFERENCING_SCHEMA = 'PUBLIC'")

@@ -15,9 +15,9 @@ from snowflake_mcp.connection import (
     exact_show_rows,
     ident_error,
     qualify_ident,
-    quote_ident,
     quote_literal,
     quote_resolved,
+    resolve_ident,
     show_not_found,
     show_sql,
     split_object_name,
@@ -68,13 +68,14 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
         A dotted *tag_name* supplies its own schema (``schema.tag``) or database and schema
         (``database.schema.tag``), parsed quote-aware like every other object name; the missing
-        parts come from *database* and *schema_name*, then the session defaults. A schema with
-        no database scopes the lookup to ``IN SCHEMA <schema>`` in the current database. The tag
-        part alone goes to ``LIKE``. A tag part in double quotes (as in a list tool's ``quoted_name``
-        or ``quoted_qualified_name``) is unquoted and sent to ``LIKE`` as is, and only the row
-        whose name equals it exactly, case-sensitively, is kept; if there is none, the call fails
-        with a not-found error. An unquoted tag part keeps the case-insensitive ``LIKE`` lookup
-        and returns the first row, or ``{}``.
+        parts come from *database* and *schema_name*, then the session defaults; ``db..tag`` means
+        the database's PUBLIC schema (https://docs.snowflake.com/en/sql-reference/name-resolution).
+        A schema with no database scopes the lookup to ``IN SCHEMA <schema>`` in the current
+        database. The tag part alone goes to ``LIKE``. A tag part in double quotes (as in a list
+        tool's ``quoted_name`` or ``quoted_qualified_name``) is unquoted and sent to ``LIKE`` as
+        is, and only the row whose name equals it exactly, case-sensitively, is kept; if there is
+        none, the call fails with a not-found error. An unquoted tag part keeps the
+        case-insensitive ``LIKE`` lookup and returns the first row, or ``{}``.
 
         Row cap: ``SHOW ... LIKE`` treats ``_`` and ``%`` as wildcards with no documented escape
         (https://docs.snowflake.com/en/sql-reference/sql/show-tags), so a name containing them
@@ -87,9 +88,10 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             parts = split_object_name(tag_name)
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            scope = [quote_ident(p) if p else None for p in (db, sch)]
-            # Parts from tag_name are already resolved, so they are quoted as they stand.
-            scope[3 - len(parts) :] = [quote_resolved(p) for p in parts[:-1]]
+            resolved = [resolve_ident(p) if p else None for p in (db, sch)]
+            # Parts from tag_name are already resolved; an empty schema (db..tag) is PUBLIC.
+            resolved[3 - len(parts) :] = [p or "PUBLIC" for p in parts[:-1]]
+            scope = [quote_resolved(p) if p else None for p in resolved]
             # split_ident refuses a stray quote, so a name ending in one ends in a quoted tag part.
             exact = parts[-1] if str(tag_name).rstrip().endswith('"') else None
             pattern = parts[-1] if len(parts) > 1 or exact is not None else tag_name

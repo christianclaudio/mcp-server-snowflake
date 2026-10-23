@@ -64,7 +64,11 @@ SPLIT_ERRORS = [
     ('"abc', "Unterminated"),
     ('"my.db.S.T', "Unterminated"),
     ('DB.SCH."x""', "Unterminated"),
-    ("DB..T", "Empty"),
+    ("DB...T", "Empty"),
+    ("DB..", "Empty"),
+    ("..T", "Empty"),
+    ("DB..T.X", "Empty"),
+    ('DB."".T', "Empty"),
     (".T", "Empty"),
     ("DB.SCH.", "Empty"),
     ('""', "Empty"),
@@ -176,7 +180,7 @@ def test_three_part_helpers_undotted(helper_name: str, helper: Callable[..., str
     assert helper("orders") == '"ORDERS"'
 
 
-@pytest.mark.parametrize("bad", ['"my.db.S.T', 'DB.SCH."x""', "DB..T", "DB.SCH.", '""', 'a"b.T'])
+@pytest.mark.parametrize("bad", ['"my.db.S.T', 'DB.SCH."x""', "DB...T", "DB.SCH.", '""', 'a"b.T'])
 @pytest.mark.parametrize(("helper_name", "helper"), THREE_PART_HELPERS, ids=[h[0] for h in THREE_PART_HELPERS])
 def test_three_part_helpers_reject_malformed(helper_name: str, helper: Callable[..., str], bad: str) -> None:
     with pytest.raises(ValueError):
@@ -313,7 +317,7 @@ async def test_tools_run_the_quote_aware_name(
     ("tool", "kwargs"),
     [
         ("tables_drop_table", {"table_name": '"PROD.STAGING.ORDERS', "confirm": True}),
-        ("tables_truncate_table", {"table_name": "DB..T", "confirm": True}),
+        ("tables_truncate_table", {"table_name": "DB...T", "confirm": True}),
         ("schemas_drop_schema", {"name": 'DB."', "confirm": True}),
         ("tasks_drop_task", {"task_name": "DB.SCH.", "confirm": True}),
         ("schemas_drop_schema", {"name": 'S"; DROP DATABASE X; --', "database": "DB", "confirm": True}),

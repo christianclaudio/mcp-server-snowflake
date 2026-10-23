@@ -40,6 +40,11 @@ def split_ident(name: str) -> list[str]:
     resolved to uppercase. Dots split parts only outside double quotes, and whitespace around a
     part is ignored. Raises ``ValueError`` for an unterminated quote, an empty part, a ``"``
     inside an unquoted part, or text after a closing quote.
+
+    The one empty part allowed is the schema of a three-part name written with two adjacent
+    dots, ``db..name`` or ``"DB".."NAME"``: "The two dots indicate that the schema name is not
+    specified. The PUBLIC default schema is always referenced"
+    (https://docs.snowflake.com/en/sql-reference/name-resolution). It is returned as ``""``.
     """
     text = str(name)
     if not text.strip():
@@ -47,6 +52,13 @@ def split_ident(name: str) -> list[str]:
     parts: list[str] = []
     i, n = 0, len(text)
     while True:
+        if len(parts) == 1 and i < n and text[i] == ".":
+            # ``db..name``: the dot right after the first part's dot leaves the schema empty.
+            parts.append("")
+            i += 1
+            if i >= n:
+                raise ValueError(f"Empty identifier part in {text!r}")
+            continue
         while i < n and text[i].isspace():
             i += 1
         if i < n and text[i] == '"':
@@ -82,6 +94,8 @@ def split_ident(name: str) -> list[str]:
                 raise ValueError(f"Empty identifier part in {text!r}")
         parts.append(part)
         if i >= n:
+            if "" in parts and len(parts) != MAX_NAME_PARTS:
+                raise ValueError(f"Empty identifier part in {text!r}")
             return parts
         i += 1  # the "." between parts
 
@@ -185,7 +199,8 @@ def qualify_ident(name: str, *prefix: str | None) -> str:
         return f"{quote_ident(prefix[0])}..{quote_resolved(parts[0])}"
     if len(parts) == 1:
         parts = [resolve_ident(p) for p in prefix if p] + parts
-    return ".".join(quote_resolved(p) for p in parts)
+    # An empty schema part (``db..name``, see ``split_ident``) is written back as ``..``.
+    return ".".join(quote_resolved(p) if p else "" for p in parts)
 
 
 EXACT_NAME_NOTE = "A name in double quotes, such as a list row's quoted_name, must match exactly."
