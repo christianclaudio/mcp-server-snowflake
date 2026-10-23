@@ -7,6 +7,7 @@ from typing import Any
 from fastmcp import FastMCP
 
 from snowflake_mcp.connection import (
+    QUOTED_NAME_NOTE,
     Identifier,
     OptionalIdentifier,
     SnowflakeClient,
@@ -16,6 +17,7 @@ from snowflake_mcp.connection import (
     resolve_ident,
     show_sql,
     split_object_name,
+    with_quoted_names,
 )
 from snowflake_mcp.errors import status_error
 
@@ -126,7 +128,7 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="list_masking_policies",
-        description="List column masking policies in the account, database, or schema.",
+        description=f"List column masking policies in the account, database, or schema. {QUOTED_NAME_NOTE}",
     )
     async def snowflake_list_masking_policies(
         database: OptionalIdentifier = None,
@@ -140,7 +142,7 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             sql = show_sql("MASKING POLICIES", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
-            return {"status": "success", "masking_policies": res.get("data", [])}
+            return {"status": "success", "masking_policies": with_quoted_names(res.get("data", []))}
         except Exception as e:
             failure = ident_error(e)
         raise failure from None
@@ -174,7 +176,7 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="list_row_access_policies",
-        description="List row access policies defined in the account, database, or schema.",
+        description=f"List row access policies defined in the account, database, or schema. {QUOTED_NAME_NOTE}",
     )
     async def snowflake_list_row_access_policies(
         database: OptionalIdentifier = None,
@@ -188,7 +190,7 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             sql = show_sql("ROW ACCESS POLICIES", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
-            return {"status": "success", "row_access_policies": res.get("data", [])}
+            return {"status": "success", "row_access_policies": with_quoted_names(res.get("data", []))}
         except Exception as e:
             failure = ident_error(e)
         raise failure from None

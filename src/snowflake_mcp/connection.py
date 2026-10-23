@@ -110,6 +110,32 @@ def _quote_resolved(part: str) -> str:
     return '"' + part.replace('"', '""') + '"'
 
 
+QUOTED_NAME_NOTE = "Each row also has quoted_name, the name in double quotes for identifier arguments."
+"""The sentence every list tool's description ends with (see ``with_quoted_names``)."""
+
+
+def with_quoted_names(rows: Any) -> Any:
+    """``SHOW`` rows with ``quoted_name`` added: each row's ``name`` as a double-quoted identifier.
+
+    ``SHOW`` returns names exactly as Snowflake stores them, and an unquoted name resolves to
+    uppercase, so ``my_table`` must be passed back as ``"my_table"``. A double-quoted identifier
+    keeps its exact case, and a ``"`` inside it is written as two quotes
+    (https://docs.snowflake.com/en/sql-reference/identifiers-syntax), so ``quoted_name`` wraps
+    ``name`` in double quotes and doubles each ``"`` in it; ``split_ident`` resolves it back to
+    exactly ``name``. Only a non-empty string ``name`` gets one, a row that already has a
+    ``quoted_name`` key is left as is, every other field is unchanged, and anything that is not a
+    list is returned as is.
+    """
+    if not isinstance(rows, list):
+        return rows
+    return [
+        {**row, "quoted_name": _quote_resolved(row["name"])}
+        if isinstance(row, dict) and isinstance(row.get("name"), str) and row["name"] and "quoted_name" not in row
+        else row
+        for row in rows
+    ]
+
+
 def resolve_ident(name: str) -> str:
     """Resolve one (undotted) identifier as Snowflake does: quoted kept exactly, unquoted uppercased."""
     parts = split_ident(name)
@@ -153,7 +179,8 @@ IDENT_RULE = (
     "Snowflake object names: unquoted names resolve to uppercase, so orders means ORDERS. "
     "A name that itself contains a dot must be in double quotes, since an unquoted dot separates "
     "database, schema and object. List tools return names exactly as Snowflake stores them; pass "
-    'each one back in double quotes unless it is all uppercase, for example "my_table".'
+    'each one back in double quotes unless it is all uppercase, for example "my_table". '
+    "Each list tool row's quoted_name is that name already double-quoted."
 )
 """The full identifier rule, stated once in the server instructions."""
 

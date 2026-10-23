@@ -7,6 +7,7 @@ from typing import Any
 from fastmcp import FastMCP
 
 from snowflake_mcp.connection import (
+    QUOTED_NAME_NOTE,
     Identifier,
     OptionalIdentifier,
     SnowflakeClient,
@@ -18,6 +19,7 @@ from snowflake_mcp.connection import (
     quote_literal,
     read_only_enabled,
     show_sql,
+    with_quoted_names,
 )
 from snowflake_mcp.errors import SafetyViolationError
 
@@ -27,7 +29,7 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="list_alerts",
-        description="List configured alerts with condition queries, schedules, and state.",
+        description=f"List configured alerts with condition queries, schedules, and state. {QUOTED_NAME_NOTE}",
     )
     async def snowflake_list_alerts(
         database: OptionalIdentifier = None,
@@ -41,7 +43,7 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             sql = show_sql("ALERTS", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
-            return {"status": "success", "alerts": res.get("data", [])}
+            return {"status": "success", "alerts": with_quoted_names(res.get("data", []))}
         except Exception as e:
             failure = ident_error(e)
         raise failure from None

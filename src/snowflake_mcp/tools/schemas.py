@@ -7,6 +7,7 @@ from typing import Any
 from fastmcp import FastMCP
 
 from snowflake_mcp.connection import (
+    QUOTED_NAME_NOTE,
     Identifier,
     OptionalIdentifier,
     SnowflakeClient,
@@ -15,6 +16,7 @@ from snowflake_mcp.connection import (
     qualify_ident,
     quote_literal,
     show_sql,
+    with_quoted_names,
 )
 from snowflake_mcp.errors import SafetyViolationError
 
@@ -29,7 +31,7 @@ def register_schema_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="list_schemas",
-        description="List all schemas within a specific database or the current active database.",
+        description=f"List all schemas within a specific database or the current active database. {QUOTED_NAME_NOTE}",
     )
     async def snowflake_list_schemas(
         database: OptionalIdentifier = None,
@@ -40,7 +42,7 @@ def register_schema_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             db_target = database or client.config.database
             sql = show_sql("SCHEMAS", pattern=pattern, database=db_target)
             res = client.execute_query(sql)
-            return {"status": "success", "database": db_target, "schemas": res.get("data", [])}
+            return {"status": "success", "database": db_target, "schemas": with_quoted_names(res.get("data", []))}
         except Exception as e:
             failure = ident_error(e)
         raise failure from None

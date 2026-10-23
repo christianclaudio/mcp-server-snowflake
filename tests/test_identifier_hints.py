@@ -188,11 +188,15 @@ async def test_round_trip_of_a_quoted_lowercase_table() -> None:
         assert created.data["table"] == '"DB"."SCH"."my_table"'
 
         listed = await client.call_tool("tables_list_tables", {"database": "DB", "schema_name": "SCH"})
-        # The list output is SHOW's stored name, unchanged.
-        assert listed.structured_content == {"status": "success", "tables": [{"name": "my_table"}]}
+        # The list output is SHOW's stored name, unchanged, plus quoted_name (#55).
+        assert listed.structured_content == {
+            "status": "success",
+            "tables": [{"name": "my_table", "quoted_name": '"my_table"'}],
+        }
         stored = listed.structured_content["tables"][0]["name"]
 
-        quoted = f'"{stored}"'
+        quoted = listed.structured_content["tables"][0]["quoted_name"]
+        assert quoted == f'"{stored}"'
         described = await client.call_tool(
             "tables_describe_table", {"table_name": quoted, "database": "DB", "schema_name": "SCH"}
         )

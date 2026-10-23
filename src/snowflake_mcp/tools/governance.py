@@ -8,6 +8,7 @@ from fastmcp import FastMCP
 
 from snowflake_mcp.config import SnowflakeConfig
 from snowflake_mcp.connection import (
+    QUOTED_NAME_NOTE,
     Identifier,
     OptionalIdentifier,
     SnowflakeClient,
@@ -15,6 +16,7 @@ from snowflake_mcp.connection import (
     ident_error,
     quote_ident,
     quote_literal,
+    with_quoted_names,
 )
 from snowflake_mcp.errors import SafetyViolationError, status_error
 
@@ -86,7 +88,7 @@ def register_governance_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="list_roles",
-        description="List roles available in the Snowflake account.",
+        description=f"List roles available in the Snowflake account. {QUOTED_NAME_NOTE}",
     )
     async def snowflake_list_roles(
         pattern: str | None = None,
@@ -95,7 +97,7 @@ def register_governance_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             sql = f"SHOW ROLES LIKE {quote_literal(pattern)}" if pattern else "SHOW ROLES"
             res = client.execute_query(sql)
-            return {"status": "success", "roles": res.get("data", [])}
+            return {"status": "success", "roles": with_quoted_names(res.get("data", []))}
         except Exception as e:
             failure = status_error(e)
         raise failure from None
@@ -162,7 +164,7 @@ def register_governance_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="list_users",
-        description="List users in the Snowflake account with login status and default roles.",
+        description=f"List users in the Snowflake account with login status and default roles. {QUOTED_NAME_NOTE}",
     )
     async def snowflake_list_users(
         pattern: str | None = None,
@@ -171,7 +173,7 @@ def register_governance_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             sql = f"SHOW USERS LIKE {quote_literal(pattern)}" if pattern else "SHOW USERS"
             res = client.execute_query(sql)
-            return {"status": "success", "users": res.get("data", [])}
+            return {"status": "success", "users": with_quoted_names(res.get("data", []))}
         except Exception as e:
             failure = status_error(e)
         raise failure from None

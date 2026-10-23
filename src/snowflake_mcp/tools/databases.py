@@ -6,7 +6,16 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import Identifier, SnowflakeClient, drop_result, ident_error, quote_ident, quote_literal
+from snowflake_mcp.connection import (
+    QUOTED_NAME_NOTE,
+    Identifier,
+    SnowflakeClient,
+    drop_result,
+    ident_error,
+    quote_ident,
+    quote_literal,
+    with_quoted_names,
+)
 from snowflake_mcp.errors import SafetyViolationError, status_error
 
 
@@ -15,7 +24,7 @@ def register_database_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="list_databases",
-        description="List all available databases accessible to the current role.",
+        description=f"List all available databases accessible to the current role. {QUOTED_NAME_NOTE}",
     )
     async def snowflake_list_databases(
         pattern: str | None = None,
@@ -24,7 +33,7 @@ def register_database_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             sql = f"SHOW DATABASES LIKE {quote_literal(pattern)}" if pattern else "SHOW DATABASES"
             res = client.execute_query(sql)
-            return {"status": "success", "databases": res.get("data", [])}
+            return {"status": "success", "databases": with_quoted_names(res.get("data", []))}
         except Exception as e:
             failure = status_error(e)
         raise failure from None

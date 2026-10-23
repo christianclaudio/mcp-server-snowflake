@@ -7,6 +7,7 @@ from typing import Any
 from fastmcp import FastMCP
 
 from snowflake_mcp.connection import (
+    QUOTED_NAME_NOTE,
     Identifier,
     OptionalIdentifier,
     SnowflakeClient,
@@ -17,6 +18,7 @@ from snowflake_mcp.connection import (
     quote_literal,
     read_only_enabled,
     show_sql,
+    with_quoted_names,
 )
 from snowflake_mcp.errors import SafetyViolationError, status_error
 
@@ -26,7 +28,7 @@ def register_pipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="list_pipes",
-        description="List Snowpipes configured in a database or schema.",
+        description=f"List Snowpipes configured in a database or schema. {QUOTED_NAME_NOTE}",
     )
     async def snowflake_list_pipes(
         database: OptionalIdentifier = None,
@@ -40,7 +42,7 @@ def register_pipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             sql = show_sql("PIPES", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
-            return {"status": "success", "pipes": res.get("data", [])}
+            return {"status": "success", "pipes": with_quoted_names(res.get("data", []))}
         except Exception as e:
             failure = ident_error(e)
         raise failure from None

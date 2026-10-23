@@ -6,7 +6,16 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import Identifier, SnowflakeClient, drop_result, ident_error, quote_ident, quote_literal
+from snowflake_mcp.connection import (
+    QUOTED_NAME_NOTE,
+    Identifier,
+    SnowflakeClient,
+    drop_result,
+    ident_error,
+    quote_ident,
+    quote_literal,
+    with_quoted_names,
+)
 from snowflake_mcp.errors import SafetyViolationError, status_error
 
 VALID_WAREHOUSE_SIZES = {
@@ -35,7 +44,7 @@ def register_warehouse_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="list_warehouses",
-        description="List virtual warehouses in the account with size, state, and auto-suspend configurations.",
+        description=f"List virtual warehouses in the account with size, state, and auto-suspend configurations. {QUOTED_NAME_NOTE}",
     )
     async def snowflake_list_warehouses(
         pattern: str | None = None,
@@ -44,7 +53,7 @@ def register_warehouse_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             sql = f"SHOW WAREHOUSES LIKE {quote_literal(pattern)}" if pattern else "SHOW WAREHOUSES"
             res = client.execute_query(sql)
-            return {"status": "success", "warehouses": res.get("data", [])}
+            return {"status": "success", "warehouses": with_quoted_names(res.get("data", []))}
         except Exception as e:
             failure = status_error(e)
         raise failure from None

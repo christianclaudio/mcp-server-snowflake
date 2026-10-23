@@ -7,6 +7,7 @@ from typing import Any
 from fastmcp import FastMCP
 
 from snowflake_mcp.connection import (
+    QUOTED_NAME_NOTE,
     Identifier,
     OptionalIdentifier,
     SnowflakeClient,
@@ -14,6 +15,7 @@ from snowflake_mcp.connection import (
     ident_error,
     qualify_ident,
     show_sql,
+    with_quoted_names,
 )
 from snowflake_mcp.errors import SafetyViolationError
 
@@ -32,7 +34,7 @@ def register_stream_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="list_streams",
-        description="List table/view streams in a database or schema.",
+        description=f"List table/view streams in a database or schema. {QUOTED_NAME_NOTE}",
     )
     async def snowflake_list_streams(
         database: OptionalIdentifier = None,
@@ -46,7 +48,7 @@ def register_stream_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             sql = show_sql("STREAMS", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
-            return {"status": "success", "streams": res.get("data", [])}
+            return {"status": "success", "streams": with_quoted_names(res.get("data", []))}
         except Exception as e:
             failure = ident_error(e)
         raise failure from None
