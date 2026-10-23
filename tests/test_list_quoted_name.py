@@ -86,8 +86,10 @@ NOT_SHOW_OBJECT_LISTS = {
 def test_quoted_name_shape_and_parser_round_trip(stored: str, quoted: str) -> None:
     row = {"name": stored, "database_name": "db", "schema_name": "sch", "rows": 3}
     [out] = conn.with_quoted_names([row])
-    assert out == {**row, "quoted_name": quoted}
-    assert list(out) == ["name", "database_name", "schema_name", "rows", "quoted_name"]
+    assert out == {**row, "quoted_name": quoted, "quoted_qualified_name": f'"db"."sch".{quoted}'}
+    assert list(out) == ["name", "database_name", "schema_name", "rows", "quoted_name", "quoted_qualified_name"]
+    # The qualified form resolves to exactly the stored database, schema and name.
+    assert conn.split_ident(out["quoted_qualified_name"]) == ["db", "sch", stored]
     # The #54 parser resolves quoted_name to exactly the stored name, as one part.
     assert conn.split_ident(out["quoted_name"]) == [stored]
     assert conn.quote_ident(out["quoted_name"]) == quoted
@@ -106,10 +108,36 @@ def test_quoted_name_leaves_input_and_other_rows_alone() -> None:
     before = copy.deepcopy(rows)
     out = conn.with_quoted_names(rows)
     assert rows == before
-    assert out == [{"name": "a", "quoted_name": '"a"'}, *before[1:]]
+    assert out == [
+        {"name": "a", "quoted_name": '"a"'},
+        *before[1:5],
+        {"name": "b", "quoted_name": "kept"},
+        "not a row",
+    ]
     assert conn.with_quoted_names(None) is None
     assert conn.with_quoted_names({"name": "x"}) == {"name": "x"}
     assert conn.with_quoted_names([]) == []
+
+
+def test_quoted_qualified_name_needs_a_database_and_a_schema() -> None:
+    rows: list[Any] = [
+        {"name": "t", "database_name": "d"},
+        {"name": "t", "schema_name": "s"},
+        {"name": "t", "database_name": "", "schema_name": "s"},
+        {"name": "t", "database_name": "d", "schema_name": None},
+        {"name": "t", "database_name": "d", "schema_name": "s", "quoted_qualified_name": "kept"},
+        {"name": 'a"b', "database_name": "My.Db", "schema_name": 'x"y'},
+    ]
+    out = conn.with_quoted_names(rows)
+    assert [row.get("quoted_qualified_name") for row in out] == [
+        None,
+        None,
+        None,
+        None,
+        "kept",
+        '"My.Db"."x""y"."a""b"',
+    ]
+    assert all(row["quoted_name"] for row in out)
 
 
 # ---------------------------------------------------------------------------
@@ -129,7 +157,10 @@ async def test_every_show_list_tool_adds_quoted_name_and_keeps_fields() -> None:
     rows = [
         {"name": stored, "database_name": "my_db", "schema_name": "My.Schema", "owner": "SYSADMIN"} for stored in STORED
     ]
-    want = [{**row, "quoted_name": quoted} for row, quoted in zip(rows, QUOTED, strict=True)]
+    want = [
+        {**row, "quoted_name": quoted, "quoted_qualified_name": f'"my_db"."My.Schema".{quoted}'}
+        for row, quoted in zip(rows, QUOTED, strict=True)
+    ]
     sf, run = _mock_client(rows)
     async with Client(create_server(client=sf)) as client:
         names = {t.name for t in await client.list_tools()}
@@ -155,7 +186,10 @@ async def test_every_list_tool_is_classified_and_only_show_lists_carry_the_note(
     noted = {name for name, t in tools.items() if (t.description or "").endswith(conn.QUOTED_NAME_NOTE)}
     assert noted == set(SHOW_LIST_TOOLS)
     # The server instructions name the field once, in the identifier rule.
-    assert conn.IDENT_RULE.endswith("Each list tool row's quoted_name is that name already double-quoted.")
+    assert conn.IDENT_RULE.endswith(
+        "Each list tool row's quoted_name is that name already double-quoted, and a row with a database "
+        "and schema also has quoted_qualified_name, the full database.schema.name already double-quoted."
+    )
     # Output schemas stay the open object they were; quoted_name is one more key in each row.
     for name in SHOW_LIST_TOOLS:
         assert tools[name].output_schema == {"additionalProperties": True, "type": "object"}
@@ -262,6 +296,7 @@ async def test_round_trip_of_list_quoted_names_into_describe_and_drop() -> None:
             "database_name": "my.Db",
             "schema_name": 'Sch"ema',
             "quoted_name": '"Mixed.Case ""t"""',
+            "quoted_qualified_name": '"my.Db"."Sch""ema"."Mixed.Case ""t"""',
         }
         qtbl = tbl["quoted_name"]
 

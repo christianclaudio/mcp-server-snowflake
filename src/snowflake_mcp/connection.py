@@ -105,33 +105,47 @@ def split_object_name(name: str) -> list[str]:
     return parts
 
 
-def _quote_resolved(part: str) -> str:
+def quote_resolved(part: str) -> str:
     """Double-quote an already resolved identifier, doubling any ``"`` inside it."""
     return '"' + part.replace('"', '""') + '"'
 
 
-QUOTED_NAME_NOTE = "Each row also has quoted_name, the name in double quotes for identifier arguments."
+QUOTED_NAME_NOTE = (
+    "Each row also has quoted_name, the name in double quotes for identifier arguments, and, when the "
+    "row has a database and schema, quoted_qualified_name."
+)
 """The sentence every list tool's description ends with (see ``with_quoted_names``)."""
 
 
+def _with_quoted_name(row: dict[str, Any]) -> dict[str, Any]:
+    """One ``SHOW`` row with ``quoted_name`` and, if it has a database and schema, ``quoted_qualified_name``."""
+    out = dict(row)
+    name = row["name"]
+    out.setdefault("quoted_name", quote_resolved(name))
+    db, sch = row.get("database_name"), row.get("schema_name")
+    if isinstance(db, str) and db and isinstance(sch, str) and sch:
+        out.setdefault("quoted_qualified_name", ".".join(quote_resolved(p) for p in (db, sch, name)))
+    return out
+
+
 def with_quoted_names(rows: Any) -> Any:
-    """``SHOW`` rows with ``quoted_name`` added: each row's ``name`` as a double-quoted identifier.
+    """``SHOW`` rows with ``quoted_name`` added, and ``quoted_qualified_name`` where it applies.
 
     ``SHOW`` returns names exactly as Snowflake stores them, and an unquoted name resolves to
     uppercase, so ``my_table`` must be passed back as ``"my_table"``. A double-quoted identifier
     keeps its exact case, and a ``"`` inside it is written as two quotes
     (https://docs.snowflake.com/en/sql-reference/identifiers-syntax), so ``quoted_name`` wraps
     ``name`` in double quotes and doubles each ``"`` in it; ``split_ident`` resolves it back to
-    exactly ``name``. Only a non-empty string ``name`` gets one, a row that already has a
-    ``quoted_name`` key is left as is, every other field is unchanged, and anything that is not a
-    list is returned as is.
+    exactly ``name``. A row that also has a non-empty string ``database_name`` and
+    ``schema_name`` gets ``quoted_qualified_name``: database, schema and name each quoted the same
+    way and joined with ``.``, so the object resolves the same from any session schema. Only a
+    non-empty string ``name`` gets either field, a key the row already has is left as is, every
+    other field is unchanged, and anything that is not a list is returned as is.
     """
     if not isinstance(rows, list):
         return rows
     return [
-        {**row, "quoted_name": _quote_resolved(row["name"])}
-        if isinstance(row, dict) and isinstance(row.get("name"), str) and row["name"] and "quoted_name" not in row
-        else row
+        _with_quoted_name(row) if isinstance(row, dict) and isinstance(row.get("name"), str) and row["name"] else row
         for row in rows
     ]
 
@@ -150,7 +164,7 @@ def quote_ident(name: str) -> str:
     ``orders`` becomes ``"ORDERS"`` (unquoted names resolve to uppercase), ``"Orders"`` stays
     ``"Orders"``, and ``"a""b"`` stays ``"a""b"``.
     """
-    return _quote_resolved(resolve_ident(name))
+    return quote_resolved(resolve_ident(name))
 
 
 def qualify_ident(name: str, *prefix: str | None) -> str:
@@ -163,7 +177,7 @@ def qualify_ident(name: str, *prefix: str | None) -> str:
     parts = split_object_name(name)
     if len(parts) == 1:
         parts = [resolve_ident(p) for p in prefix if p] + parts
-    return ".".join(_quote_resolved(p) for p in parts)
+    return ".".join(quote_resolved(p) for p in parts)
 
 
 IDENT_HINT = (
@@ -180,7 +194,8 @@ IDENT_RULE = (
     "A name that itself contains a dot must be in double quotes, since an unquoted dot separates "
     "database, schema and object. List tools return names exactly as Snowflake stores them; pass "
     'each one back in double quotes unless it is all uppercase, for example "my_table". '
-    "Each list tool row's quoted_name is that name already double-quoted."
+    "Each list tool row's quoted_name is that name already double-quoted, and a row with a database "
+    "and schema also has quoted_qualified_name, the full database.schema.name already double-quoted."
 )
 """The full identifier rule, stated once in the server instructions."""
 

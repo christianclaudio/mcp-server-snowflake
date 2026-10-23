@@ -14,6 +14,7 @@ from snowflake_mcp.connection import (
     drop_result,
     enforce_read_only_sql,
     ident_error,
+    qualify_ident,
     quote_ident,
     quote_literal,
     read_only_enabled,
@@ -60,11 +61,7 @@ def register_pipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            target = (
-                f"{quote_ident(db)}.{quote_ident(sch)}.{quote_ident(pipe_name)}"
-                if db and sch
-                else quote_ident(pipe_name)
-            )
+            target = qualify_ident(pipe_name, db, sch) if db and sch else qualify_ident(pipe_name)
             sql = f"DESCRIBE PIPE {target}"
             res = client.execute_query(sql)
             return {"status": "success", "pipe": target, "details": res.get("data", [])}
@@ -124,11 +121,7 @@ def register_pipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            target = (
-                f"{quote_ident(db)}.{quote_ident(sch)}.{quote_ident(pipe_name)}"
-                if db and sch
-                else quote_ident(pipe_name)
-            )
+            target = qualify_ident(pipe_name, db, sch) if db and sch else qualify_ident(pipe_name)
             sql = f"DROP PIPE IF EXISTS {target}"
             res = client.execute_query(sql)
             return drop_result({"status": "success", "pipe": target, "result": res.get("data")})

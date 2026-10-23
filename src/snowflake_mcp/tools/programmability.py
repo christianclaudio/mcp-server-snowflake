@@ -14,7 +14,6 @@ from snowflake_mcp.connection import (
     SnowflakeClient,
     ident_error,
     qualify_ident,
-    quote_ident,
     quote_literal,
     show_sql,
     with_quoted_names,
@@ -197,11 +196,7 @@ def register_programmability_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            target = (
-                f"{quote_ident(db)}.{quote_ident(sch)}.{quote_ident(secret_name)}"
-                if db and sch
-                else quote_ident(secret_name)
-            )
+            target = qualify_ident(secret_name, db, sch) if db and sch else qualify_ident(secret_name)
             sql = f"DESCRIBE SECRET {target}"
             res = client.execute_query(sql)
             return {"status": "success", "secret": target, "details": res.get("data", [])}

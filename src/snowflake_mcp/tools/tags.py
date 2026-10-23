@@ -13,8 +13,11 @@ from snowflake_mcp.connection import (
     SnowflakeClient,
     ident_error,
     qualify_ident,
+    quote_ident,
     quote_literal,
+    quote_resolved,
     show_sql,
+    split_object_name,
     with_quoted_names,
 )
 from snowflake_mcp.errors import SafetyViolationError, status_error
@@ -54,15 +57,26 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Describe tag properties, allowed values, and comment.",
     )
     async def snowflake_describe_tag(
-        tag_name: str,
+        tag_name: Identifier,
         database: OptionalIdentifier = None,
         schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
-        """Describe tag via SHOW TAGS."""
+        """Describe tag via SHOW TAGS, scoped to the tag's database and schema.
+
+        A dotted *tag_name* supplies its own schema (``schema.tag``) or database and schema
+        (``database.schema.tag``), parsed quote-aware like every other object name; the missing
+        parts come from *database* and *schema_name*, then the session defaults. The tag part
+        alone goes to ``LIKE``.
+        """
         try:
+            parts = split_object_name(tag_name)
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            sql = show_sql("TAGS", pattern=tag_name, database=db, schema=sch)
+            scope = [quote_ident(p) if p else None for p in (db, sch)]
+            # Parts from tag_name are already resolved, so they are quoted as they stand.
+            scope[3 - len(parts) :] = [quote_resolved(p) for p in parts[:-1]]
+            pattern = parts[-1] if len(parts) > 1 else tag_name
+            sql = show_sql("TAGS", pattern=pattern, database=scope[0], schema=scope[1])
 
             res = client.execute_query(sql)
             data = res.get("data", [])

@@ -15,6 +15,7 @@ from snowflake_mcp.connection import (
     enforce_read_only_sql,
     ident_error,
     is_sql_read_only,
+    qualify_ident,
     quote_ident,
     quote_literal,
     read_only_enabled,
@@ -61,11 +62,7 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            target = (
-                f"{quote_ident(db)}.{quote_ident(sch)}.{quote_ident(alert_name)}"
-                if db and sch
-                else quote_ident(alert_name)
-            )
+            target = qualify_ident(alert_name, db, sch) if db and sch else qualify_ident(alert_name)
             sql = f"DESCRIBE ALERT {target}"
             res = client.execute_query(sql)
             return {"status": "success", "alert": target, "details": res.get("data", [])}
@@ -139,11 +136,7 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            target = (
-                f"{quote_ident(db)}.{quote_ident(sch)}.{quote_ident(alert_name)}"
-                if db and sch
-                else quote_ident(alert_name)
-            )
+            target = qualify_ident(alert_name, db, sch) if db and sch else qualify_ident(alert_name)
             sql = f"DROP ALERT IF EXISTS {target}"
             res = client.execute_query(sql)
             return drop_result({"status": "success", "alert": target, "result": res.get("data")})
