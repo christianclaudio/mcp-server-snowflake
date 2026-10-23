@@ -77,6 +77,13 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         none, the call fails with a not-found error. An unquoted tag part keeps the
         case-insensitive ``LIKE`` lookup and returns the first row, or ``{}``.
 
+        Schema filter: only rows whose ``schema_name`` equals the resolved schema, and, when a
+        database resolves, whose ``database_name`` equals it, are kept, compared case-sensitively
+        like names. ``IN SCHEMA`` alone is not enough: "If no database is in use, specifying
+        SCHEMA has no effect on the output" (https://docs.snowflake.com/en/sql-reference/sql/show-tags),
+        so a same-named tag from another schema could come back. It is dropped, and the lookup
+        reports not-found (a quoted tag part) or ``{}`` (an unquoted one), never the wrong tag.
+
         Row cap: ``SHOW ... LIKE`` treats ``_`` and ``%`` as wildcards with no documented escape
         (https://docs.snowflake.com/en/sql-reference/sql/show-tags), so a name containing them
         can match more tags than the one asked for. Only the first ``max_rows`` rows (1,000 by
@@ -104,6 +111,10 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
             res = client.execute_query(sql)
             data = res.get("data", [])
+            if resolved[1]:
+                data = exact_show_rows(data, resolved[1], key="schema_name")
+            if resolved[0]:
+                data = exact_show_rows(data, resolved[0], key="database_name")
             if exact is not None:
                 data = exact_show_rows(data, exact)
                 if not data:

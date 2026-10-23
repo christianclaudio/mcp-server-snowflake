@@ -222,11 +222,11 @@ def show_like_name(name: str) -> tuple[str, str | None]:
     return name, None
 
 
-def exact_show_rows(rows: Any, exact: str) -> list[dict[str, Any]]:
-    """The ``SHOW`` rows whose ``name`` equals *exact*, case-sensitively."""
+def exact_show_rows(rows: Any, exact: str, key: str = "name") -> list[dict[str, Any]]:
+    """The ``SHOW`` rows whose *key* column (``name`` by default) equals *exact*, case-sensitively."""
     if not isinstance(rows, list):
         return []
-    return [row for row in rows if isinstance(row, dict) and row.get("name") == exact]
+    return [row for row in rows if isinstance(row, dict) and row.get(key) == exact]
 
 
 def show_not_found(kind: str, exact: str) -> ResourceNotFoundError:

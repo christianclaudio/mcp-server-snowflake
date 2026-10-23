@@ -269,3 +269,37 @@ async def test_describe_tag_with_a_schema_and_no_database_scopes_to_that_schema(
     async with Client(create_server(client=sf)) as client:
         await client.call_tool("tags_describe_tag", {"tag_name": tag_name, "schema_name": schema}, raise_on_error=False)
     assert run.call_args.args[0] == want
+
+
+@pytest.mark.asyncio
+async def test_describe_tag_keeps_only_the_resolved_schema_and_database() -> None:
+    """SHOW TAGS can ignore IN SCHEMA when no database is in use
+    (https://docs.snowflake.com/en/sql-reference/sql/show-tags), so rows from another schema are
+    dropped by their schema_name and database_name, compared exactly."""
+    right = {"name": "cost_center", "database_name": "DB", "schema_name": "SCH", "comment": "right"}
+    wrong = {"name": "cost_center", "database_name": "DB", "schema_name": "OTHER", "comment": "wrong"}
+    other_db = {"name": "cost_center", "database_name": "DB2", "schema_name": "SCH", "comment": "other db"}
+    lower = {"name": "cost_center", "database_name": "DB", "schema_name": "sch", "comment": "lowercase"}
+    sf = SnowflakeClient(config=SnowflakeConfig(account="acc", user="usr", read_only=False))
+    run = MagicMock(return_value={"data": [wrong, lower, right]})
+    sf.execute_query = run  # type: ignore[method-assign]
+    async with Client(create_server(client=sf)) as client:
+        # Schema only (no database resolves): the schema filter still applies.
+        got = _payload(await client.call_tool("tags_describe_tag", {"tag_name": 'sch."cost_center"'}))
+        assert run.call_args.args[0] == "SHOW TAGS LIKE 'cost_center' IN SCHEMA \"SCH\""
+        assert got["details"] == right
+        # Database and schema: the database filter applies too.
+        run.return_value = {"data": [other_db, wrong, right]}
+        got = _payload(await client.call_tool("tags_describe_tag", {"tag_name": 'db.sch."cost_center"'}))
+        assert got["details"] == right
+
+        # Only rows from the wrong schema or database: not-found for a quoted tag, {} for an unquoted one.
+        run.return_value = {"data": [wrong, lower, other_db]}
+        result = await client.call_tool("tags_describe_tag", {"tag_name": 'db.sch."cost_center"'}, raise_on_error=False)
+        assert result.is_error
+        assert json.loads(result.content[0].text)["error"].startswith(
+            'Tag "cost_center" does not exist or not authorized.'
+        )
+        run.return_value = {"data": [wrong, lower]}
+        got = _payload(await client.call_tool("tags_describe_tag", {"tag_name": "sch.cost_center"}))
+        assert got["details"] == {}

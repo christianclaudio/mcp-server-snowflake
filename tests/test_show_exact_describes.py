@@ -31,7 +31,12 @@ DESCRIBES = {
 SCOPE = ' IN SCHEMA "DB"."SCH"'
 
 
-def _client(rows: list[Any]) -> tuple[SnowflakeClient, MagicMock]:
+def _client(rows: list[Any], scope: tuple[str, str] = ("DB", "SCH")) -> tuple[SnowflakeClient, MagicMock]:
+    # Rows carry the database and schema SHOW TAGS reports, so describe_tag's scope filter keeps them.
+    for row in rows:
+        if isinstance(row, dict):
+            row.setdefault("database_name", scope[0])
+            row.setdefault("schema_name", scope[1])
     sf = SnowflakeClient(config=SnowflakeConfig(account="acc", user="usr", database="DB", schema="SCH"))
     run = MagicMock(return_value={"data": [dict(r) if isinstance(r, dict) else r for r in rows]})
     sf.execute_query = run  # type: ignore[method-assign]
@@ -114,6 +119,9 @@ async def test_unquoted_names_keep_the_old_lookup() -> None:
         assert run.call_args.args[0] == "SHOW ROLES LIKE 'my_%'"
         tag = json.loads((await client.call_tool("tags_describe_tag", {"tag_name": "my_wh"})).content[0].text)
         assert run.call_args.args[0] == "SHOW TAGS LIKE 'my_wh'" + SCOPE
+    qualified_rows = [{"name": "MYXWH"}, {"name": "MY_WH"}]
+    sf, run = _client(qualified_rows, scope=("Db", "s"))
+    async with Client(create_server(client=sf)) as client:
         qualified = json.loads(
             (await client.call_tool("tags_describe_tag", {"tag_name": '"Db"."s".my_wh'})).content[0].text
         )
@@ -122,7 +130,7 @@ async def test_unquoted_names_keep_the_old_lookup() -> None:
     assert wh["details"] == rows[0]
     assert role["details"] == rows
     assert tag["details"] == rows[0]
-    assert qualified["details"] == rows[0]
+    assert qualified["details"] == qualified_rows[0]
 
     sf, _run = _client([])
     async with Client(create_server(client=sf)) as client:
@@ -136,11 +144,15 @@ async def test_unquoted_names_keep_the_old_lookup() -> None:
 
 @pytest.mark.asyncio
 async def test_qualified_tag_with_a_quoted_tag_part_matches_exactly() -> None:
-    sf, run = _client([{"name": "COST_CENTER"}, {"name": "cost_center"}])
+    sf, run = _client([{"name": "COST_CENTER"}, {"name": "cost_center"}], scope=("OTHER", "S"))
     async with Client(create_server(client=sf)) as client:
         result = await client.call_tool("tags_describe_tag", {"tag_name": 'other."S"."cost_center"'})
     assert run.call_args.args[0] == 'SHOW TAGS LIKE \'cost_center\' IN SCHEMA "OTHER"."S"'
-    assert json.loads(result.content[0].text)["details"] == {"name": "cost_center"}
+    assert json.loads(result.content[0].text)["details"] == {
+        "name": "cost_center",
+        "database_name": "OTHER",
+        "schema_name": "S",
+    }
 
 
 @pytest.mark.asyncio
