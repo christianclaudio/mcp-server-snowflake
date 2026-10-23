@@ -98,11 +98,7 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            target = (
-                f"{quote_ident(db)}.{quote_ident(sch)}.{quote_ident(alert_name)}"
-                if db and sch
-                else quote_ident(alert_name)
-            )
+            target = qualify_ident(alert_name, db, sch) if db and sch else qualify_ident(alert_name)
             # CREATE ALERT takes COMMENT with the other properties, before IF(EXISTS(...)) THEN;
             # after the action it is a syntax error
             # (https://docs.snowflake.com/en/sql-reference/sql/create-alert).
@@ -159,11 +155,7 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            target = (
-                f"{quote_ident(db)}.{quote_ident(sch)}.{quote_ident(alert_name)}"
-                if db and sch
-                else quote_ident(alert_name)
-            )
+            target = qualify_ident(alert_name, db, sch) if db and sch else qualify_ident(alert_name)
             sql = f"ALTER ALERT {target} RESUME"
             res = client.execute_query(sql)
             return {"status": "success", "alert": target, "result": res.get("data")}
@@ -186,11 +178,7 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            target = (
-                f"{quote_ident(db)}.{quote_ident(sch)}.{quote_ident(alert_name)}"
-                if db and sch
-                else quote_ident(alert_name)
-            )
+            target = qualify_ident(alert_name, db, sch) if db and sch else qualify_ident(alert_name)
             sql = f"ALTER ALERT {target} SUSPEND"
             res = client.execute_query(sql)
             return {"status": "success", "alert": target, "result": res.get("data")}
