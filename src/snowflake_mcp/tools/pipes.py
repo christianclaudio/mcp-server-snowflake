@@ -60,7 +60,7 @@ def register_pipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            target = qualify_ident(pipe_name, db, sch) if db and sch else qualify_ident(pipe_name)
+            target = qualify_ident(pipe_name, db, sch)
             sql = f"DESCRIBE PIPE {target}"
             res = client.execute_query(sql)
             return {"status": "success", "pipe": target, "details": res.get("data", [])}
@@ -87,7 +87,7 @@ def register_pipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            target = qualify_ident(pipe_name, db, sch) if db and sch else qualify_ident(pipe_name)
+            target = qualify_ident(pipe_name, db, sch)
             exists_clause = "IF NOT EXISTS " if if_not_exists else ""
             auto_ingest_str = "TRUE" if auto_ingest else "FALSE"
             sql = f"CREATE PIPE {exists_clause}{target} AUTO_INGEST = {auto_ingest_str} AS {copy_statement}"
@@ -116,7 +116,7 @@ def register_pipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            target = qualify_ident(pipe_name, db, sch) if db and sch else qualify_ident(pipe_name)
+            target = qualify_ident(pipe_name, db, sch)
             sql = f"DROP PIPE IF EXISTS {target}"
             res = client.execute_query(sql)
             return drop_result({"status": "success", "pipe": target, "result": res.get("data")})

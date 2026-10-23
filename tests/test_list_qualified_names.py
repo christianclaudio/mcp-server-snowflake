@@ -188,7 +188,8 @@ async def test_bare_names_keep_their_old_sql() -> None:
     [
         (None, None, "obj", '"OBJ"', '"OBJ"'),
         (None, None, 'd."S".obj', '"D"."S"."OBJ"', '"D"."S"."OBJ"'),
-        ("db", None, "obj", '"OBJ"', '"DB".."OBJ"'),
+        ("db", None, "obj", '"DB".."OBJ"', '"DB".."OBJ"'),
+        (None, "sch", "obj", '"SCH"."OBJ"', '"SCH"."OBJ"'),
         ("db", None, '"S"."p"', '"S"."p"', '"S"."p"'),
         ("db", "sch", '"x"."y"."z"', '"x"."y"."z"', '"x"."y"."z"'),
     ],
@@ -196,9 +197,9 @@ async def test_bare_names_keep_their_old_sql() -> None:
 async def test_targets_without_session_defaults(
     database: str | None, schema: str | None, name: str, want: str, want_policy: str
 ) -> None:
-    """With no session defaults: a bare name is prefixed only when both a database and a schema
-    are given, a dotted one is used as given, and the policy tools keep their ``db..name`` form
-    for a bare name with only a database, as before."""
+    """With no session defaults: a bare name is prefixed with whatever database and schema are
+    given, a database alone giving ``db..name`` (the PUBLIC schema), and a dotted one is used as
+    given. With neither, the SQL is unchanged."""
     sf = SnowflakeClient(config=SnowflakeConfig(account="acc", user="usr", read_only=False))
     run = MagicMock(return_value={"data": [{"status": "ok"}]})
     sf.execute_query = run  # type: ignore[method-assign]

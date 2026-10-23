@@ -130,8 +130,8 @@ async def test_alert_and_pipe_lifecycle_round_trip_quoted_qualified_name() -> No
         (True, None, None, "obj", '"SESSION_DB"."SESSION_SCH"."OBJ"'),
         (True, "d", '"S"', '"o b"', '"D"."S"."o b"'),
         (False, None, None, "obj", '"OBJ"'),
-        (False, "db", None, '"o b"', '"o b"'),
-        (False, None, "sch", "obj", '"OBJ"'),
+        (False, "db", None, '"o b"', '"DB".."o b"'),
+        (False, None, "sch", "obj", '"SCH"."OBJ"'),
         (False, "db", None, '"S"."p"', '"S"."p"'),
         (True, None, None, '"x"."y"."z"', '"x"."y"."z"'),
     ],
@@ -139,8 +139,8 @@ async def test_alert_and_pipe_lifecycle_round_trip_quoted_qualified_name() -> No
 async def test_lifecycle_targets(
     defaults: bool, database: str | None, schema: str | None, name: str, want: str
 ) -> None:
-    """A bare name keeps the old SQL: prefixed only when a database and a schema are both known.
-    A dotted name is used as given."""
+    """A bare name is prefixed with the database and schema that are known, a database alone
+    giving ``db..name``; with neither, the SQL is unchanged. A dotted name is used as given."""
     extra = {"database": "SESSION_DB", "schema": "SESSION_SCH"} if defaults else {}
     sf = SnowflakeClient(config=SnowflakeConfig(account="acc", user="usr", read_only=False, **extra))
     run = MagicMock(return_value={"data": [{"status": "ok"}]})

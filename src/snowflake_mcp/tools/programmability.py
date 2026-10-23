@@ -196,7 +196,7 @@ def register_programmability_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            target = qualify_ident(secret_name, db, sch) if db and sch else qualify_ident(secret_name)
+            target = qualify_ident(secret_name, db, sch)
             sql = f"DESCRIBE SECRET {target}"
             res = client.execute_query(sql)
             return {"status": "success", "secret": target, "details": res.get("data", [])}

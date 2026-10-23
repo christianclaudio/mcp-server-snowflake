@@ -77,3 +77,39 @@ async def test_database_only_bare_name_targets_the_public_schema(tool: str) -> N
     assert not any('"DB"."OBJ"' in sql or '"DB"."TBL"' in sql for sql in sent), (tool, sent)
     if tool == "streams_create_stream":
         assert any('ON TABLE "DB".."TBL"' in sql for sql in sent), sent
+
+
+# The alert, pipe, secret and policy tools: tool -> (name argument, other arguments, SQL prefix)
+ELEVEN = {
+    "alerts_describe_alert": ("alert_name", {}, "DESCRIBE ALERT "),
+    "alerts_drop_alert": ("alert_name", {"confirm": True}, "DROP ALERT IF EXISTS "),
+    "alerts_create_alert": (
+        "alert_name",
+        {"warehouse_name": "wh", "schedule": "5 MINUTE", "condition_sql": "SELECT 1", "action_sql": "SELECT 2"},
+        "CREATE ALERT ",
+    ),
+    "alerts_suspend_alert": ("alert_name", {}, "ALTER ALERT "),
+    "alerts_resume_alert": ("alert_name", {}, "ALTER ALERT "),
+    "pipes_describe_pipe": ("pipe_name", {}, "DESCRIBE PIPE "),
+    "pipes_drop_pipe": ("pipe_name", {"confirm": True}, "DROP PIPE IF EXISTS "),
+    "pipes_create_pipe": ("pipe_name", {"copy_statement": "COPY INTO t FROM @s"}, "CREATE PIPE IF NOT EXISTS "),
+    "programmability_describe_secret": ("secret_name", {}, "DESCRIBE SECRET "),
+    "horizon_describe_masking_policy": ("policy_name", {}, "DESCRIBE MASKING POLICY "),
+    "horizon_describe_row_access_policy": ("policy_name", {}, "DESCRIBE ROW ACCESS POLICY "),
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("tool", sorted(ELEVEN))
+async def test_alert_pipe_secret_and_policy_tools_keep_a_database_only_scope(tool: str) -> None:
+    """A database with no schema gives ``"DB".."OBJ"``, and is never dropped; with neither, the
+    bare name is sent as before."""
+    arg, args, prefix = ELEVEN[tool]
+    sf = SnowflakeClient(config=SnowflakeConfig(account="acc", user="usr", read_only=False))
+    run = MagicMock(return_value={"data": [{"status": "ok"}]})
+    sf.execute_query = run  # type: ignore[method-assign]
+    async with Client(create_server(client=sf)) as client:
+        await client.call_tool(tool, {arg: "obj", "database": "db", **args})
+        assert run.call_args.args[0].startswith(f'{prefix}"DB".."OBJ"'), run.call_args.args[0]
+        await client.call_tool(tool, {arg: "obj", **args})
+        assert run.call_args.args[0].startswith(f'{prefix}"OBJ"'), run.call_args.args[0]

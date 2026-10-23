@@ -13,7 +13,6 @@ from snowflake_mcp.connection import (
     SnowflakeClient,
     ident_error,
     qualify_ident,
-    quote_ident,
     quote_literal,
     resolve_ident,
     show_sql,
@@ -21,18 +20,6 @@ from snowflake_mcp.connection import (
     with_quoted_names,
 )
 from snowflake_mcp.errors import status_error
-
-
-def _policy_target(policy_name: str, db: str | None, sch: str | None) -> str:
-    """Qualify a masking or row access policy name for ``DESCRIBE``.
-
-    A dotted *policy_name* is used as given (``qualify_ident``). An undotted one is prefixed with
-    *db* and *sch* when both are set, or written ``db..name`` (the database's ``PUBLIC`` schema,
-    https://docs.snowflake.com/en/sql-reference/name-resolution) when only *db* is.
-    """
-    if db and not sch and len(split_object_name(policy_name)) == 1:
-        return f"{quote_ident(db)}..{quote_ident(policy_name)}"
-    return qualify_ident(policy_name, db, sch) if db and sch else qualify_ident(policy_name)
 
 
 def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
@@ -173,7 +160,7 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            target = _policy_target(policy_name, db, sch)
+            target = qualify_ident(policy_name, db, sch)
 
             sql = f"DESCRIBE MASKING POLICY {target}"
             res = client.execute_query(sql)
@@ -216,7 +203,7 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            target = _policy_target(policy_name, db, sch)
+            target = qualify_ident(policy_name, db, sch)
 
             sql = f"DESCRIBE ROW ACCESS POLICY {target}"
             res = client.execute_query(sql)

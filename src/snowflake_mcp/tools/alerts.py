@@ -62,7 +62,7 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            target = qualify_ident(alert_name, db, sch) if db and sch else qualify_ident(alert_name)
+            target = qualify_ident(alert_name, db, sch)
             sql = f"DESCRIBE ALERT {target}"
             res = client.execute_query(sql)
             return {"status": "success", "alert": target, "details": res.get("data", [])}
@@ -98,7 +98,7 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            target = qualify_ident(alert_name, db, sch) if db and sch else qualify_ident(alert_name)
+            target = qualify_ident(alert_name, db, sch)
             # CREATE ALERT takes COMMENT with the other properties, before IF(EXISTS(...)) THEN;
             # after the action it is a syntax error
             # (https://docs.snowflake.com/en/sql-reference/sql/create-alert).
@@ -132,7 +132,7 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            target = qualify_ident(alert_name, db, sch) if db and sch else qualify_ident(alert_name)
+            target = qualify_ident(alert_name, db, sch)
             sql = f"DROP ALERT IF EXISTS {target}"
             res = client.execute_query(sql)
             return drop_result({"status": "success", "alert": target, "result": res.get("data")})
@@ -155,7 +155,7 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            target = qualify_ident(alert_name, db, sch) if db and sch else qualify_ident(alert_name)
+            target = qualify_ident(alert_name, db, sch)
             sql = f"ALTER ALERT {target} RESUME"
             res = client.execute_query(sql)
             return {"status": "success", "alert": target, "result": res.get("data")}
@@ -178,7 +178,7 @@ def register_alert_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            target = qualify_ident(alert_name, db, sch) if db and sch else qualify_ident(alert_name)
+            target = qualify_ident(alert_name, db, sch)
             sql = f"ALTER ALERT {target} SUSPEND"
             res = client.execute_query(sql)
             return {"status": "success", "alert": target, "result": res.get("data")}
