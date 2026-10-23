@@ -183,7 +183,9 @@ async def test_tools_missing_branches() -> None:
         await tools["stages_remove_stage_file"].fn(stage_file_path="my_stage/file.csv", confirm=False)
 
     # tags: no db/schema and db only
-    await tools["tags_describe_tag"].fn(tag_name="TG", database="DB", schema_name=None)
+    # The mocked row has no database_name, so with a database the lookup is not-found.
+    with pytest.raises(ToolError, match="does not exist"):
+        await tools["tags_describe_tag"].fn(tag_name="TG", database="DB", schema_name=None)
     await tools["tags_describe_tag"].fn(tag_name="TG", database=None, schema_name=None)
 
     # warehouses: load history, fallback, and drop wh

@@ -7,15 +7,17 @@ from typing import Any
 from fastmcp import FastMCP
 
 from snowflake_mcp.connection import (
+    QUOTED_NAME_NOTE,
     Identifier,
     OptionalIdentifier,
     SnowflakeClient,
     ident_error,
-    quote_ident,
+    qualify_ident,
     quote_literal,
     resolve_ident,
     show_sql,
     split_object_name,
+    with_quoted_names,
 )
 from snowflake_mcp.errors import status_error
 
@@ -40,7 +42,10 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             clean_name = name_parts[-1]
             db_filter = name_parts[-3] if len(name_parts) >= 3 else (resolve_ident(database) if database else None)
             sch_filter = (
-                name_parts[-2] if len(name_parts) >= 2 else (resolve_ident(schema_name) if schema_name else None)
+                # An empty schema (db..name) is the database's PUBLIC schema (see split_ident).
+                (name_parts[-2] or "PUBLIC")
+                if len(name_parts) >= 2
+                else (resolve_ident(schema_name) if schema_name else None)
             )
             dir_mode = direction.strip().lower()
 
@@ -126,7 +131,7 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="list_masking_policies",
-        description="List column masking policies in the account, database, or schema.",
+        description=f"List column masking policies in the account, database, or schema. {QUOTED_NAME_NOTE}",
     )
     async def snowflake_list_masking_policies(
         database: OptionalIdentifier = None,
@@ -140,7 +145,7 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             sql = show_sql("MASKING POLICIES", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
-            return {"status": "success", "masking_policies": res.get("data", [])}
+            return {"status": "success", "masking_policies": with_quoted_names(res.get("data", []))}
         except Exception as e:
             failure = ident_error(e)
         raise failure from None
@@ -158,12 +163,7 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            if db and sch:
-                target = f"{quote_ident(db)}.{quote_ident(sch)}.{quote_ident(policy_name)}"
-            elif db:
-                target = f"{quote_ident(db)}..{quote_ident(policy_name)}"
-            else:
-                target = quote_ident(policy_name)
+            target = qualify_ident(policy_name, db, sch)
 
             sql = f"DESCRIBE MASKING POLICY {target}"
             res = client.execute_query(sql)
@@ -174,7 +174,7 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="list_row_access_policies",
-        description="List row access policies defined in the account, database, or schema.",
+        description=f"List row access policies defined in the account, database, or schema. {QUOTED_NAME_NOTE}",
     )
     async def snowflake_list_row_access_policies(
         database: OptionalIdentifier = None,
@@ -188,7 +188,7 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             sql = show_sql("ROW ACCESS POLICIES", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
-            return {"status": "success", "row_access_policies": res.get("data", [])}
+            return {"status": "success", "row_access_policies": with_quoted_names(res.get("data", []))}
         except Exception as e:
             failure = ident_error(e)
         raise failure from None
@@ -206,12 +206,7 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            if db and sch:
-                target = f"{quote_ident(db)}.{quote_ident(sch)}.{quote_ident(policy_name)}"
-            elif db:
-                target = f"{quote_ident(db)}..{quote_ident(policy_name)}"
-            else:
-                target = quote_ident(policy_name)
+            target = qualify_ident(policy_name, db, sch)
 
             sql = f"DESCRIBE ROW ACCESS POLICY {target}"
             res = client.execute_query(sql)
