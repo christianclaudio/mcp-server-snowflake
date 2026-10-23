@@ -247,3 +247,25 @@ async def test_describe_tag_refuses_a_malformed_or_four_part_name() -> None:
             result = await client.call_tool("tags_describe_tag", {"tag_name": bad}, raise_on_error=False)
             assert result.is_error, bad
     run.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tag_name", "schema", "want"),
+    [
+        ("sch.cost_center", None, "SHOW TAGS LIKE 'COST_CENTER' IN SCHEMA \"SCH\""),
+        ('"S x"."Tg"', None, "SHOW TAGS LIKE 'Tg' IN SCHEMA \"S x\""),
+        ("cost_center", "sch", "SHOW TAGS LIKE 'cost_center' IN SCHEMA \"SCH\""),
+    ],
+)
+async def test_describe_tag_with_a_schema_and_no_database_scopes_to_that_schema(
+    tag_name: str, schema: str | None, want: str
+) -> None:
+    """With no database, the schema still scopes SHOW TAGS (in the current database), so a
+    same-named tag in another schema is not returned."""
+    sf = SnowflakeClient(config=SnowflakeConfig(account="acc", user="usr", read_only=False))
+    run = MagicMock(return_value={"data": []})
+    sf.execute_query = run  # type: ignore[method-assign]
+    async with Client(create_server(client=sf)) as client:
+        await client.call_tool("tags_describe_tag", {"tag_name": tag_name, "schema_name": schema}, raise_on_error=False)
+    assert run.call_args.args[0] == want

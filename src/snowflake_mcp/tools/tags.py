@@ -68,8 +68,9 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
         A dotted *tag_name* supplies its own schema (``schema.tag``) or database and schema
         (``database.schema.tag``), parsed quote-aware like every other object name; the missing
-        parts come from *database* and *schema_name*, then the session defaults. The tag part
-        alone goes to ``LIKE``. A tag part in double quotes (as in a list tool's ``quoted_name``
+        parts come from *database* and *schema_name*, then the session defaults. A schema with
+        no database scopes the lookup to ``IN SCHEMA <schema>`` in the current database. The tag
+        part alone goes to ``LIKE``. A tag part in double quotes (as in a list tool's ``quoted_name``
         or ``quoted_qualified_name``) is unquoted and sent to ``LIKE`` as is, and only the row
         whose name equals it exactly, case-sensitively, is kept; if there is none, the call fails
         with a not-found error. An unquoted tag part keeps the case-insensitive ``LIKE`` lookup
@@ -93,6 +94,11 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             exact = parts[-1] if str(tag_name).rstrip().endswith('"') else None
             pattern = parts[-1] if len(parts) > 1 or exact is not None else tag_name
             sql = show_sql("TAGS", pattern=pattern, database=scope[0], schema=scope[1])
+            if scope[1] and not scope[0]:
+                # A schema with no database: scope to it in the current database, as the other
+                # tools resolve a schema-only name, rather than search the whole database. SHOW
+                # TAGS takes IN SCHEMA <schema_name> (https://docs.snowflake.com/en/sql-reference/sql/show-tags).
+                sql += f" IN SCHEMA {scope[1]}"
 
             res = client.execute_query(sql)
             data = res.get("data", [])
