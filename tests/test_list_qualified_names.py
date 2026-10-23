@@ -228,7 +228,11 @@ async def test_describe_tag_scopes_show_tags_to_the_name(
     run = MagicMock(return_value={"data": []})
     acct.client.execute_query = run  # type: ignore[method-assign]
     async with Client(create_server(client=acct.client)) as client:
-        await client.call_tool("tags_describe_tag", {"tag_name": tag_name, "database": database, "schema_name": schema})
+        await client.call_tool(
+            "tags_describe_tag",
+            {"tag_name": tag_name, "database": database, "schema_name": schema},
+            raise_on_error=False,
+        )
     assert run.call_args.args[0] == want
 
 

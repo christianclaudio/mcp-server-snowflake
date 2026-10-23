@@ -7,15 +7,18 @@ from typing import Any
 from fastmcp import FastMCP
 
 from snowflake_mcp.connection import (
+    EXACT_NAME_NOTE,
     QUOTED_NAME_NOTE,
     Identifier,
     OptionalIdentifier,
     SnowflakeClient,
+    exact_show_rows,
     ident_error,
     qualify_ident,
     quote_ident,
     quote_literal,
     quote_resolved,
+    show_not_found,
     show_sql,
     split_object_name,
     with_quoted_names,
@@ -54,7 +57,7 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="describe_tag",
-        description="Describe tag properties, allowed values, and comment.",
+        description=f"Describe tag properties, allowed values, and comment. {EXACT_NAME_NOTE}",
     )
     async def snowflake_describe_tag(
         tag_name: Identifier,
@@ -66,7 +69,18 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         A dotted *tag_name* supplies its own schema (``schema.tag``) or database and schema
         (``database.schema.tag``), parsed quote-aware like every other object name; the missing
         parts come from *database* and *schema_name*, then the session defaults. The tag part
-        alone goes to ``LIKE``.
+        alone goes to ``LIKE``. A tag part in double quotes (as in a list tool's ``quoted_name``
+        or ``quoted_qualified_name``) is unquoted and sent to ``LIKE`` as is, and only the row
+        whose name equals it exactly, case-sensitively, is kept; if there is none, the call fails
+        with a not-found error. An unquoted tag part keeps the case-insensitive ``LIKE`` lookup
+        and returns the first row, or ``{}``.
+
+        Row cap: ``SHOW ... LIKE`` treats ``_`` and ``%`` as wildcards with no documented escape
+        (https://docs.snowflake.com/en/sql-reference/sql/show-tags), so a name containing them
+        can match more tags than the one asked for. Only the first ``max_rows`` rows (1,000 by
+        default) are read, and ``SHOW TAGS`` handles at most 10,000 rows, so in a scope with that
+        many look-alike names the target can be cut off and reported as not found, or the
+        command can fail.
         """
         try:
             parts = split_object_name(tag_name)
@@ -75,11 +89,17 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             scope = [quote_ident(p) if p else None for p in (db, sch)]
             # Parts from tag_name are already resolved, so they are quoted as they stand.
             scope[3 - len(parts) :] = [quote_resolved(p) for p in parts[:-1]]
-            pattern = parts[-1] if len(parts) > 1 else tag_name
+            # split_ident refuses a stray quote, so a name ending in one ends in a quoted tag part.
+            exact = parts[-1] if str(tag_name).rstrip().endswith('"') else None
+            pattern = parts[-1] if len(parts) > 1 or exact is not None else tag_name
             sql = show_sql("TAGS", pattern=pattern, database=scope[0], schema=scope[1])
 
             res = client.execute_query(sql)
             data = res.get("data", [])
+            if exact is not None:
+                data = exact_show_rows(data, exact)
+                if not data:
+                    raise show_not_found("Tag", exact)
             details = data[0] if data else {}
             return {"status": "success", "tag": tag_name, "details": details}
         except Exception as e:

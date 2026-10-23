@@ -8,14 +8,18 @@ from fastmcp import FastMCP
 
 from snowflake_mcp.config import SnowflakeConfig
 from snowflake_mcp.connection import (
+    EXACT_NAME_NOTE,
     QUOTED_NAME_NOTE,
     Identifier,
     OptionalIdentifier,
     SnowflakeClient,
     drop_result,
+    exact_show_rows,
     ident_error,
     quote_ident,
     quote_literal,
+    show_like_name,
+    show_not_found,
     with_quoted_names,
 )
 from snowflake_mcp.errors import SafetyViolationError, status_error
@@ -104,18 +108,36 @@ def register_governance_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="describe_role",
-        description="Describe role properties and assigned grants.",
+        description=f"Describe role properties and assigned grants. {EXACT_NAME_NOTE}",
     )
     async def snowflake_describe_role(
         role_name: str,
     ) -> dict[str, Any]:
-        """Describe role."""
+        """Describe role via ``SHOW ROLES LIKE``.
+
+        A double-quoted *role_name* (as a list tool's ``quoted_name``) is unquoted and sent to
+        ``LIKE`` as is, and only the rows whose name equals it exactly, case-sensitively, are
+        kept; if there are none, the call fails with a not-found error. Any other value keeps the
+        case-insensitive ``LIKE`` lookup and returns every row it matched.
+
+        Row cap: ``SHOW ... LIKE`` treats ``_`` and ``%`` as wildcards with no documented escape
+        (https://docs.snowflake.com/en/sql-reference/sql/show-roles), so a name containing them
+        can match more roles than the one asked for. Only the first ``max_rows`` rows (1,000 by
+        default) are read, and ``SHOW`` returns at most 10,000 rows, so in an account with that
+        many look-alike names the target can be cut off and reported as not found.
+        """
         try:
-            sql = f"SHOW ROLES LIKE {quote_literal(role_name)}"
+            pattern, exact = show_like_name(role_name)
+            sql = f"SHOW ROLES LIKE {quote_literal(pattern)}"
             res = client.execute_query(sql)
-            return {"status": "success", "role": role_name, "details": res.get("data", [])}
+            data = res.get("data", [])
+            if exact is not None:
+                data = exact_show_rows(data, exact)
+                if not data:
+                    raise show_not_found("Role", exact)
+            return {"status": "success", "role": role_name, "details": data}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(

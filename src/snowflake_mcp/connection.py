@@ -111,8 +111,8 @@ def quote_resolved(part: str) -> str:
 
 
 QUOTED_NAME_NOTE = (
-    "Each row also has quoted_name, the name in double quotes for identifier arguments, and, when the "
-    "row has a database and schema, quoted_qualified_name."
+    "Each row also has quoted_name, the name in double quotes, and, when the row has a database "
+    "and schema, quoted_qualified_name."
 )
 """The sentence every list tool's description ends with (see ``with_quoted_names``)."""
 
@@ -178,6 +178,37 @@ def qualify_ident(name: str, *prefix: str | None) -> str:
     if len(parts) == 1:
         parts = [resolve_ident(p) for p in prefix if p] + parts
     return ".".join(quote_resolved(p) for p in parts)
+
+
+EXACT_NAME_NOTE = "A name in double quotes, such as a list row's quoted_name, must match exactly."
+"""The description sentence of the describe tools that keep only an exact match for a quoted name."""
+
+
+def show_like_name(name: str) -> tuple[str, str | None]:
+    """The ``SHOW ... LIKE`` pattern for one named object, and the exact name to keep, if any.
+
+    ``SHOW ... LIKE`` matches case-insensitively and treats ``_`` and ``%`` as wildcards, with no
+    documented escape (https://docs.snowflake.com/en/sql-reference/sql/show-warehouses). A name in
+    double quotes is resolved (``""`` becomes ``"``) and returned twice: as the pattern, sent as
+    is, and as the exact name the caller keeps from the rows (``exact_show_rows``). Any other value
+    is returned unchanged as the pattern, with no exact name, as before.
+    """
+    if str(name).strip().startswith('"'):
+        exact = resolve_ident(name)
+        return exact, exact
+    return name, None
+
+
+def exact_show_rows(rows: Any, exact: str) -> list[dict[str, Any]]:
+    """The ``SHOW`` rows whose ``name`` equals *exact*, case-sensitively."""
+    if not isinstance(rows, list):
+        return []
+    return [row for row in rows if isinstance(row, dict) and row.get("name") == exact]
+
+
+def show_not_found(kind: str, exact: str) -> ResourceNotFoundError:
+    """The not-found error for a quoted name ``SHOW ... LIKE`` returned no exact row for."""
+    return ResourceNotFoundError(f"{kind} {quote_resolved(exact)} does not exist or not authorized.")
 
 
 IDENT_HINT = (
