@@ -150,3 +150,31 @@ async def test_lifecycle_targets(
             await client.call_tool(tool, {arg: name, "database": database, "schema_name": schema, **args})
             sql = run.call_args.args[0]
             assert sql.startswith(f"{before}{want}{after}"), (tool, sql)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("database", "schema", "name", "want_target", "want_literal"),
+    [
+        ("db", None, "p", '"DB".."P"', '\'"DB".."P"\''),
+        ("db", "sch", '"My Pipe"', '"DB"."SCH"."My Pipe"', '\'"DB"."SCH"."My Pipe"\''),
+        (None, None, '"it\'s"', '"it\'s"', "'\"it''s\"'"),
+        (None, None, "p", '"P"', "'\"P\"'"),
+    ],
+)
+async def test_get_pipe_status_qualifies_the_name_inside_the_literal(
+    database: str | None, schema: str | None, name: str, want_target: str, want_literal: str
+) -> None:
+    """The name is qualified with ``qualify_ident`` and sent as a string constant, ``'`` doubled
+    (https://docs.snowflake.com/en/sql-reference/functions/system_pipe_status)."""
+    sf = SnowflakeClient(config=SnowflakeConfig(account="acc", user="usr", read_only=False))
+    run = MagicMock(return_value={"data": [{"STATUS": "{}"}]})
+    sf.execute_query = run  # type: ignore[method-assign]
+    async with Client(create_server(client=sf)) as client:
+        payload = _payload(
+            await client.call_tool(
+                "pipes_get_pipe_status", {"pipe_name": name, "database": database, "schema_name": schema}
+            )
+        )
+    assert run.call_args.args[0] == f"SELECT SYSTEM$PIPE_STATUS({want_literal}) AS status"
+    assert payload["pipe"] == want_target

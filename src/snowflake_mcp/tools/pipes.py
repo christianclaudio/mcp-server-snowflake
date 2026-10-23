@@ -20,7 +20,7 @@ from snowflake_mcp.connection import (
     show_sql,
     with_quoted_names,
 )
-from snowflake_mcp.errors import SafetyViolationError, status_error
+from snowflake_mcp.errors import SafetyViolationError
 
 
 def register_pipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
@@ -129,18 +129,25 @@ def register_pipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Get execution and health status of a Snowpipe (pending file count, last ingested timestamp).",
     )
     async def snowflake_get_pipe_status(
-        pipe_name: str,
-        database: str | None = None,
-        schema_name: str | None = None,
+        pipe_name: Identifier,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
-        """Get pipe status via SYSTEM$PIPE_STATUS."""
+        """Get pipe status via SYSTEM$PIPE_STATUS.
+
+        The pipe name is qualified like every other object name (``qualify_ident``) and passed
+        as a string constant (``quote_literal``). The function takes the name as a string, with
+        the whole qualified name in single quotes and a case-sensitive or special-character name
+        in double quotes inside them, as in ``'"<pipe_name>"'``
+        (https://docs.snowflake.com/en/sql-reference/functions/system_pipe_status).
+        """
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            target = f"{db}.{sch}.{pipe_name}" if db and sch else pipe_name
+            target = qualify_ident(pipe_name, db, sch)
             sql = f"SELECT SYSTEM$PIPE_STATUS({quote_literal(target)}) AS status"
             res = client.execute_query(sql)
             return {"status": "success", "pipe": target, "pipe_status": res.get("data", [])}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
