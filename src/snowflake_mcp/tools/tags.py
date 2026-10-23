@@ -83,8 +83,12 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         database resolves, whose ``database_name`` equals it, are kept, compared case-sensitively
         like names. ``IN SCHEMA`` alone is not enough: "If no database is in use, specifying
         SCHEMA has no effect on the output" (https://docs.snowflake.com/en/sql-reference/sql/show-tags),
-        so a same-named tag from another schema could come back. It is dropped, and the lookup
-        reports not-found, never the wrong tag.
+        so a same-named tag from another schema, or from the same-named schema in another
+        database, could come back. Rows from another schema are dropped. When a database
+        resolves, rows from another database are dropped too. When none does, the rows left are
+        grouped by ``database_name``: rows from more than one database fail with an ambiguity
+        error that names those databases and asks for ``database.schema.tag``; rows from exactly
+        one database are returned as usual; no row is the not-found error.
 
         Row cap: ``SHOW ... LIKE`` treats ``_`` and ``%`` as wildcards with no documented escape
         (https://docs.snowflake.com/en/sql-reference/sql/show-tags), so a name containing them
@@ -119,9 +123,21 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
                 data = exact_show_rows(data, resolved[0], key="database_name")
             if exact is not None:
                 data = exact_show_rows(data, exact)
+            name = exact if exact is not None else parts[-1]
             if not data:
                 # A miss has one shape, quoted or not: the not-found error.
-                raise show_not_found("Tag", exact if exact is not None else parts[-1])
+                raise show_not_found("Tag", name)
+            if not resolved[0]:
+                # IN SCHEMA has no effect with no database in use, so rows can come from several
+                # databases; one of them is not picked silently.
+                dbs = sorted({row["database_name"] for row in data if isinstance(row.get("database_name"), str)})
+                if len(dbs) > 1:
+                    where = f" schema {quote_resolved(resolved[1])} of" if resolved[1] else ""
+                    raise ValueError(
+                        f"Tag {quote_resolved(name)} is ambiguous: it was found in{where} more than one "
+                        f"database ({', '.join(quote_resolved(d) for d in dbs)}). Name it as "
+                        "database.schema.tag, for example a list row's quoted_qualified_name."
+                    )
             details = data[0]
             return {"status": "success", "tag": tag_name, "details": details}
         except Exception as e:

@@ -306,3 +306,42 @@ async def test_describe_tag_keeps_only_the_resolved_schema_and_database() -> Non
         assert json.loads(result.content[0].text)["error"].startswith(
             'Tag "COST_CENTER" does not exist or not authorized.'
         )
+
+
+@pytest.mark.asyncio
+async def test_describe_tag_with_no_database_refuses_a_tag_found_in_two_databases() -> None:
+    """With no database in use, IN SCHEMA has no effect
+    (https://docs.snowflake.com/en/sql-reference/sql/show-tags), so the same schema and tag can
+    come back from two databases. Neither is picked: the error names both and asks for db.schema.tag."""
+    one = {"name": "cost_center", "database_name": "Db2", "schema_name": "SCH"}
+    two = {"name": "cost_center", "database_name": "DB1", "schema_name": "SCH"}
+    sf = SnowflakeClient(config=SnowflakeConfig(account="acc", user="usr", read_only=False))
+    run = MagicMock(return_value={"data": [one, two]})
+    sf.execute_query = run  # type: ignore[method-assign]
+    async with Client(create_server(client=sf)) as client:
+        for tag_name in ('sch."cost_center"', "sch.cost_center"):
+            result = await client.call_tool("tags_describe_tag", {"tag_name": tag_name}, raise_on_error=False)
+            assert run.call_args.args[0].endswith(' IN SCHEMA "SCH"')
+            assert result.is_error, tag_name
+            error = json.loads(result.content[0].text)["error"]
+            assert "is ambiguous" in error, error
+            assert 'schema "SCH" of more than one database ("DB1", "Db2")' in error, error
+            assert "database.schema.tag" in error, error
+        # With no schema either, the error still names both databases.
+        result = await client.call_tool("tags_describe_tag", {"tag_name": "cost_center"}, raise_on_error=False)
+        assert run.call_args.args[0] == "SHOW TAGS LIKE 'cost_center'"
+        error = json.loads(result.content[0].text)["error"]
+        assert 'Tag "COST_CENTER" is ambiguous: it was found in more than one database ("DB1", "Db2")' in error
+
+
+@pytest.mark.asyncio
+async def test_describe_tag_with_no_database_returns_a_tag_found_in_one_database() -> None:
+    row = {"name": "cost_center", "database_name": "DB1", "schema_name": "SCH", "comment": "only"}
+    other_schema = {"name": "cost_center", "database_name": "DB2", "schema_name": "OTHER"}
+    sf = SnowflakeClient(config=SnowflakeConfig(account="acc", user="usr", read_only=False))
+    run = MagicMock(return_value={"data": [other_schema, row]})
+    sf.execute_query = run  # type: ignore[method-assign]
+    async with Client(create_server(client=sf)) as client:
+        got = _payload(await client.call_tool("tags_describe_tag", {"tag_name": 'sch."cost_center"'}))
+    assert run.call_args.args[0] == "SHOW TAGS LIKE 'cost_center' IN SCHEMA \"SCH\""
+    assert got["details"] == row
