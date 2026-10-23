@@ -107,7 +107,7 @@ def test_quote_ident_rejects_non_single(raw: str) -> None:
 def test_qualify_ident_prefix_only_for_single_part() -> None:
     assert conn.qualify_ident("t", "db", "sch") == '"DB"."SCH"."T"'
     assert conn.qualify_ident("t", None, "sch") == '"SCH"."T"'
-    assert conn.qualify_ident("t", '"My.Db"', None) == '"My.Db"."T"'
+    assert conn.qualify_ident("t", '"My.Db"', None) == '"My.Db".."T"'
     assert conn.qualify_ident("x.t", "db", "sch") == '"X"."T"'
     with pytest.raises(ValueError, match="single identifier"):
         conn.qualify_ident("t", "a.b")

@@ -173,8 +173,16 @@ def qualify_ident(name: str, *prefix: str | None) -> str:
     A single-part *name* is prefixed with each non-empty *prefix* (for example database, then
     schema), each resolved as one identifier; a dotted *name* is used as given. Raises
     ``ValueError`` for more than three parts (see ``split_object_name``).
+
+    When *prefix* is a database and schema pair and only the database is set, the name is
+    written ``database..name``. Snowflake reads a two-part name as ``<schema_name>.<object_name>``
+    in the current database, while ``<database_name>..<object_name>`` means "the PUBLIC default
+    schema is always referenced" (https://docs.snowflake.com/en/sql-reference/name-resolution),
+    so ``"DB"."NAME"`` would look for a schema called ``DB``.
     """
     parts = split_object_name(name)
+    if len(parts) == 1 and len(prefix) == 2 and prefix[0] and not prefix[1]:
+        return f"{quote_ident(prefix[0])}..{quote_resolved(parts[0])}"
     if len(parts) == 1:
         parts = [resolve_ident(p) for p in prefix if p] + parts
     return ".".join(quote_resolved(p) for p in parts)
