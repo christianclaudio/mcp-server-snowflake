@@ -253,3 +253,29 @@ async def test_object_targets_still_accept_database_dot_dot_names() -> None:
         # A schema target with a schema part is unchanged.
         await client.call_tool("schemas_describe_schema", {"schema_name": "db.s"})
         assert run.call_args.args[0] == 'DESCRIBE SCHEMA "DB"."S"'
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name", ["db. .p", '"DB". ."P"', "db.\t.p"])
+async def test_whitespace_only_middle_part_is_refused(name: str) -> None:
+    """Only two adjacent dots leave the schema empty (``db..p``); anything between them, even
+    whitespace, is an empty part and is refused before any SQL runs, on every path."""
+    for parse in (conn.split_ident, conn.split_object_name, conn.qualify_ident, conn.refuse_empty_part):
+        with pytest.raises(ValueError, match="Empty identifier part"):
+            parse(name)
+    sf = SnowflakeClient(config=SnowflakeConfig(account="acc", user="usr", read_only=False))
+    run = MagicMock(return_value={"data": [{"status": "ok"}]})
+    sf.execute_query = run  # type: ignore[method-assign]
+    calls = {
+        "pipes_get_pipe_status": {"pipe_name": name},
+        "tables_describe_table": {"table_name": name},
+        "alerts_describe_alert": {"alert_name": name},
+        "tags_describe_tag": {"tag_name": name},
+        "schemas_describe_schema": {"schema_name": name},
+    }
+    async with Client(create_server(client=sf)) as client:
+        for tool, args in calls.items():
+            result = await client.call_tool(tool, args, raise_on_error=False)
+            assert result.is_error, tool
+            assert "Empty identifier part" in json.loads(result.content[0].text)["error"], tool
+    run.assert_not_called()
