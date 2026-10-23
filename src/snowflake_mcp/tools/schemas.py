@@ -15,6 +15,7 @@ from snowflake_mcp.connection import (
     ident_error,
     qualify_ident,
     quote_literal,
+    refuse_empty_part,
     show_sql,
     with_quoted_names,
 )
@@ -22,7 +23,12 @@ from snowflake_mcp.errors import SafetyViolationError
 
 
 def qualify_schema_target(name: str, database: str | None = None) -> str:
-    """Quote a schema name with ``quote_ident`` per part, prefixing ``database`` unless dotted."""
+    """Quote a schema name with ``quote_ident`` per part, prefixing ``database`` unless dotted.
+
+    ``db..x`` is refused (``refuse_empty_part``): the empty middle means the PUBLIC schema of an
+    object name, and a schema target has none.
+    """
+    refuse_empty_part(name)
     return qualify_ident(name, database)
 
 

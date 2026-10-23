@@ -17,6 +17,7 @@ from snowflake_mcp.connection import (
     qualify_ident,
     quote_literal,
     quote_resolved,
+    refuse_empty_part,
     resolve_ident,
     show_not_found,
     show_sql,
@@ -75,14 +76,15 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         tool's ``quoted_name`` or ``quoted_qualified_name``) is unquoted and sent to ``LIKE`` as
         is, and only the row whose name equals it exactly, case-sensitively, is kept; if there is
         none, the call fails with a not-found error. An unquoted tag part keeps the
-        case-insensitive ``LIKE`` lookup and returns the first row, or ``{}``.
+        case-insensitive ``LIKE`` lookup and returns the first row; with no row it fails with the
+        same not-found error.
 
         Schema filter: only rows whose ``schema_name`` equals the resolved schema, and, when a
         database resolves, whose ``database_name`` equals it, are kept, compared case-sensitively
         like names. ``IN SCHEMA`` alone is not enough: "If no database is in use, specifying
         SCHEMA has no effect on the output" (https://docs.snowflake.com/en/sql-reference/sql/show-tags),
         so a same-named tag from another schema could come back. It is dropped, and the lookup
-        reports not-found (a quoted tag part) or ``{}`` (an unquoted one), never the wrong tag.
+        reports not-found, never the wrong tag.
 
         Row cap: ``SHOW ... LIKE`` treats ``_`` and ``%`` as wildcards with no documented escape
         (https://docs.snowflake.com/en/sql-reference/sql/show-tags), so a name containing them
@@ -117,9 +119,10 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
                 data = exact_show_rows(data, resolved[0], key="database_name")
             if exact is not None:
                 data = exact_show_rows(data, exact)
-                if not data:
-                    raise show_not_found("Tag", exact)
-            details = data[0] if data else {}
+            if not data:
+                # A miss has one shape, quoted or not: the not-found error.
+                raise show_not_found("Tag", exact if exact is not None else parts[-1])
+            details = data[0]
             return {"status": "success", "tag": tag_name, "details": details}
         except Exception as e:
             failure = ident_error(e)
@@ -180,6 +183,8 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             )
 
         try:
+            if domain_upper == "SCHEMA":
+                refuse_empty_part(object_name)
             sql = (
                 f"ALTER {domain_upper} {_qualified(object_name)} SET TAG {_qualified(tag_name)} = "
                 f"{quote_literal(tag_value)}"

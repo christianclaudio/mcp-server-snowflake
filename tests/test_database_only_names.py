@@ -195,7 +195,61 @@ async def test_dot_dot_names_mean_public_in_tag_and_lineage_lookups() -> None:
     run = MagicMock(return_value={"data": []})
     sf.execute_query = run  # type: ignore[method-assign]
     async with Client(create_server(client=sf)) as client:
-        await client.call_tool("tags_describe_tag", {"tag_name": "db..cost_center"})
+        await client.call_tool("tags_describe_tag", {"tag_name": "db..cost_center"}, raise_on_error=False)
         assert run.call_args.args[0] == 'SHOW TAGS LIKE \'COST_CENTER\' IN SCHEMA "DB"."PUBLIC"'
         await client.call_tool("horizon_get_object_lineage", {"object_name": "db..t", "direction": "upstream"})
         assert run.call_args.args[0].endswith("AND REFERENCING_DATABASE = 'DB' AND REFERENCING_SCHEMA = 'PUBLIC'")
+
+
+# schema tool -> other arguments; the schema target argument gets the bad name
+SCHEMA_TARGETS = {
+    "schemas_describe_schema": ("schema_name", {}),
+    "schemas_create_schema": ("name", {}),
+    "schemas_drop_schema": ("name", {"confirm": True}),
+    "schemas_undrop_schema": ("name", {}),
+    "schemas_clone_schema": ("source_schema", {"target_schema": "t"}),
+    "schemas_clone_schema_target": ("target_schema", {"source_schema": "s"}),
+}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name", ["db..x", '"DB".."X"', '"Db" .. x'])
+async def test_schema_targets_refuse_the_empty_middle(name: str) -> None:
+    """``db..x`` is an object in the PUBLIC schema, not a schema, so schema targets refuse it locally."""
+    with pytest.raises(ValueError, match="Empty identifier part"):
+        conn.refuse_empty_part(name)
+    sf = SnowflakeClient(config=SnowflakeConfig(account="acc", user="usr", read_only=False))
+    run = MagicMock(return_value={"data": [{"status": "ok"}]})
+    sf.execute_query = run  # type: ignore[method-assign]
+    async with Client(create_server(client=sf)) as client:
+        for key, (arg, args) in SCHEMA_TARGETS.items():
+            tool = key.removesuffix("_target")
+            result = await client.call_tool(tool, {arg: name, **args}, raise_on_error=False)
+            assert result.is_error, (tool, arg)
+            assert "Empty identifier part" in json.loads(result.content[0].text)["error"], (tool, arg)
+        result = await client.call_tool(
+            "tags_set_object_tag",
+            {"object_name": name, "object_domain": "SCHEMA", "tag_name": "t", "tag_value": "v"},
+            raise_on_error=False,
+        )
+        assert result.is_error
+        assert "Empty identifier part" in json.loads(result.content[0].text)["error"]
+    run.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_object_targets_still_accept_database_dot_dot_names() -> None:
+    sf = SnowflakeClient(config=SnowflakeConfig(account="acc", user="usr", read_only=False))
+    run = MagicMock(return_value={"data": [{"status": "ok"}]})
+    sf.execute_query = run  # type: ignore[method-assign]
+    async with Client(create_server(client=sf)) as client:
+        await client.call_tool("tables_describe_table", {"table_name": "db..t"})
+        assert '"DB".."T"' in run.call_args.args[0]
+        await client.call_tool(
+            "tags_set_object_tag",
+            {"object_name": "db..t", "object_domain": "TABLE", "tag_name": "db..tg", "tag_value": "v"},
+        )
+        assert run.call_args.args[0] == 'ALTER TABLE "DB".."T" SET TAG "DB".."TG" = \'v\''
+        # A schema target with a schema part is unchanged.
+        await client.call_tool("schemas_describe_schema", {"schema_name": "db.s"})
+        assert run.call_args.args[0] == 'DESCRIBE SCHEMA "DB"."S"'

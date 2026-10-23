@@ -293,7 +293,7 @@ async def test_describe_tag_keeps_only_the_resolved_schema_and_database() -> Non
         got = _payload(await client.call_tool("tags_describe_tag", {"tag_name": 'db.sch."cost_center"'}))
         assert got["details"] == right
 
-        # Only rows from the wrong schema or database: not-found for a quoted tag, {} for an unquoted one.
+        # Only rows from the wrong schema or database: not-found, for a quoted tag and an unquoted one.
         run.return_value = {"data": [wrong, lower, other_db]}
         result = await client.call_tool("tags_describe_tag", {"tag_name": 'db.sch."cost_center"'}, raise_on_error=False)
         assert result.is_error
@@ -301,5 +301,8 @@ async def test_describe_tag_keeps_only_the_resolved_schema_and_database() -> Non
             'Tag "cost_center" does not exist or not authorized.'
         )
         run.return_value = {"data": [wrong, lower]}
-        got = _payload(await client.call_tool("tags_describe_tag", {"tag_name": "sch.cost_center"}))
-        assert got["details"] == {}
+        result = await client.call_tool("tags_describe_tag", {"tag_name": "sch.cost_center"}, raise_on_error=False)
+        assert result.is_error
+        assert json.loads(result.content[0].text)["error"].startswith(
+            'Tag "COST_CENTER" does not exist or not authorized.'
+        )

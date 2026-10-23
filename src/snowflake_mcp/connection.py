@@ -100,6 +100,20 @@ def split_ident(name: str) -> list[str]:
         i += 1  # the "." between parts
 
 
+def refuse_empty_part(name: str) -> None:
+    """Refuse an empty part in a name that is a schema target rather than an object in a schema.
+
+    ``split_ident`` accepts the empty schema of ``db..name`` because it names an object in the
+    database's PUBLIC schema (https://docs.snowflake.com/en/sql-reference/name-resolution). A
+    schema target has no schema part to leave empty, so there it is refused like any other empty
+    part, before any SQL runs.
+    """
+    if "" in split_ident(name):
+        raise ValueError(
+            f"Empty identifier part in {str(name)!r}; database..name names an object in the PUBLIC schema, not a schema"
+        )
+
+
 MAX_NAME_PARTS = 3
 """``database.schema.object``: the most parts a Snowflake object name can have."""
 

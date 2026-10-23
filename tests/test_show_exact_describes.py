@@ -138,8 +138,11 @@ async def test_unquoted_names_keep_the_old_lookup() -> None:
             (await client.call_tool("warehouses_describe_warehouse", {"warehouse_name": "x"})).content[0].text
         )
         role = json.loads((await client.call_tool("governance_describe_role", {"role_name": "x"})).content[0].text)
-        tag = json.loads((await client.call_tool("tags_describe_tag", {"tag_name": "x"})).content[0].text)
-    assert (wh["details"], role["details"], tag["details"]) == (None, [], {})
+        tag = await client.call_tool("tags_describe_tag", {"tag_name": "x"}, raise_on_error=False)
+    assert (wh["details"], role["details"]) == (None, [])
+    # A tag miss has one shape, quoted or not: the not-found error.
+    assert tag.is_error
+    assert json.loads(tag.content[0].text)["error"].startswith('Tag "X" does not exist or not authorized.')
 
 
 @pytest.mark.asyncio

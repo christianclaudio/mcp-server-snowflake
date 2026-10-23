@@ -24,7 +24,7 @@ def mock_client() -> SnowflakeClient:
     client.execute_query = MagicMock(
         return_value={
             "status": "success",
-            "data": [{"result": 1, "name": "TEST", "total_rows": 10}],
+            "data": [{"result": 1, "name": "TEST", "total_rows": 10, "database_name": "DB", "schema_name": "PUBLIC"}],
             "columns": ["result"],
         }
     )
@@ -181,8 +181,10 @@ async def test_specific_branch_conditions(mock_client: SnowflakeClient) -> None:
     await tools["pipes_list_pipes"].fn(database="TEST_DB", schema_name="PUBLIC", pattern="P%")
     await tools["alerts_list_alerts"].fn(database="TEST_DB", schema_name="PUBLIC", pattern="A%")
     await tools["tags_list_tags"].fn(database="TEST_DB", schema_name="PUBLIC", pattern="TG%")
-    await tools["tags_describe_tag"].fn(tag_name="TG", database="TEST_DB", schema_name="PUBLIC")
-    await tools["tags_describe_tag"].fn(tag_name="TG", database="TEST_DB", schema_name=None)
+    # The mocked row is in DB.PUBLIC, so a TEST_DB lookup is not-found.
+    for schema in ("PUBLIC", None):
+        with pytest.raises(ToolError, match="does not exist"):
+            await tools["tags_describe_tag"].fn(tag_name="TG", database="TEST_DB", schema_name=schema)
     await tools["programmability_list_functions"].fn(database="TEST_DB", schema_name="PUBLIC", pattern="F%")
     await tools["programmability_list_procedures"].fn(database="TEST_DB", schema_name="PUBLIC", pattern="P%")
     await tools["programmability_list_secrets"].fn(database="TEST_DB", schema_name="PUBLIC", pattern="S%")
