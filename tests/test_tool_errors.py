@@ -96,3 +96,26 @@ async def test_use_connection_unknown_profile_is_error_result(tmp_path: Path, mo
         "status": "error",
         "error": "Connection profile 'FORGE_NONE' was not found in connections.toml. Available profiles: none.",
     }
+
+
+@pytest.mark.asyncio
+async def test_query_history_failure_is_the_original_error_with_no_fallback() -> None:
+    """``SHOW QUERIES`` is not a Snowflake command, so a failed history query is not retried with it.
+
+    The SHOW command index (https://docs.snowflake.com/en/sql-reference/sql/show) has no
+    ``SHOW QUERIES``; the old fallback could only fail and wrapped the real error in its own.
+    """
+    sf = _client()
+    sf.execute_query.side_effect = RuntimeError(  # type: ignore[attr-defined]
+        "002003 (02000): SQL compilation error: Database 'SNOWFLAKE' does not exist or not authorized."
+    )
+    async with Client(create_server(client=sf)) as client:
+        res = await client.call_tool("queries_get_query_history", {"limit": 5}, raise_on_error=False)
+    assert res.is_error
+    assert json.loads(res.content[0].text) == {
+        "status": "error",
+        "error": "002003 (02000): SQL compilation error: Database 'SNOWFLAKE' does not exist or not authorized.",
+    }
+    sf.execute_query.assert_called_once()  # type: ignore[attr-defined]
+    sql = sf.execute_query.call_args.args[0]  # type: ignore[attr-defined]
+    assert "TABLE(SNOWFLAKE.INFORMATION_SCHEMA.QUERY_HISTORY_BY_USER(RESULT_LIMIT => 5))" in sql
