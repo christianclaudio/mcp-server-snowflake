@@ -335,6 +335,59 @@ async def test_describe_tag_with_no_database_refuses_a_tag_found_in_two_database
 
 
 @pytest.mark.asyncio
+async def test_describe_tag_with_no_database_refuses_when_show_tags_is_cut_off() -> None:
+    """With no database in use, rows that reach the row cap (``has_more``) can hide a match in
+    another database, so even rows from one database are not trusted: the call is the ambiguity
+    error asking for db.schema.tag, not the first row."""
+    row = {"name": "cost_center", "database_name": "DB1", "schema_name": "SCH", "comment": "only"}
+    sf = SnowflakeClient(config=SnowflakeConfig(account="acc", user="usr", read_only=False))
+    run = MagicMock(return_value={"data": [row], "has_more": True})
+    sf.execute_query = run  # type: ignore[method-assign]
+    async with Client(create_server(client=sf)) as client:
+        for tag_name in ('sch."cost_center"', "sch.cost_center"):
+            result = await client.call_tool("tags_describe_tag", {"tag_name": tag_name}, raise_on_error=False)
+            assert run.call_args.args[0].endswith(' IN SCHEMA "SCH"')
+            assert result.is_error, tag_name
+            error = json.loads(result.content[0].text)["error"]
+            assert "is ambiguous: SHOW TAGS returned as many rows as the row cap allows" in error, error
+            assert 'so it may be in schema "SCH" of more than one database. Name it as database.schema.tag' in error
+        result = await client.call_tool("tags_describe_tag", {"tag_name": "cost_center"}, raise_on_error=False)
+        assert run.call_args.args[0] == "SHOW TAGS LIKE 'cost_center'"
+        assert result.is_error
+        assert json.loads(result.content[0].text)["error"] == (
+            'Tag "COST_CENTER" is ambiguous: SHOW TAGS returned as many rows as the row cap allows, so it '
+            "may be in more than one database. Name it as database.schema.tag, for example a list row's "
+            "quoted_qualified_name."
+        )
+        # Rows from two databases that were cut off: the list of databases may be incomplete, so
+        # the error does not name them.
+        run.return_value = {"data": [row, {**row, "database_name": "DB2"}], "has_more": True}
+        result = await client.call_tool("tags_describe_tag", {"tag_name": "sch.cost_center"}, raise_on_error=False)
+        error = json.loads(result.content[0].text)["error"]
+        assert "returned as many rows as the row cap allows" in error, error
+        assert '"DB2"' not in error, error
+        # A miss is still the not-found error, cut off or not.
+        run.return_value = {"data": [], "has_more": True}
+        result = await client.call_tool("tags_describe_tag", {"tag_name": "sch.cost_center"}, raise_on_error=False)
+        assert json.loads(result.content[0].text)["error"].startswith(
+            'Tag "COST_CENTER" does not exist or not authorized.'
+        )
+
+
+@pytest.mark.asyncio
+async def test_describe_tag_with_a_database_returns_the_row_when_show_tags_is_cut_off() -> None:
+    """With a database resolved, the rows are filtered to it, so the row cap does not make the
+    lookup ambiguous: the matching row comes back as before."""
+    row = {"name": "cost_center", "database_name": "DB1", "schema_name": "SCH", "comment": "only"}
+    sf = SnowflakeClient(config=SnowflakeConfig(account="acc", user="usr", read_only=False))
+    run = MagicMock(return_value={"data": [row], "has_more": True})
+    sf.execute_query = run  # type: ignore[method-assign]
+    async with Client(create_server(client=sf)) as client:
+        got = _payload(await client.call_tool("tags_describe_tag", {"tag_name": "db1.sch.cost_center"}))
+    assert got["details"] == row
+
+
+@pytest.mark.asyncio
 async def test_describe_tag_with_no_database_returns_a_tag_found_in_one_database() -> None:
     row = {"name": "cost_center", "database_name": "DB1", "schema_name": "SCH", "comment": "only"}
     other_schema = {"name": "cost_center", "database_name": "DB2", "schema_name": "OTHER"}

@@ -95,7 +95,9 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         can match more tags than the one asked for. Only the first ``max_rows`` rows (1,000 by
         default) are read, and ``SHOW TAGS`` handles at most 10,000 rows, so in a scope with that
         many look-alike names the target can be cut off and reported as not found, or the
-        command can fail.
+        command can fail. When no database resolves and the rows reach the row cap, a match in
+        another database can be cut off too, so the call fails with the ambiguity error instead
+        of returning the first row, even if every row it read comes from one database.
         """
         try:
             parts = split_object_name(tag_name)
@@ -130,9 +132,17 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             if not resolved[0]:
                 # IN SCHEMA has no effect with no database in use, so rows can come from several
                 # databases; one of them is not picked silently.
+                where = f" schema {quote_resolved(resolved[1])} of" if resolved[1] else ""
+                if res.get("has_more"):
+                    # The rows stopped at the row cap, so another database's match can be cut off
+                    # and the set below would look unambiguous: refuse rather than pick data[0].
+                    raise ValueError(
+                        f"Tag {quote_resolved(name)} is ambiguous: SHOW TAGS returned as many rows as "
+                        f"the row cap allows, so it may be in{where} more than one database. Name it as "
+                        "database.schema.tag, for example a list row's quoted_qualified_name."
+                    )
                 dbs = sorted({row["database_name"] for row in data if isinstance(row.get("database_name"), str)})
                 if len(dbs) > 1:
-                    where = f" schema {quote_resolved(resolved[1])} of" if resolved[1] else ""
                     raise ValueError(
                         f"Tag {quote_resolved(name)} is ambiguous: it was found in{where} more than one "
                         f"database ({', '.join(quote_resolved(d) for d in dbs)}). Name it as "
