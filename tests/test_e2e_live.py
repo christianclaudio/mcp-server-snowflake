@@ -301,6 +301,7 @@ _NAMESPACED: dict[str, tuple[str, str]] = {
     "horizon_describe_masking_policy": ("policy_name", _NS_FORM_ARGS),
     "horizon_describe_row_access_policy": ("policy_name", _NS_FORM_ARGS),
     "programmability_describe_secret": ("secret_name", _NS_FORM_ARGS),
+    "tags_describe_tag": ("tag_name", _NS_FORM_ARGS),
     "tables_describe_table": ("table_name", _NS_FORM_DOTTED),
     "tables_get_table_ddl": ("object_name", _NS_FORM_DOTTED),
     "tables_sample_table": ("table_name", _NS_FORM_DOTTED),
@@ -866,14 +867,14 @@ async def test_namespaced_fixtures_send_fully_qualified_sql() -> None:
     snapshot = copy.deepcopy(TOOL_FIXTURES)
     fixtures = namespaced_fixtures(_NS)
     assert TOOL_FIXTURES == snapshot
-    assert len(_NAMESPACED) == 23
-    assert sum(form == "args" for _, form in _NAMESPACED.values()) == 7
+    assert len(_NAMESPACED) == 24
+    assert sum(form == "args" for _, form in _NAMESPACED.values()) == 8
 
     client = SnowflakeClient(config=SnowflakeConfig(account="mock_account", user="mock_user"))
     client.execute_query = MagicMock(return_value={"data": [{"name": "ID", "type": "NUMBER"}]})  # type: ignore[method-assign]
     srv = create_server(client=client)
     for tool_name, (argument, form) in _NAMESPACED.items():
-        assert TOOL_FIXTURES[tool_name][1] == "rejected", tool_name
+        assert TOOL_FIXTURES[tool_name][1] == "rejected" or tool_name in _EMPTY_SUCCESS_TOOLS, tool_name
         arguments = fixtures[tool_name][0]
         if form == "args":
             assert "." not in arguments[argument], tool_name
@@ -885,10 +886,34 @@ async def test_namespaced_fixtures_send_fully_qualified_sql() -> None:
             pass
         sqls = [c.args[0] for c in client.execute_query.call_args_list]
         assert sqls, tool_name
+        if tool_name == "tags_describe_tag":
+            # SHOW TAGS takes the scope as IN SCHEMA <database>.<schema>, not as a name prefix.
+            assert sqls == [_TAG_PROBE_SQL], sqls
+            continue
         prefix = '"Db ""1""".' if form == "schema" else '"Db ""1"""."PUBLIC".'
         for sql in sqls:
             assert prefix in sql, (tool_name, sql)
     assert TOOL_FIXTURES == snapshot
+
+
+_TAG_PROBE_SQL = f"SHOW TAGS LIKE 'E2E_MCP_MISSING_OBJECT' IN SCHEMA {_NS[0]}.{_NS[1]}"
+
+
+@pytest.mark.asyncio
+async def test_describe_tag_probe_is_scoped_to_the_discovered_schema() -> None:
+    """With no current database, a bare tag_name runs SHOW TAGS outside any schema, so the probe
+    passes the discovered database and schema and SHOW TAGS is scoped IN SCHEMA to them."""
+    client = SnowflakeClient(config=SnowflakeConfig(account="mock_account", user="mock_user"))
+    client.execute_query = MagicMock(return_value={"data": []})  # type: ignore[method-assign]
+    srv = create_server(client=client)
+    arguments = namespaced_fixtures(_NS)["tags_describe_tag"][0]
+    assert arguments == {"tag_name": "E2E_MCP_MISSING_OBJECT", "database": _NS[0], "schema_name": _NS[1]}
+    try:
+        await srv.call_tool("tags_describe_tag", arguments)
+    except Exception:
+        pass
+    assert [c.args[0] for c in client.execute_query.call_args_list] == [_TAG_PROBE_SQL]
+    assert TOOL_FIXTURES["tags_describe_tag"][0] == {"tag_name": "E2E_MCP_MISSING_OBJECT"}
 
 
 @pytest.mark.asyncio
@@ -1026,6 +1051,15 @@ async def test_no_warehouse_skip_only_when_unset_and_null(
         (ToolError('{"status": "error", "error": "390114: token expired"}'), False, WAREHOUSE_UNKNOWN),
         (ToolError(f'{{"status": "error", "error": "{_NO_WH}"}}'), False, WAREHOUSE_NULL),
         (ToolError(f'{{"status": "error", "error": "{_NO_WH}"}}'), True, WAREHOUSE_UNKNOWN),
+        # An isError body from the context call is read like a raised error.
+        (_json_result({"status": "error", "error": _NO_WH}, is_error=True), False, WAREHOUSE_NULL),
+        (_json_result({"status": "error", "error": _NO_WH}, is_error=True), True, WAREHOUSE_UNKNOWN),
+        # A joined "fallback failed" error carries a second failure, so it never reads as NULL.
+        (
+            _json_result({"status": "error", "error": f"{_NO_WH}; fallback failed: syntax error"}, is_error=True),
+            False,
+            WAREHOUSE_UNKNOWN,
+        ),
     ],
 )
 async def test_warehouse_state_reading(outcome: Any, configured: bool, state: str) -> None:
