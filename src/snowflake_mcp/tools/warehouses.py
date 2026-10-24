@@ -16,6 +16,7 @@ from snowflake_mcp.connection import (
     ident_error,
     quote_ident,
     quote_literal,
+    resolve_ident,
     show_like_name,
     show_not_found,
     with_quoted_names,
@@ -222,7 +223,14 @@ def register_warehouse_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     async def snowflake_get_warehouse_load_history(
         warehouse_name: str,
     ) -> dict[str, Any]:
-        """Get warehouse load history."""
+        """Get warehouse load history.
+
+        If the ``WAREHOUSE_LOAD_HISTORY`` call fails, the warehouse's ``SHOW WAREHOUSES LIKE`` rows
+        are returned as ``partial`` metadata. A double-quoted *warehouse_name* (as a list tool's
+        ``quoted_name``) is unquoted, sent to ``LIKE`` as is, and only the row whose name equals it
+        exactly, case-sensitively, is kept. If no row is left, the call fails with the not-found
+        error, for a quoted name and an unquoted one alike, rather than an empty ``partial``.
+        """
         try:
             sql = (
                 f"SELECT * FROM TABLE(SNOWFLAKE.INFORMATION_SCHEMA.WAREHOUSE_LOAD_HISTORY(WAREHOUSE_NAME => {quote_literal(warehouse_name)})) "
@@ -232,16 +240,26 @@ def register_warehouse_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             return {"status": "success", "warehouse": warehouse_name, "load_history": res.get("data", [])}
         except Exception as primary_error:
             try:
-                # Fallback to general WAREHOUSE metadata if INFORMATION_SCHEMA function is restricted
-                fallback_sql = f"SHOW WAREHOUSES LIKE {quote_literal(warehouse_name)}"
-                res = client.execute_query(fallback_sql)
-                return {
-                    "status": "partial",
-                    "warehouse": warehouse_name,
-                    "load_history": [],
-                    "warehouse_metadata": res.get("data", []),
-                    "load_history_notice": f"Restricted load history access ({primary_error}). Returned warehouse metadata.",
-                }
+                # Fallback to general WAREHOUSE metadata if INFORMATION_SCHEMA function is restricted.
+                # SHOW ... LIKE reads _ and % as wildcards with no documented escape, so a quoted name
+                # keeps only its exact row (as describe_warehouse does).
+                pattern, exact = show_like_name(warehouse_name)
+                name = exact if exact is not None else resolve_ident(warehouse_name)
+                res = client.execute_query(f"SHOW WAREHOUSES LIKE {quote_literal(pattern)}")
             except Exception as e:
                 failure = status_error(f"{primary_error}; fallback failed: {e}")
+            else:
+                rows = res.get("data", [])
+                if exact is not None:
+                    rows = exact_show_rows(rows, exact)
+                if rows:
+                    return {
+                        "status": "partial",
+                        "warehouse": warehouse_name,
+                        "load_history": [],
+                        "warehouse_metadata": rows,
+                        "load_history_notice": f"Restricted load history access ({primary_error}). Returned warehouse metadata.",
+                    }
+                # No row: the warehouse does not exist or is not visible to this role.
+                failure = ident_error(show_not_found("Warehouse", name))
         raise failure from None

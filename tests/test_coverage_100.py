@@ -199,7 +199,9 @@ async def test_tools_missing_branches() -> None:
         return {"status": "success", "data": []}
 
     client.execute_query.side_effect = wh_side_effect
-    await tools["warehouses_get_warehouse_load_history"].fn(warehouse_name="WH")
+    # An empty SHOW WAREHOUSES fallback is the not-found error, not an empty "partial".
+    with pytest.raises(ToolError, match=r'Warehouse \\"WH\\" does not exist or not authorized'):
+        await tools["warehouses_get_warehouse_load_history"].fn(warehouse_name="WH")
     client.execute_query.side_effect = None
     client.execute_query.return_value = {"status": "success", "data": [{"size": "SMALL"}]}
 

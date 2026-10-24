@@ -184,3 +184,86 @@ async def test_list_note_drops_the_identifier_argument_caveat_and_describes_say_
 def test_exact_show_rows_ignores_non_lists() -> None:
     assert conn.exact_show_rows(None, "A") == []
     assert conn.exact_show_rows({"name": "A"}, "A") == []
+
+
+LOAD_HISTORY = "warehouses_get_warehouse_load_history"
+
+
+def _load_history_client(rows: list[Any]) -> tuple[SnowflakeClient, MagicMock]:
+    """The WAREHOUSE_LOAD_HISTORY call fails, so the tool falls back to SHOW WAREHOUSES LIKE."""
+
+    def run(sql: str, **_kwargs: object) -> dict[str, Any]:
+        if "WAREHOUSE_LOAD_HISTORY" in sql:
+            raise Exception("primary failed")
+        return {"data": [dict(r) if isinstance(r, dict) else r for r in rows]}
+
+    sf = SnowflakeClient(config=SnowflakeConfig(account="acc", user="usr"))
+    mock = MagicMock(side_effect=run)
+    sf.execute_query = mock  # type: ignore[method-assign]
+    return sf, mock
+
+
+@pytest.mark.asyncio
+async def test_load_history_fallback_keeps_only_the_exact_row_for_a_quoted_name() -> None:
+    sf, run = _load_history_client([{"name": "MYXWH"}, {"name": "MY_WH"}, {"name": "my_wh"}])
+    async with Client(create_server(client=sf)) as client:
+        result = await client.call_tool(LOAD_HISTORY, {"warehouse_name": '"MY_WH"'})
+    payload = json.loads(result.content[0].text)
+    # The quoted name goes to LIKE unquoted and unescaped.
+    assert run.call_args.args[0] == "SHOW WAREHOUSES LIKE 'MY_WH'"
+    assert payload["status"] == "partial"
+    assert payload["warehouse_metadata"] == [{"name": "MY_WH"}]
+    assert "primary failed" in payload["load_history_notice"]
+
+
+@pytest.mark.asyncio
+async def test_load_history_look_alike_only_fallback_is_the_not_found_error() -> None:
+    sf, run = _load_history_client([{"name": "MYXWH"}, {"name": "my_wh"}, {"NAME": "MY_WH"}, "not a row"])
+    async with Client(create_server(client=sf)) as client:
+        result = await client.call_tool(LOAD_HISTORY, {"warehouse_name": '"MY_WH"'}, raise_on_error=False)
+    assert result.is_error
+    error = json.loads(result.content[0].text)
+    assert error["status"] == "error"
+    assert error["error"] == f'Warehouse "MY_WH" does not exist or not authorized. {conn.IDENT_HINT}'
+    assert "MYXWH" not in result.content[0].text
+    assert run.call_count == 2
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("warehouse_name", "shown"),
+    [("e2e_mcp_missing_object", '"E2E_MCP_MISSING_OBJECT"'), ('"My ""Wh"""', '"My ""Wh"""')],
+)
+async def test_load_history_empty_fallback_is_the_not_found_error(warehouse_name: str, shown: str) -> None:
+    sf, _run = _load_history_client([])
+    async with Client(create_server(client=sf)) as client:
+        result = await client.call_tool(LOAD_HISTORY, {"warehouse_name": warehouse_name}, raise_on_error=False)
+    assert result.is_error
+    error = json.loads(result.content[0].text)
+    assert error == {
+        "status": "error",
+        "error": f"Warehouse {shown} does not exist or not authorized. {conn.IDENT_HINT}",
+    }
+
+
+@pytest.mark.asyncio
+async def test_load_history_unquoted_fallback_keeps_the_case_insensitive_rows() -> None:
+    rows = [{"name": "MYXWH"}, {"name": "MY_WH"}]
+    sf, run = _load_history_client(rows)
+    async with Client(create_server(client=sf)) as client:
+        result = await client.call_tool(LOAD_HISTORY, {"warehouse_name": "my_wh"})
+    payload = json.loads(result.content[0].text)
+    assert run.call_args.args[0] == "SHOW WAREHOUSES LIKE 'my_wh'"
+    assert payload["status"] == "partial"
+    assert payload["warehouse_metadata"] == rows
+
+
+@pytest.mark.asyncio
+async def test_load_history_fallback_refuses_a_dotted_name_before_show() -> None:
+    sf, run = _load_history_client([{"name": "a.b"}])
+    async with Client(create_server(client=sf)) as client:
+        result = await client.call_tool(LOAD_HISTORY, {"warehouse_name": "a.b"}, raise_on_error=False)
+    assert result.is_error
+    text = json.loads(result.content[0].text)["error"]
+    assert text.startswith("primary failed; fallback failed: Expected a single identifier")
+    assert run.call_count == 1
