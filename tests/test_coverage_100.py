@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -239,16 +240,20 @@ async def test_tools_missing_branches() -> None:
     with pytest.raises(ToolError, match="Invalid integration_type 'INVALID_TYPE'"):
         await tools["programmability_list_integrations"].fn(integration_type="INVALID_TYPE")
 
-    # query history normal & fallback
+    # query history normal & failure: the original error, with no second statement
     await tools["queries_get_query_history"].fn(limit=20)
 
     def q_side_effect(query: str, **kwargs: object) -> dict[str, object]:
         if "INFORMATION_SCHEMA" in query:
             raise Exception("No info schema")
-        return {"status": "success", "data": []}
+        raise AssertionError(f"unexpected SQL after the failed history query: {query}")
 
+    client.execute_query.reset_mock()
     client.execute_query.side_effect = q_side_effect
-    await tools["queries_get_query_history"].fn(limit=20)
+    with pytest.raises(ToolError) as excinfo:
+        await tools["queries_get_query_history"].fn(limit=20)
+    assert json.loads(str(excinfo.value)) == {"status": "error", "error": "No info schema"}
+    client.execute_query.assert_called_once()
 
 
 def test_cli_run_server() -> None:

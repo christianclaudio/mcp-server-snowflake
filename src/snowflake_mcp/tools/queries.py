@@ -92,10 +92,10 @@ def register_query_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     async def snowflake_get_query_history(
         limit: int = 20,
     ) -> dict[str, Any]:
-        """Get recent query history via SNOWFLAKE.ACCOUNT_USAGE or INFORMATION_SCHEMA."""
+        """Get recent query history via SNOWFLAKE.INFORMATION_SCHEMA.QUERY_HISTORY_BY_USER."""
         safe_limit = max(1, min(limit, 100))
         try:
-            # Prefer TABLE(INFORMATION_SCHEMA.QUERY_HISTORY_BY_USER()) or QUERY_HISTORY()
+            # The Information Schema table function, called by its fully qualified name.
             history_sql = (
                 f"SELECT query_id, query_text, database_name, schema_name, "
                 f"warehouse_name, execution_status, error_message, start_time, end_time, total_elapsed_time "
@@ -105,16 +105,8 @@ def register_query_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(history_sql, max_rows=safe_limit)
             res["status"] = "success"
             return res
-        except Exception as primary_error:
-            try:
-                # Fallback to SHOW QUERIES
-                show_sql = f"SHOW QUERIES LIMIT {safe_limit}"
-                res = client.execute_query(show_sql, max_rows=safe_limit)
-                res["status"] = "success"
-                res["warning"] = f"QUERY_HISTORY_BY_USER fallback: {primary_error}"
-                return res
-            except Exception as e:
-                failure = status_error(f"{primary_error}; fallback failed: {e}")
+        except Exception as e:
+            failure = status_error(e)
         raise failure from None
 
     @mcp.tool(
