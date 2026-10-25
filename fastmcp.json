@@ -11,9 +11,9 @@
       "certifi>=2026.10.19",
       "snowflake-connector-python>=4.8.0",
       "snowflake-core>=1.13.2",
-      "pydantic>=2.13.5",
+      "pydantic>=2.14.1",
       "cryptography>=50.0.2",
-      "python-dotenv>=1.2.3"
+      "python-dotenv>=1.2.4"
     ]
   },
   "deployment": {
