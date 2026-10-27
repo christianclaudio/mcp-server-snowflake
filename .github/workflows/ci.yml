@@ -7,10 +7,15 @@ on:
     branches: [main]
   # Merges made by dependabot-automerge.yml use GITHUB_TOKEN, and pushes made
   # with GITHUB_TOKEN don't trigger push workflows, so the push trigger above
-  # misses them. The daily run tests main itself; schedule runs only on the
-  # default branch. The minute is off the hour to avoid peak scheduler load.
+  # misses them. The weekly run tests main itself on Sunday afternoon Eastern,
+  # after the Sunday morning Dependabot run (.github/dependabot.yml), and is the
+  # only scheduled run of the check-drift job (manual dispatch also runs it);
+  # schedule runs only on the default branch.
+  # timezone keeps it at 14:59 Eastern through daylight saving changes. The minute
+  # is off the hour to avoid peak scheduler load.
   schedule:
-    - cron: '53 9 * * *'
+    - cron: '59 14 * * 0'
+      timezone: "America/New_York"
   workflow_dispatch:
 
 permissions:
@@ -193,3 +198,91 @@ jobs:
             exit 1
           fi
           echo "Builder stops at the ca-certificates floor check before any pip step"
+
+  check-drift:
+    # Scheduled and manual runs only; pushes and pull requests skip it.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    # Only this job can open issues: one when the drift scan runs on main and finds drift or exits with an error.
+    permissions:
+      contents: read
+      issues: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e  # v10.3.2
+        with:
+          # Newest uv that meets pyproject.toml's [tool.uv] required-version (>=0.13.4, from
+          # FastMCP's October 2026 certificate authority incident notice).
+          version-file: "pyproject.toml"
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: uv sync --locked --python 3.12
+
+      - name: Run Drift Check
+        id: drift-check
+        run: |
+          # Capture the exit code explicitly: under the default `bash -e` a failing
+          # command would end the step before DRIFT_STATUS is written.
+          set +e
+          uv run python scripts/check_snowflake_drift.py > drift_results.txt 2>&1
+          status=$?
+          set -e
+          echo "DRIFT_STATUS=${status}" >> "$GITHUB_ENV"
+
+      - name: Create Issue on Failure
+        if: env.DRIFT_STATUS != '0' && github.ref == 'refs/heads/main'
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
+        with:
+          script: |
+            const fs = require('fs');
+            let driftOutput = "No output captured.";
+            try {
+              driftOutput = fs.readFileSync('drift_results.txt', 'utf8');
+            } catch (err) {
+              console.error(err);
+            }
+
+            const status = process.env.DRIFT_STATUS;
+            // An uncaught exception also exits 1, so drift needs the line the script
+            // prints only right before `return 1`.
+            const drift = status === '1' && driftOutput.includes('❌ Drift Error');
+            const issueTitle = drift
+              ? "Snowflake drift: registered tool count no longer matches the 140-tool contract"
+              : `Snowflake drift monitor failed (exit ${status})`;
+            const summary = drift
+              ? "The drift scan found that the server no longer registers exactly 140 tools. The latest Snowflake SDK versions on PyPI are listed for reference only; they never fail the check."
+              : `The drift scan could not finish: the drift script exited ${status} before it reported a tool count, so there is no drift result.`;
+            const issueBody = [
+              "### Snowflake Drift Monitor",
+              "",
+              summary,
+              "",
+              "#### Scan Output",
+              "```text",
+              driftOutput,
+              "```",
+              "",
+              drift
+                ? "Inspect the output. If the tool count changed by mistake, fix the registration under `src/snowflake_mcp/`. If the change is intended, update the expected count in `scripts/check_tool_contract.py`, `scripts/check_snowflake_drift.py` and the `contract` job name in `.github/workflows/ci.yml` together."
+                : "Fix the failing step shown in the output, then re-run the workflow.",
+            ].join("\n");
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: issueTitle,
+              body: issueBody,
+              labels: ['maintenance', 'drift', 'forge-todo']
+            });
