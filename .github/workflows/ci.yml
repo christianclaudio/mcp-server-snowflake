@@ -202,7 +202,7 @@ jobs:
   check-drift:
     # Scheduled and manual runs only; pushes and pull requests skip it.
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
-    # Only this job opens an issue when the check finds drift or fails.
+    # Only this job can open issues: one when the drift scan runs on main and finds drift or exits with an error.
     permissions:
       contents: read
       issues: write
