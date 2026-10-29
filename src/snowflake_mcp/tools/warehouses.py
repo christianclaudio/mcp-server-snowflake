@@ -6,7 +6,21 @@ from typing import Any
 
 from fastmcp import FastMCP
 
-from snowflake_mcp.connection import Identifier, SnowflakeClient, drop_result, ident_error, quote_ident, quote_literal
+from snowflake_mcp.connection import (
+    EXACT_NAME_NOTE,
+    QUOTED_NAME_NOTE,
+    Identifier,
+    SnowflakeClient,
+    drop_result,
+    exact_show_rows,
+    ident_error,
+    quote_ident,
+    quote_literal,
+    resolve_ident,
+    show_like_name,
+    show_not_found,
+    with_quoted_names,
+)
 from snowflake_mcp.errors import SafetyViolationError, status_error
 
 VALID_WAREHOUSE_SIZES = {
@@ -35,7 +49,7 @@ def register_warehouse_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="list_warehouses",
-        description="List virtual warehouses in the account with size, state, and auto-suspend configurations.",
+        description=f"List virtual warehouses in the account with size, state, and auto-suspend configurations. {QUOTED_NAME_NOTE}",
     )
     async def snowflake_list_warehouses(
         pattern: str | None = None,
@@ -44,27 +58,44 @@ def register_warehouse_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             sql = f"SHOW WAREHOUSES LIKE {quote_literal(pattern)}" if pattern else "SHOW WAREHOUSES"
             res = client.execute_query(sql)
-            return {"status": "success", "warehouses": res.get("data", [])}
+            return {"status": "success", "warehouses": with_quoted_names(res.get("data", []))}
         except Exception as e:
             failure = status_error(e)
         raise failure from None
 
     @mcp.tool(
         name="describe_warehouse",
-        description="Describe details and running state of a specific virtual warehouse.",
+        description=(f"Describe details and running state of a specific virtual warehouse. {EXACT_NAME_NOTE}"),
     )
     async def snowflake_describe_warehouse(
         warehouse_name: str,
     ) -> dict[str, Any]:
-        """Describe warehouse."""
+        """Describe warehouse via ``SHOW WAREHOUSES LIKE``.
+
+        A double-quoted *warehouse_name* (as a list tool's ``quoted_name``) is unquoted and sent to
+        ``LIKE`` as is, and only the row whose name equals it exactly, case-sensitively, is kept;
+        if there is none, the call fails with a not-found error. Any other value keeps the
+        case-insensitive ``LIKE`` lookup and returns the first row, or ``None``.
+
+        Row cap: ``SHOW ... LIKE`` treats ``_`` and ``%`` as wildcards with no documented escape
+        (https://docs.snowflake.com/en/sql-reference/sql/show-warehouses), so a name containing
+        them can match more warehouses than the one asked for. Only the first ``max_rows`` rows
+        (1,000 by default) are read, and ``SHOW`` returns at most 10,000 rows, so in an account
+        with that many look-alike names the target can be cut off and reported as not found.
+        """
         try:
-            sql = f"SHOW WAREHOUSES LIKE {quote_literal(warehouse_name)}"
+            pattern, exact = show_like_name(warehouse_name)
+            sql = f"SHOW WAREHOUSES LIKE {quote_literal(pattern)}"
             res = client.execute_query(sql)
             data = res.get("data", [])
+            if exact is not None:
+                data = exact_show_rows(data, exact)
+                if not data:
+                    raise show_not_found("Warehouse", exact)
             wh_info = data[0] if data else None
             return {"status": "success", "warehouse": warehouse_name, "details": wh_info}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
@@ -192,7 +223,14 @@ def register_warehouse_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     async def snowflake_get_warehouse_load_history(
         warehouse_name: str,
     ) -> dict[str, Any]:
-        """Get warehouse load history."""
+        """Get warehouse load history.
+
+        If the ``WAREHOUSE_LOAD_HISTORY`` call fails, the warehouse's ``SHOW WAREHOUSES LIKE`` rows
+        are returned as ``partial`` metadata. A double-quoted *warehouse_name* (as a list tool's
+        ``quoted_name``) is unquoted, sent to ``LIKE`` as is, and only the row whose name equals it
+        exactly, case-sensitively, is kept. If no row is left, the call fails with the not-found
+        error, for a quoted name and an unquoted one alike, rather than an empty ``partial``.
+        """
         try:
             sql = (
                 f"SELECT * FROM TABLE(SNOWFLAKE.INFORMATION_SCHEMA.WAREHOUSE_LOAD_HISTORY(WAREHOUSE_NAME => {quote_literal(warehouse_name)})) "
@@ -202,16 +240,26 @@ def register_warehouse_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             return {"status": "success", "warehouse": warehouse_name, "load_history": res.get("data", [])}
         except Exception as primary_error:
             try:
-                # Fallback to general WAREHOUSE metadata if INFORMATION_SCHEMA function is restricted
-                fallback_sql = f"SHOW WAREHOUSES LIKE {quote_literal(warehouse_name)}"
-                res = client.execute_query(fallback_sql)
-                return {
-                    "status": "partial",
-                    "warehouse": warehouse_name,
-                    "load_history": [],
-                    "warehouse_metadata": res.get("data", []),
-                    "load_history_notice": f"Restricted load history access ({primary_error}). Returned warehouse metadata.",
-                }
+                # Fallback to general WAREHOUSE metadata if INFORMATION_SCHEMA function is restricted.
+                # SHOW ... LIKE reads _ and % as wildcards with no documented escape, so a quoted name
+                # keeps only its exact row (as describe_warehouse does).
+                pattern, exact = show_like_name(warehouse_name)
+                name = exact if exact is not None else resolve_ident(warehouse_name)
+                res = client.execute_query(f"SHOW WAREHOUSES LIKE {quote_literal(pattern)}")
             except Exception as e:
                 failure = status_error(f"{primary_error}; fallback failed: {e}")
+            else:
+                rows = res.get("data", [])
+                if exact is not None:
+                    rows = exact_show_rows(rows, exact)
+                if rows:
+                    return {
+                        "status": "partial",
+                        "warehouse": warehouse_name,
+                        "load_history": [],
+                        "warehouse_metadata": rows,
+                        "load_history_notice": f"Restricted load history access ({primary_error}). Returned warehouse metadata.",
+                    }
+                # No row: the warehouse does not exist or is not visible to this role.
+                failure = ident_error(show_not_found("Warehouse", name))
         raise failure from None

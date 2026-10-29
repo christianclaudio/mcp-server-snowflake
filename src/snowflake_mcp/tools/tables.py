@@ -7,6 +7,7 @@ from typing import Any
 from fastmcp import FastMCP
 
 from snowflake_mcp.connection import (
+    QUOTED_NAME_NOTE,
     Identifier,
     OptionalIdentifier,
     SnowflakeClient,
@@ -15,6 +16,7 @@ from snowflake_mcp.connection import (
     qualify_ident,
     quote_literal,
     show_sql,
+    with_quoted_names,
 )
 from snowflake_mcp.errors import SafetyViolationError, status_error
 
@@ -46,7 +48,7 @@ def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="list_tables",
-        description="List tables in a database schema with row counts and bytes.",
+        description=f"List tables in a database schema with row counts and bytes. {QUOTED_NAME_NOTE}",
     )
     async def snowflake_list_tables(
         database: OptionalIdentifier = None,
@@ -60,14 +62,14 @@ def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             sql = show_sql("TABLES", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
-            return {"status": "success", "tables": res.get("data", [])}
+            return {"status": "success", "tables": with_quoted_names(res.get("data", []))}
         except Exception as e:
             failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
         name="list_views",
-        description="List views in a database schema.",
+        description=f"List views in a database schema. {QUOTED_NAME_NOTE}",
     )
     async def snowflake_list_views(
         database: OptionalIdentifier = None,
@@ -81,7 +83,7 @@ def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             sql = show_sql("VIEWS", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
-            return {"status": "success", "views": res.get("data", [])}
+            return {"status": "success", "views": with_quoted_names(res.get("data", []))}
         except Exception as e:
             failure = ident_error(e)
         raise failure from None

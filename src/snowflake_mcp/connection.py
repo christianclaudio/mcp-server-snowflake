@@ -40,6 +40,11 @@ def split_ident(name: str) -> list[str]:
     resolved to uppercase. Dots split parts only outside double quotes, and whitespace around a
     part is ignored. Raises ``ValueError`` for an unterminated quote, an empty part, a ``"``
     inside an unquoted part, or text after a closing quote.
+
+    The one empty part allowed is the schema of a three-part name written with two adjacent
+    dots, ``db..name`` or ``"DB".."NAME"``: "The two dots indicate that the schema name is not
+    specified. The PUBLIC default schema is always referenced"
+    (https://docs.snowflake.com/en/sql-reference/name-resolution). It is returned as ``""``.
     """
     text = str(name)
     if not text.strip():
@@ -47,6 +52,13 @@ def split_ident(name: str) -> list[str]:
     parts: list[str] = []
     i, n = 0, len(text)
     while True:
+        if len(parts) == 1 and i < n and text[i] == ".":
+            # ``db..name``: the dot right after the first part's dot leaves the schema empty.
+            parts.append("")
+            i += 1
+            if i >= n:
+                raise ValueError(f"Empty identifier part in {text!r}")
+            continue
         while i < n and text[i].isspace():
             i += 1
         if i < n and text[i] == '"':
@@ -82,8 +94,24 @@ def split_ident(name: str) -> list[str]:
                 raise ValueError(f"Empty identifier part in {text!r}")
         parts.append(part)
         if i >= n:
+            if "" in parts and len(parts) != MAX_NAME_PARTS:
+                raise ValueError(f"Empty identifier part in {text!r}")
             return parts
         i += 1  # the "." between parts
+
+
+def refuse_empty_part(name: str) -> None:
+    """Refuse an empty part in a name that is a schema target rather than an object in a schema.
+
+    ``split_ident`` accepts the empty schema of ``db..name`` because it names an object in the
+    database's PUBLIC schema (https://docs.snowflake.com/en/sql-reference/name-resolution). A
+    schema target has no schema part to leave empty, so there it is refused like any other empty
+    part, before any SQL runs.
+    """
+    if "" in split_ident(name):
+        raise ValueError(
+            f"Empty identifier part in {str(name)!r}; database..name names an object in the PUBLIC schema, not a schema"
+        )
 
 
 MAX_NAME_PARTS = 3
@@ -105,9 +133,49 @@ def split_object_name(name: str) -> list[str]:
     return parts
 
 
-def _quote_resolved(part: str) -> str:
+def quote_resolved(part: str) -> str:
     """Double-quote an already resolved identifier, doubling any ``"`` inside it."""
     return '"' + part.replace('"', '""') + '"'
+
+
+QUOTED_NAME_NOTE = (
+    "Each row also has quoted_name, the name in double quotes, and, when the row has a database "
+    "and schema, quoted_qualified_name."
+)
+"""The sentence every list tool's description ends with (see ``with_quoted_names``)."""
+
+
+def _with_quoted_name(row: dict[str, Any]) -> dict[str, Any]:
+    """One ``SHOW`` row with ``quoted_name`` and, if it has a database and schema, ``quoted_qualified_name``."""
+    out = dict(row)
+    name = row["name"]
+    out.setdefault("quoted_name", quote_resolved(name))
+    db, sch = row.get("database_name"), row.get("schema_name")
+    if isinstance(db, str) and db and isinstance(sch, str) and sch:
+        out.setdefault("quoted_qualified_name", ".".join(quote_resolved(p) for p in (db, sch, name)))
+    return out
+
+
+def with_quoted_names(rows: Any) -> Any:
+    """``SHOW`` rows with ``quoted_name`` added, and ``quoted_qualified_name`` where it applies.
+
+    ``SHOW`` returns names exactly as Snowflake stores them, and an unquoted name resolves to
+    uppercase, so ``my_table`` must be passed back as ``"my_table"``. A double-quoted identifier
+    keeps its exact case, and a ``"`` inside it is written as two quotes
+    (https://docs.snowflake.com/en/sql-reference/identifiers-syntax), so ``quoted_name`` wraps
+    ``name`` in double quotes and doubles each ``"`` in it; ``split_ident`` resolves it back to
+    exactly ``name``. A row that also has a non-empty string ``database_name`` and
+    ``schema_name`` gets ``quoted_qualified_name``: database, schema and name each quoted the same
+    way and joined with ``.``, so the object resolves the same from any session schema. Only a
+    non-empty string ``name`` gets either field, a key the row already has is left as is, every
+    other field is unchanged, and anything that is not a list is returned as is.
+    """
+    if not isinstance(rows, list):
+        return rows
+    return [
+        _with_quoted_name(row) if isinstance(row, dict) and isinstance(row.get("name"), str) and row["name"] else row
+        for row in rows
+    ]
 
 
 def resolve_ident(name: str) -> str:
@@ -124,7 +192,7 @@ def quote_ident(name: str) -> str:
     ``orders`` becomes ``"ORDERS"`` (unquoted names resolve to uppercase), ``"Orders"`` stays
     ``"Orders"``, and ``"a""b"`` stays ``"a""b"``.
     """
-    return _quote_resolved(resolve_ident(name))
+    return quote_resolved(resolve_ident(name))
 
 
 def qualify_ident(name: str, *prefix: str | None) -> str:
@@ -133,11 +201,51 @@ def qualify_ident(name: str, *prefix: str | None) -> str:
     A single-part *name* is prefixed with each non-empty *prefix* (for example database, then
     schema), each resolved as one identifier; a dotted *name* is used as given. Raises
     ``ValueError`` for more than three parts (see ``split_object_name``).
+
+    When *prefix* is a database and schema pair and only the database is set, the name is
+    written ``database..name``. Snowflake reads a two-part name as ``<schema_name>.<object_name>``
+    in the current database, while ``<database_name>..<object_name>`` means "the PUBLIC default
+    schema is always referenced" (https://docs.snowflake.com/en/sql-reference/name-resolution),
+    so ``"DB"."NAME"`` would look for a schema called ``DB``.
     """
     parts = split_object_name(name)
+    if len(parts) == 1 and len(prefix) == 2 and prefix[0] and not prefix[1]:
+        return f"{quote_ident(prefix[0])}..{quote_resolved(parts[0])}"
     if len(parts) == 1:
         parts = [resolve_ident(p) for p in prefix if p] + parts
-    return ".".join(_quote_resolved(p) for p in parts)
+    # An empty schema part (``db..name``, see ``split_ident``) is written back as ``..``.
+    return ".".join(quote_resolved(p) if p else "" for p in parts)
+
+
+EXACT_NAME_NOTE = "A name in double quotes, such as a list row's quoted_name, must match exactly."
+"""The description sentence of the describe tools that keep only an exact match for a quoted name."""
+
+
+def show_like_name(name: str) -> tuple[str, str | None]:
+    """The ``SHOW ... LIKE`` pattern for one named object, and the exact name to keep, if any.
+
+    ``SHOW ... LIKE`` matches case-insensitively and treats ``_`` and ``%`` as wildcards, with no
+    documented escape (https://docs.snowflake.com/en/sql-reference/sql/show-warehouses). A name in
+    double quotes is resolved (``""`` becomes ``"``) and returned twice: as the pattern, sent as
+    is, and as the exact name the caller keeps from the rows (``exact_show_rows``). Any other value
+    is returned unchanged as the pattern, with no exact name, as before.
+    """
+    if str(name).strip().startswith('"'):
+        exact = resolve_ident(name)
+        return exact, exact
+    return name, None
+
+
+def exact_show_rows(rows: Any, exact: str, key: str = "name") -> list[dict[str, Any]]:
+    """The ``SHOW`` rows whose *key* column (``name`` by default) equals *exact*, case-sensitively."""
+    if not isinstance(rows, list):
+        return []
+    return [row for row in rows if isinstance(row, dict) and row.get(key) == exact]
+
+
+def show_not_found(kind: str, exact: str) -> ResourceNotFoundError:
+    """The not-found error for a quoted name ``SHOW ... LIKE`` returned no exact row for."""
+    return ResourceNotFoundError(f"{kind} {quote_resolved(exact)} does not exist or not authorized.")
 
 
 IDENT_HINT = (
@@ -153,7 +261,9 @@ IDENT_RULE = (
     "Snowflake object names: unquoted names resolve to uppercase, so orders means ORDERS. "
     "A name that itself contains a dot must be in double quotes, since an unquoted dot separates "
     "database, schema and object. List tools return names exactly as Snowflake stores them; pass "
-    'each one back in double quotes unless it is all uppercase, for example "my_table".'
+    'each one back in double quotes unless it is all uppercase, for example "my_table". '
+    "Each list tool row's quoted_name is that name already double-quoted, and a row with a database "
+    "and schema also has quoted_qualified_name, the full database.schema.name already double-quoted."
 )
 """The full identifier rule, stated once in the server instructions."""
 

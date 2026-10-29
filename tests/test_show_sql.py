@@ -14,6 +14,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from fastmcp.exceptions import ToolError
 
 from snowflake_mcp.config import SnowflakeConfig
 from snowflake_mcp.connection import SnowflakeClient, show_sql
@@ -103,12 +104,21 @@ async def test_list_schemas_puts_like_before_in(client: SnowflakeClient) -> None
 @pytest.mark.asyncio
 async def test_describe_tag_quotes_name_and_scope(client: SnowflakeClient) -> None:
     fn = _tools(client)["tags_describe_tag"].fn
-    await fn("PII", database="DB", schema_name="SCH")
+    # The mocked SHOW returns no tag row, so each lookup is the not-found error after the SQL ran.
+    with pytest.raises(ToolError, match="does not exist"):
+        await fn("PII", database="DB", schema_name="SCH")
     assert _sql(client) == 'SHOW TAGS LIKE \'PII\' IN SCHEMA "DB"."SCH"'
-    await fn("it's", database="DB")
+    assert "IN ACCOUNT" not in _sql(client)
+    with pytest.raises(ToolError, match="does not exist"):
+        await fn("it's", database="DB")
     assert _sql(client) == "SHOW TAGS LIKE 'it''s' IN DATABASE \"DB\""
-    await fn("PII")
-    assert _sql(client) == "SHOW TAGS LIKE 'PII'"
+    assert "IN ACCOUNT" not in _sql(client)
+    with pytest.raises(ToolError, match="does not exist"):
+        await fn("PII")
+    assert _sql(client) == "SHOW TAGS LIKE 'PII' IN ACCOUNT"
+    assert "IN ACCOUNT" in _sql(client)
+    assert "IN SCHEMA" not in _sql(client)
+    assert "IN DATABASE" not in _sql(client)
 
 
 @pytest.mark.asyncio

@@ -7,6 +7,7 @@ from typing import Any
 from fastmcp import FastMCP
 
 from snowflake_mcp.connection import (
+    QUOTED_NAME_NOTE,
     Identifier,
     OptionalIdentifier,
     SnowflakeClient,
@@ -14,6 +15,7 @@ from snowflake_mcp.connection import (
     qualify_ident,
     quote_literal,
     show_sql,
+    with_quoted_names,
 )
 from snowflake_mcp.errors import SafetyViolationError, status_error
 
@@ -32,7 +34,7 @@ def register_dynamic_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="list_dynamic_tables",
-        description="List dynamic tables with lag targets, refresh mode, and last refresh status.",
+        description=f"List dynamic tables with lag targets, refresh mode, and last refresh status. {QUOTED_NAME_NOTE}",
     )
     async def snowflake_list_dynamic_tables(
         database: OptionalIdentifier = None,
@@ -46,7 +48,7 @@ def register_dynamic_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             sql = show_sql("DYNAMIC TABLES", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
-            return {"status": "success", "dynamic_tables": res.get("data", [])}
+            return {"status": "success", "dynamic_tables": with_quoted_names(res.get("data", []))}
         except Exception as e:
             failure = ident_error(e)
         raise failure from None
@@ -143,7 +145,7 @@ def register_dynamic_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="list_iceberg_tables",
-        description="List Apache Iceberg tables in the account, database, or schema.",
+        description=f"List Apache Iceberg tables in the account, database, or schema. {QUOTED_NAME_NOTE}",
     )
     async def snowflake_list_iceberg_tables(
         database: OptionalIdentifier = None,
@@ -157,7 +159,7 @@ def register_dynamic_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             sql = show_sql("ICEBERG TABLES", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
-            return {"status": "success", "iceberg_tables": res.get("data", [])}
+            return {"status": "success", "iceberg_tables": with_quoted_names(res.get("data", []))}
         except Exception as e:
             failure = ident_error(e)
         raise failure from None
@@ -185,7 +187,7 @@ def register_dynamic_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="list_external_volumes",
-        description="List external cloud storage volumes configured for Apache Iceberg tables.",
+        description=f"List external cloud storage volumes configured for Apache Iceberg tables. {QUOTED_NAME_NOTE}",
     )
     async def snowflake_list_external_volumes(
         pattern: str | None = None,
@@ -196,14 +198,14 @@ def register_dynamic_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             if pattern:
                 sql += f" LIKE {quote_literal(pattern)}"
             res = client.execute_query(sql)
-            return {"status": "success", "external_volumes": res.get("data", [])}
+            return {"status": "success", "external_volumes": with_quoted_names(res.get("data", []))}
         except Exception as e:
             failure = status_error(e)
         raise failure from None
 
     @mcp.tool(
         name="list_catalog_integrations",
-        description="List catalog integrations (Polaris, AWS Glue, Object Storage) configured in Snowflake.",
+        description=f"List catalog integrations (Polaris, AWS Glue, Object Storage) configured in Snowflake. {QUOTED_NAME_NOTE}",
     )
     async def snowflake_list_catalog_integrations(
         pattern: str | None = None,
@@ -214,7 +216,7 @@ def register_dynamic_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             if pattern:
                 sql += f" LIKE {quote_literal(pattern)}"
             res = client.execute_query(sql)
-            return {"status": "success", "catalog_integrations": res.get("data", [])}
+            return {"status": "success", "catalog_integrations": with_quoted_names(res.get("data", []))}
         except Exception as e:
             failure = status_error(e)
         raise failure from None

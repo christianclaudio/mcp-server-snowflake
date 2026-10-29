@@ -7,18 +7,20 @@ from typing import Any
 from fastmcp import FastMCP
 
 from snowflake_mcp.connection import (
+    QUOTED_NAME_NOTE,
     Identifier,
     OptionalIdentifier,
     SnowflakeClient,
     drop_result,
     enforce_read_only_sql,
     ident_error,
-    quote_ident,
+    qualify_ident,
     quote_literal,
     read_only_enabled,
     show_sql,
+    with_quoted_names,
 )
-from snowflake_mcp.errors import SafetyViolationError, status_error
+from snowflake_mcp.errors import SafetyViolationError
 
 
 def register_pipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
@@ -26,7 +28,7 @@ def register_pipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="list_pipes",
-        description="List Snowpipes configured in a database or schema.",
+        description=f"List Snowpipes configured in a database or schema. {QUOTED_NAME_NOTE}",
     )
     async def snowflake_list_pipes(
         database: OptionalIdentifier = None,
@@ -40,7 +42,7 @@ def register_pipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             sql = show_sql("PIPES", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
-            return {"status": "success", "pipes": res.get("data", [])}
+            return {"status": "success", "pipes": with_quoted_names(res.get("data", []))}
         except Exception as e:
             failure = ident_error(e)
         raise failure from None
@@ -58,11 +60,7 @@ def register_pipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            target = (
-                f"{quote_ident(db)}.{quote_ident(sch)}.{quote_ident(pipe_name)}"
-                if db and sch
-                else quote_ident(pipe_name)
-            )
+            target = qualify_ident(pipe_name, db, sch)
             sql = f"DESCRIBE PIPE {target}"
             res = client.execute_query(sql)
             return {"status": "success", "pipe": target, "details": res.get("data", [])}
@@ -89,11 +87,7 @@ def register_pipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            target = (
-                f"{quote_ident(db)}.{quote_ident(sch)}.{quote_ident(pipe_name)}"
-                if db and sch
-                else quote_ident(pipe_name)
-            )
+            target = qualify_ident(pipe_name, db, sch)
             exists_clause = "IF NOT EXISTS " if if_not_exists else ""
             auto_ingest_str = "TRUE" if auto_ingest else "FALSE"
             sql = f"CREATE PIPE {exists_clause}{target} AUTO_INGEST = {auto_ingest_str} AS {copy_statement}"
@@ -122,11 +116,7 @@ def register_pipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            target = (
-                f"{quote_ident(db)}.{quote_ident(sch)}.{quote_ident(pipe_name)}"
-                if db and sch
-                else quote_ident(pipe_name)
-            )
+            target = qualify_ident(pipe_name, db, sch)
             sql = f"DROP PIPE IF EXISTS {target}"
             res = client.execute_query(sql)
             return drop_result({"status": "success", "pipe": target, "result": res.get("data")})
@@ -139,18 +129,25 @@ def register_pipe_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         description="Get execution and health status of a Snowpipe (pending file count, last ingested timestamp).",
     )
     async def snowflake_get_pipe_status(
-        pipe_name: str,
-        database: str | None = None,
-        schema_name: str | None = None,
+        pipe_name: Identifier,
+        database: OptionalIdentifier = None,
+        schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
-        """Get pipe status via SYSTEM$PIPE_STATUS."""
+        """Get pipe status via SYSTEM$PIPE_STATUS.
+
+        The pipe name is qualified like every other object name (``qualify_ident``) and passed
+        as a string constant (``quote_literal``). The function takes the name as a string, with
+        the whole qualified name in single quotes and a case-sensitive or special-character name
+        in double quotes inside them, as in ``'"<pipe_name>"'``
+        (https://docs.snowflake.com/en/sql-reference/functions/system_pipe_status).
+        """
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            target = f"{db}.{sch}.{pipe_name}" if db and sch else pipe_name
+            target = qualify_ident(pipe_name, db, sch)
             sql = f"SELECT SYSTEM$PIPE_STATUS({quote_literal(target)}) AS status"
             res = client.execute_query(sql)
             return {"status": "success", "pipe": target, "pipe_status": res.get("data", [])}
         except Exception as e:
-            failure = status_error(e)
+            failure = ident_error(e)
         raise failure from None
