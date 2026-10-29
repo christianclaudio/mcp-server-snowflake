@@ -7,6 +7,7 @@ from typing import Any
 from fastmcp import FastMCP
 
 from snowflake_mcp.connection import (
+    QUOTED_NAME_NOTE,
     Identifier,
     OptionalIdentifier,
     SnowflakeClient,
@@ -15,6 +16,7 @@ from snowflake_mcp.connection import (
     qualify_ident,
     quote_literal,
     show_sql,
+    with_quoted_names,
 )
 from snowflake_mcp.errors import SafetyViolationError, status_error
 
@@ -39,7 +41,7 @@ def register_stage_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="list_stages",
-        description="List internal and external stages available in the active database or schema.",
+        description=f"List internal and external stages available in the active database or schema. {QUOTED_NAME_NOTE}",
     )
     async def snowflake_list_stages(
         database: OptionalIdentifier = None,
@@ -53,7 +55,7 @@ def register_stage_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             sql = show_sql("STAGES", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
-            return {"status": "success", "stages": res.get("data", [])}
+            return {"status": "success", "stages": with_quoted_names(res.get("data", []))}
         except Exception as e:
             failure = ident_error(e)
         raise failure from None

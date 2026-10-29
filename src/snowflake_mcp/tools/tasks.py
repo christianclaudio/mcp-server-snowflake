@@ -7,6 +7,7 @@ from typing import Any
 from fastmcp import FastMCP
 
 from snowflake_mcp.connection import (
+    QUOTED_NAME_NOTE,
     Identifier,
     OptionalIdentifier,
     SnowflakeClient,
@@ -18,6 +19,7 @@ from snowflake_mcp.connection import (
     quote_literal,
     read_only_enabled,
     show_sql,
+    with_quoted_names,
 )
 from snowflake_mcp.errors import SafetyViolationError
 
@@ -36,7 +38,7 @@ def register_task_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="list_tasks",
-        description="List tasks in a database or schema with schedule, state, and predecessor info.",
+        description=f"List tasks in a database or schema with schedule, state, and predecessor info. {QUOTED_NAME_NOTE}",
     )
     async def snowflake_list_tasks(
         database: OptionalIdentifier = None,
@@ -50,7 +52,7 @@ def register_task_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             sql = show_sql("TASKS", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
-            return {"status": "success", "tasks": res.get("data", [])}
+            return {"status": "success", "tasks": with_quoted_names(res.get("data", []))}
         except Exception as e:
             failure = ident_error(e)
         raise failure from None

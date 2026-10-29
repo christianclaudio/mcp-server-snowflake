@@ -211,7 +211,7 @@ TOOL_FIXTURES: dict[str, tuple[dict[str, Any], str]] = {
     "tables_sample_table": ({"table_name": "E2E_MCP_MISSING_OBJECT"}, "rejected"),
     "tables_truncate_table": ({"table_name": "E2E_MCP_MISSING_OBJECT", "confirm": False}, "confirm"),
     "tables_undrop_table": ({"table_name": "E2E_MCP_MISSING_OBJECT"}, "confirm"),
-    "tags_describe_tag": ({"tag_name": "E2E_MCP_MISSING_OBJECT"}, "success"),
+    "tags_describe_tag": ({"tag_name": "E2E_MCP_MISSING_OBJECT"}, "rejected"),
     "tags_get_object_tag_references": ({"object_name": "E2E_MCP_MISSING_OBJECT"}, "rejected"),
     "tags_list_tags": ({}, "success"),
     "tags_set_object_tag": (
@@ -668,7 +668,6 @@ async def test_dispatch_tool_call_offline(monkeypatch: pytest.MonkeyPatch) -> No
 _EMPTY_SUCCESS_TOOLS = (
     "warehouses_describe_warehouse",
     "governance_describe_role",
-    "tags_describe_tag",
     "horizon_get_object_lineage",
     "horizon_get_column_lineage",
 )
@@ -1134,8 +1133,11 @@ async def test_fixture_catalog_matches_server_tools(mock_snowflake_client: Snowf
             assert arguments["confirm"] is False
         if expect == "cortex":
             assert CORTEX_SKIP_REASON.strip()
-    assert counts == {"success": 45, "rejected": 35, "confirm": 52, "cortex": 8}
+    assert counts == {"success": 44, "rejected": 36, "confirm": 52, "cortex": 8}
     assert TOOL_FIXTURES["queries_query"] == ({"query": "SELECT 1"}, "success")
+    # A tag name with no match is the not-found error, not an empty success.
+    assert TOOL_FIXTURES["tags_describe_tag"] == ({"tag_name": "E2E_MCP_MISSING_OBJECT"}, "rejected")
+    assert "tags_describe_tag" not in _EMPTY_SUCCESS_TOOLS
     assert TOOL_FIXTURES["databases_drop_database"] == (
         {"name": "e2e_probe_db", "confirm": False},
         "confirm",

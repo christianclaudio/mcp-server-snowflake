@@ -7,13 +7,22 @@ from typing import Any
 from fastmcp import FastMCP
 
 from snowflake_mcp.connection import (
+    EXACT_NAME_NOTE,
+    QUOTED_NAME_NOTE,
     Identifier,
     OptionalIdentifier,
     SnowflakeClient,
+    exact_show_rows,
     ident_error,
     qualify_ident,
     quote_literal,
+    quote_resolved,
+    refuse_empty_part,
+    resolve_ident,
+    show_not_found,
     show_sql,
+    split_object_name,
+    with_quoted_names,
 )
 from snowflake_mcp.errors import SafetyViolationError, status_error
 
@@ -28,7 +37,7 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="list_tags",
-        description="List object tags defined in a database or schema.",
+        description=f"List object tags defined in a database or schema. {QUOTED_NAME_NOTE}",
     )
     async def snowflake_list_tags(
         database: OptionalIdentifier = None,
@@ -42,29 +51,111 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             sql = show_sql("TAGS", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
-            return {"status": "success", "tags": res.get("data", [])}
+            return {"status": "success", "tags": with_quoted_names(res.get("data", []))}
         except Exception as e:
             failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
         name="describe_tag",
-        description="Describe tag properties, allowed values, and comment.",
+        description=f"Describe tag properties, allowed values, and comment. {EXACT_NAME_NOTE}",
     )
     async def snowflake_describe_tag(
-        tag_name: str,
+        tag_name: Identifier,
         database: OptionalIdentifier = None,
         schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
-        """Describe tag via SHOW TAGS."""
+        """Describe tag via SHOW TAGS, scoped to the tag's database and schema when known.
+
+        A dotted *tag_name* supplies its own schema (``schema.tag``) or database and schema
+        (``database.schema.tag``), parsed quote-aware like every other object name; the missing
+        parts come from *database* and *schema_name*, then the session defaults; ``db..tag`` means
+        the database's PUBLIC schema (https://docs.snowflake.com/en/sql-reference/name-resolution).
+        When no database resolves (a schema-only name or a bare or wildcard name with no
+        database anywhere), ``SHOW TAGS LIKE`` runs with ``IN ACCOUNT``. Without an ``IN``
+        clause the scope depends on the session: in a database context, "Objects with the same
+        name are only displayed once if no IN clause is used", and with no database in use it
+        has "the same effect as specifying IN ACCOUNT"
+        (https://docs.snowflake.com/en/sql-reference/sql/show-tags). ``IN ACCOUNT`` makes the
+        account scope explicit and works with no current database. The tag part alone
+        goes to ``LIKE``. A tag part in double quotes (as in a list
+        tool's ``quoted_name`` or ``quoted_qualified_name``) is unquoted and sent to ``LIKE`` as
+        is, and only the row whose name equals it exactly, case-sensitively, is kept; if there is
+        none, the call fails with a not-found error. An unquoted tag part keeps the
+        case-insensitive ``LIKE`` lookup and returns the first row; with no row it fails with the
+        same not-found error.
+
+        Schema filter: only rows whose ``schema_name`` equals the resolved schema, and, when a
+        database resolves, whose ``database_name`` equals it, are kept, compared case-sensitively
+        like names. With no database resolved ``SHOW TAGS`` runs ``IN ACCOUNT``, so rows can
+        come from several databases; the schema filter still drops other schemas. When a database resolves,
+        rows from another database are dropped too. When none does, the rows left are grouped by
+        ``database_name``: rows from more than one database fail with an ambiguity error that names
+        those databases and asks for ``database.schema.tag``; rows from exactly one database are
+        returned as usual; no row is the not-found error. Prefer a three-part name when the
+        session has no current database.
+
+        Row cap: ``SHOW ... LIKE`` treats ``_`` and ``%`` as wildcards with no documented escape
+        (https://docs.snowflake.com/en/sql-reference/sql/show-tags), so a name containing them
+        can match more tags than the one asked for. Only the first ``max_rows`` rows (1,000 by
+        default) are read, and ``SHOW TAGS`` handles at most 10,000 rows, so in a scope with that
+        many look-alike names the target can be cut off and reported as not found, or the
+        command can fail. When no database resolves and the rows reach the row cap, a match in
+        another database can be cut off too, so the call fails with the ambiguity error instead
+        of returning the first row, even if every row it read comes from one database.
+        """
         try:
+            parts = split_object_name(tag_name)
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            sql = show_sql("TAGS", pattern=tag_name, database=db, schema=sch)
+            resolved = [resolve_ident(p) if p else None for p in (db, sch)]
+            # Parts from tag_name are already resolved; an empty schema (db..tag) is PUBLIC.
+            resolved[3 - len(parts) :] = [p or "PUBLIC" for p in parts[:-1]]
+            scope = [quote_resolved(p) if p else None for p in resolved]
+            # split_ident refuses a stray quote, so a name ending in one ends in a quoted tag part.
+            exact = parts[-1] if str(tag_name).rstrip().endswith('"') else None
+            pattern = parts[-1] if len(parts) > 1 or exact is not None else tag_name
+            sql = show_sql("TAGS", pattern=pattern, database=scope[0], schema=scope[1])
+            if not scope[0]:
+                # Without an IN clause the scope depends on the session: in a database context,
+                # "Objects with the same name are only displayed once if no IN clause is used",
+                # and with no database in use it has "the same effect as specifying IN ACCOUNT"
+                # (https://docs.snowflake.com/en/sql-reference/sql/show-tags). Say IN ACCOUNT.
+                sql += " IN ACCOUNT"
 
             res = client.execute_query(sql)
             data = res.get("data", [])
-            details = data[0] if data else {}
+            if resolved[1]:
+                data = exact_show_rows(data, resolved[1], key="schema_name")
+            if resolved[0]:
+                data = exact_show_rows(data, resolved[0], key="database_name")
+            if exact is not None:
+                data = exact_show_rows(data, exact)
+            name = exact if exact is not None else parts[-1]
+            if not data:
+                # A miss has one shape, quoted or not: the not-found error.
+                raise show_not_found("Tag", name)
+            if not resolved[0]:
+                # With no database resolved, SHOW TAGS runs IN ACCOUNT (see above), so rows can
+                # come from several databases; they are filtered to the schema client-side and
+                # grouped by database_name, so one of them is not picked silently.
+                where = f" schema {quote_resolved(resolved[1])} of" if resolved[1] else ""
+                if res.get("has_more"):
+                    # The rows stopped at the row cap, so another database's match can be cut off
+                    # and the set below would look unambiguous: refuse rather than pick data[0].
+                    raise ValueError(
+                        f"Tag {quote_resolved(name)} is ambiguous: SHOW TAGS returned as many rows as "
+                        f"the row cap allows, so it may be in{where} more than one database. Name it as "
+                        "database.schema.tag, for example a list row's quoted_qualified_name."
+                    )
+                dbs = sorted({row["database_name"] for row in data if isinstance(row.get("database_name"), str)})
+                if len(dbs) > 1:
+                    raise ValueError(
+                        f"Tag {quote_resolved(name)} is ambiguous: it was found in{where} more than one "
+                        f"database ({', '.join(quote_resolved(d) for d in dbs)}). Name it as "
+                        "database.schema.tag, for example a list row's quoted_qualified_name."
+                    )
+            details = data[0]
             return {"status": "success", "tag": tag_name, "details": details}
         except Exception as e:
             failure = ident_error(e)
@@ -125,6 +216,8 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             )
 
         try:
+            if domain_upper == "SCHEMA":
+                refuse_empty_part(object_name)
             sql = (
                 f"ALTER {domain_upper} {_qualified(object_name)} SET TAG {_qualified(tag_name)} = "
                 f"{quote_literal(tag_value)}"

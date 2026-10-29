@@ -184,7 +184,9 @@ async def test_tools_missing_branches() -> None:
         await tools["stages_remove_stage_file"].fn(stage_file_path="my_stage/file.csv", confirm=False)
 
     # tags: no db/schema and db only
-    await tools["tags_describe_tag"].fn(tag_name="TG", database="DB", schema_name=None)
+    # The mocked row has no database_name, so with a database the lookup is not-found.
+    with pytest.raises(ToolError, match="does not exist"):
+        await tools["tags_describe_tag"].fn(tag_name="TG", database="DB", schema_name=None)
     await tools["tags_describe_tag"].fn(tag_name="TG", database=None, schema_name=None)
 
     # warehouses: load history, fallback, and drop wh
@@ -198,7 +200,9 @@ async def test_tools_missing_branches() -> None:
         return {"status": "success", "data": []}
 
     client.execute_query.side_effect = wh_side_effect
-    await tools["warehouses_get_warehouse_load_history"].fn(warehouse_name="WH")
+    # An empty SHOW WAREHOUSES fallback is the not-found error, not an empty "partial".
+    with pytest.raises(ToolError, match=r'Warehouse \\"WH\\" does not exist or not authorized'):
+        await tools["warehouses_get_warehouse_load_history"].fn(warehouse_name="WH")
     client.execute_query.side_effect = None
     client.execute_query.return_value = {"status": "success", "data": [{"size": "SMALL"}]}
 

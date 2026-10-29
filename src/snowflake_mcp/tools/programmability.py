@@ -8,14 +8,15 @@ from typing import Any
 from fastmcp import FastMCP
 
 from snowflake_mcp.connection import (
+    QUOTED_NAME_NOTE,
     Identifier,
     OptionalIdentifier,
     SnowflakeClient,
     ident_error,
     qualify_ident,
-    quote_ident,
     quote_literal,
     show_sql,
+    with_quoted_names,
 )
 from snowflake_mcp.errors import status_error
 
@@ -79,7 +80,7 @@ def register_programmability_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
 
     @mcp.tool(
         name="list_procedures",
-        description="List stored procedures in a database or schema.",
+        description=f"List stored procedures in a database or schema. {QUOTED_NAME_NOTE}",
     )
     async def snowflake_list_procedures(
         database: OptionalIdentifier = None,
@@ -93,7 +94,7 @@ def register_programmability_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
             sql = show_sql("PROCEDURES", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
-            return {"status": "success", "procedures": res.get("data", [])}
+            return {"status": "success", "procedures": with_quoted_names(res.get("data", []))}
         except Exception as e:
             failure = ident_error(e)
         raise failure from None
@@ -121,7 +122,7 @@ def register_programmability_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
 
     @mcp.tool(
         name="list_functions",
-        description="List user-defined functions (UDFs) in a database or schema.",
+        description=f"List user-defined functions (UDFs) in a database or schema. {QUOTED_NAME_NOTE}",
     )
     async def snowflake_list_functions(
         database: OptionalIdentifier = None,
@@ -135,7 +136,7 @@ def register_programmability_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
             sql = show_sql("USER FUNCTIONS", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
-            return {"status": "success", "functions": res.get("data", [])}
+            return {"status": "success", "functions": with_quoted_names(res.get("data", []))}
         except Exception as e:
             failure = ident_error(e)
         raise failure from None
@@ -163,7 +164,7 @@ def register_programmability_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
 
     @mcp.tool(
         name="list_secrets",
-        description="List security secrets (API keys, OAuth credentials) stored in Snowflake.",
+        description=f"List security secrets (API keys, OAuth credentials) stored in Snowflake. {QUOTED_NAME_NOTE}",
     )
     async def snowflake_list_secrets(
         database: OptionalIdentifier = None,
@@ -177,7 +178,7 @@ def register_programmability_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
             sql = show_sql("SECRETS", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
-            return {"status": "success", "secrets": res.get("data", [])}
+            return {"status": "success", "secrets": with_quoted_names(res.get("data", []))}
         except Exception as e:
             failure = ident_error(e)
         raise failure from None
@@ -195,11 +196,7 @@ def register_programmability_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
         try:
             db = database or client.config.database
             sch = schema_name or client.config.schema_name
-            target = (
-                f"{quote_ident(db)}.{quote_ident(sch)}.{quote_ident(secret_name)}"
-                if db and sch
-                else quote_ident(secret_name)
-            )
+            target = qualify_ident(secret_name, db, sch)
             sql = f"DESCRIBE SECRET {target}"
             res = client.execute_query(sql)
             return {"status": "success", "secret": target, "details": res.get("data", [])}
@@ -209,7 +206,7 @@ def register_programmability_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
 
     @mcp.tool(
         name="list_sequences",
-        description="List auto-increment sequences in a database or schema.",
+        description=f"List auto-increment sequences in a database or schema. {QUOTED_NAME_NOTE}",
     )
     async def snowflake_list_sequences(
         database: OptionalIdentifier = None,
@@ -223,14 +220,14 @@ def register_programmability_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
             sql = show_sql("SEQUENCES", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
-            return {"status": "success", "sequences": res.get("data", [])}
+            return {"status": "success", "sequences": with_quoted_names(res.get("data", []))}
         except Exception as e:
             failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
         name="list_integrations",
-        description="List external integrations (API, Storage, Notification, Security integrations).",
+        description=f"List external integrations (API, Storage, Notification, Security integrations). {QUOTED_NAME_NOTE}",
     )
     async def snowflake_list_integrations(
         integration_type: str | None = None,
@@ -255,14 +252,14 @@ def register_programmability_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
             if pattern:
                 sql += f" LIKE {quote_literal(pattern)}"
             res = client.execute_query(sql)
-            return {"status": "success", "integrations": res.get("data", [])}
+            return {"status": "success", "integrations": with_quoted_names(res.get("data", []))}
         except Exception as e:
             failure = status_error(e)
         raise failure from None
 
     @mcp.tool(
         name="list_event_tables",
-        description="List event tables used for application logging, tracing, and SPCS telemetry.",
+        description=f"List event tables used for application logging, tracing, and SPCS telemetry. {QUOTED_NAME_NOTE}",
     )
     async def snowflake_list_event_tables(
         database: OptionalIdentifier = None,
@@ -276,14 +273,14 @@ def register_programmability_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
             sql = show_sql("EVENT TABLES", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
-            return {"status": "success", "event_tables": res.get("data", [])}
+            return {"status": "success", "event_tables": with_quoted_names(res.get("data", []))}
         except Exception as e:
             failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(
         name="list_notification_integrations",
-        description="List notification integrations configured for alerts, tasks, and cloud messaging (SNS, PubSub, Webhooks).",
+        description=f"List notification integrations configured for alerts, tasks, and cloud messaging (SNS, PubSub, Webhooks). {QUOTED_NAME_NOTE}",
     )
     async def snowflake_list_notification_integrations(
         pattern: str | None = None,
@@ -294,7 +291,7 @@ def register_programmability_tools(mcp: FastMCP, client: SnowflakeClient) -> Non
             if pattern:
                 sql += f" LIKE {quote_literal(pattern)}"
             res = client.execute_query(sql)
-            return {"status": "success", "notification_integrations": res.get("data", [])}
+            return {"status": "success", "notification_integrations": with_quoted_names(res.get("data", []))}
         except Exception as e:
             failure = status_error(e)
         raise failure from None

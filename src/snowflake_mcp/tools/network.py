@@ -7,6 +7,7 @@ from typing import Any
 from fastmcp import FastMCP
 
 from snowflake_mcp.connection import (
+    QUOTED_NAME_NOTE,
     Identifier,
     OptionalIdentifier,
     SnowflakeClient,
@@ -15,6 +16,7 @@ from snowflake_mcp.connection import (
     quote_ident,
     quote_literal,
     show_sql,
+    with_quoted_names,
 )
 from snowflake_mcp.errors import status_error
 
@@ -33,7 +35,7 @@ def register_network_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="list_network_policies",
-        description="List network policies configured in the account.",
+        description=f"List network policies configured in the account. {QUOTED_NAME_NOTE}",
     )
     async def snowflake_list_network_policies(
         pattern: str | None = None,
@@ -42,7 +44,7 @@ def register_network_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             sql = f"SHOW NETWORK POLICIES LIKE {quote_literal(pattern)}" if pattern else "SHOW NETWORK POLICIES"
             res = client.execute_query(sql)
-            return {"status": "success", "network_policies": res.get("data", [])}
+            return {"status": "success", "network_policies": with_quoted_names(res.get("data", []))}
         except Exception as e:
             failure = status_error(e)
         raise failure from None
@@ -65,7 +67,7 @@ def register_network_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="list_network_rules",
-        description="List network rules defined in a database or schema.",
+        description=f"List network rules defined in a database or schema. {QUOTED_NAME_NOTE}",
     )
     async def snowflake_list_network_rules(
         database: OptionalIdentifier = None,
@@ -79,7 +81,7 @@ def register_network_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             sql = show_sql("NETWORK RULES", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
-            return {"status": "success", "network_rules": res.get("data", [])}
+            return {"status": "success", "network_rules": with_quoted_names(res.get("data", []))}
         except Exception as e:
             failure = ident_error(e)
         raise failure from None
@@ -107,7 +109,7 @@ def register_network_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="list_password_policies",
-        description="List password security policies defined in the account or database.",
+        description=f"List password security policies defined in the account or database. {QUOTED_NAME_NOTE}",
     )
     async def snowflake_list_password_policies(
         database: OptionalIdentifier = None,
@@ -121,7 +123,7 @@ def register_network_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             sql = show_sql("PASSWORD POLICIES", pattern=pattern, database=db, schema=sch)
 
             res = client.execute_query(sql)
-            return {"status": "success", "password_policies": res.get("data", [])}
+            return {"status": "success", "password_policies": with_quoted_names(res.get("data", []))}
         except Exception as e:
             failure = ident_error(e)
         raise failure from None
