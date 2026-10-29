@@ -72,10 +72,12 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         parts come from *database* and *schema_name*, then the session defaults; ``db..tag`` means
         the database's PUBLIC schema (https://docs.snowflake.com/en/sql-reference/name-resolution).
         When no database resolves (a schema-only name or a bare or wildcard name with no
-        database anywhere), ``SHOW TAGS LIKE`` runs with ``IN ACCOUNT``: without an ``IN``
-        clause, "Objects with the same name are only displayed once if no ``IN`` clause is
-        used" (https://docs.snowflake.com/en/sql-reference/sql/show-tags), and ``IN ACCOUNT``
-        returns the whole account and works with no current database. The tag part alone
+        database anywhere), ``SHOW TAGS LIKE`` runs with ``IN ACCOUNT``. Without an ``IN``
+        clause the scope depends on the session: in a database context, "Objects with the same
+        name are only displayed once if no IN clause is used", and with no database in use it
+        has "the same effect as specifying IN ACCOUNT"
+        (https://docs.snowflake.com/en/sql-reference/sql/show-tags). ``IN ACCOUNT`` makes the
+        account scope explicit and works with no current database. The tag part alone
         goes to ``LIKE``. A tag part in double quotes (as in a list
         tool's ``quoted_name`` or ``quoted_qualified_name``) is unquoted and sent to ``LIKE`` as
         is, and only the row whose name equals it exactly, case-sensitively, is kept; if there is
@@ -115,9 +117,10 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             pattern = parts[-1] if len(parts) > 1 or exact is not None else tag_name
             sql = show_sql("TAGS", pattern=pattern, database=scope[0], schema=scope[1])
             if not scope[0]:
-                # Without an IN clause, "Objects with the same name are only displayed once"
-                # (https://docs.snowflake.com/en/sql-reference/sql/show-tags). IN ACCOUNT
-                # returns the whole account and works with no current database.
+                # Without an IN clause the scope depends on the session: in a database context,
+                # "Objects with the same name are only displayed once if no IN clause is used",
+                # and with no database in use it has "the same effect as specifying IN ACCOUNT"
+                # (https://docs.snowflake.com/en/sql-reference/sql/show-tags). Say IN ACCOUNT.
                 sql += " IN ACCOUNT"
 
             res = client.execute_query(sql)
@@ -133,11 +136,9 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
                 # A miss has one shape, quoted or not: the not-found error.
                 raise show_not_found("Tag", name)
             if not resolved[0]:
-                # With no database resolved, SHOW TAGS runs IN ACCOUNT because "Objects with the
-                # same name are only displayed once if no IN clause is used"
-                # (https://docs.snowflake.com/en/sql-reference/sql/show-tags); rows are then
-                # filtered to the schema client-side and grouped by database_name, so one of
-                # them is not picked silently.
+                # With no database resolved, SHOW TAGS runs IN ACCOUNT (see above), so rows can
+                # come from several databases; they are filtered to the schema client-side and
+                # grouped by database_name, so one of them is not picked silently.
                 where = f" schema {quote_resolved(resolved[1])} of" if resolved[1] else ""
                 if res.get("has_more"):
                     # The rows stopped at the row cap, so another database's match can be cut off
