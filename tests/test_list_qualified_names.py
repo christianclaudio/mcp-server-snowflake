@@ -253,33 +253,35 @@ async def test_describe_tag_refuses_a_malformed_or_four_part_name() -> None:
 @pytest.mark.parametrize(
     ("tag_name", "schema", "want"),
     [
-        ("sch.cost_center", None, "SHOW TAGS LIKE 'COST_CENTER'"),
-        ('"S x"."Tg"', None, "SHOW TAGS LIKE 'Tg'"),
-        ("cost_center", "sch", "SHOW TAGS LIKE 'cost_center'"),
+        ("sch.cost_center", None, "SHOW TAGS LIKE 'COST_CENTER' IN ACCOUNT"),
+        ('"S x"."Tg"', None, "SHOW TAGS LIKE 'Tg' IN ACCOUNT"),
+        ("cost_center", "sch", "SHOW TAGS LIKE 'cost_center' IN ACCOUNT"),
     ],
 )
 async def test_describe_tag_with_a_schema_and_no_database_scopes_to_that_schema(
     tag_name: str, schema: str | None, want: str
 ) -> None:
-    """With no database, SHOW TAGS LIKE runs with no IN SCHEMA / IN DATABASE; the schema
-    filter keeps only matching schema_name rows, so a same-named tag in another schema is not
-    returned."""
+    """With no database, SHOW TAGS LIKE runs with IN ACCOUNT (and no IN SCHEMA / IN DATABASE);
+    the schema filter keeps only matching schema_name rows, so a same-named tag in another schema
+    is not returned."""
     sf = SnowflakeClient(config=SnowflakeConfig(account="acc", user="usr", read_only=False))
     run = MagicMock(return_value={"data": []})
     sf.execute_query = run  # type: ignore[method-assign]
     async with Client(create_server(client=sf)) as client:
         await client.call_tool("tags_describe_tag", {"tag_name": tag_name, "schema_name": schema}, raise_on_error=False)
     assert run.call_args.args[0] == want
+    assert "IN ACCOUNT" in want
     assert "IN SCHEMA" not in want
     assert "IN DATABASE" not in want
+    assert "IN ACCOUNT" in run.call_args.args[0]
     assert "IN SCHEMA" not in run.call_args.args[0]
     assert "IN DATABASE" not in run.call_args.args[0]
 
 
 @pytest.mark.asyncio
 async def test_describe_tag_keeps_only_the_resolved_schema_and_database() -> None:
-    """With no database resolved, SHOW TAGS LIKE is not scoped to one database, so rows
-    from another schema are dropped by their schema_name and database_name, compared exactly."""
+    """With no database resolved, SHOW TAGS LIKE runs with IN ACCOUNT, so rows from another
+    schema are dropped by their schema_name and database_name, compared exactly."""
     right = {"name": "cost_center", "database_name": "DB", "schema_name": "SCH", "comment": "right"}
     wrong = {"name": "cost_center", "database_name": "DB", "schema_name": "OTHER", "comment": "wrong"}
     other_db = {"name": "cost_center", "database_name": "DB2", "schema_name": "SCH", "comment": "other db"}
@@ -290,13 +292,16 @@ async def test_describe_tag_keeps_only_the_resolved_schema_and_database() -> Non
     async with Client(create_server(client=sf)) as client:
         # Schema only (no database resolves): the schema filter still applies.
         got = _payload(await client.call_tool("tags_describe_tag", {"tag_name": 'sch."cost_center"'}))
-        assert run.call_args.args[0] == "SHOW TAGS LIKE 'cost_center'"
+        assert run.call_args.args[0] == "SHOW TAGS LIKE 'cost_center' IN ACCOUNT"
+        assert "IN ACCOUNT" in run.call_args.args[0]
         assert "IN SCHEMA" not in run.call_args.args[0]
         assert "IN DATABASE" not in run.call_args.args[0]
         assert got["details"] == right
         # Database and schema: the database filter applies too.
         run.return_value = {"data": [other_db, wrong, right]}
         got = _payload(await client.call_tool("tags_describe_tag", {"tag_name": 'db.sch."cost_center"'}))
+        assert "IN ACCOUNT" not in run.call_args.args[0]
+        assert "IN SCHEMA" in run.call_args.args[0]
         assert got["details"] == right
 
         # Only rows from the wrong schema or database: not-found, for a quoted tag and an unquoted one.
@@ -316,9 +321,9 @@ async def test_describe_tag_keeps_only_the_resolved_schema_and_database() -> Non
 
 @pytest.mark.asyncio
 async def test_describe_tag_with_no_database_refuses_a_tag_found_in_two_databases() -> None:
-    """With no database resolved, SHOW TAGS LIKE is not scoped to one database, so the same
-    schema and tag can come back from two databases. Neither is picked: the error names both
-    and asks for db.schema.tag."""
+    """With no database resolved, SHOW TAGS LIKE runs with IN ACCOUNT, so the same schema
+    and tag can come back from two databases. Neither is picked: the error names both and asks
+    for db.schema.tag."""
     one = {"name": "cost_center", "database_name": "Db2", "schema_name": "SCH"}
     two = {"name": "cost_center", "database_name": "DB1", "schema_name": "SCH"}
     sf = SnowflakeClient(config=SnowflakeConfig(account="acc", user="usr", read_only=False))
@@ -328,9 +333,12 @@ async def test_describe_tag_with_no_database_refuses_a_tag_found_in_two_database
         for tag_name in ('sch."cost_center"', "sch.cost_center"):
             result = await client.call_tool("tags_describe_tag", {"tag_name": tag_name}, raise_on_error=False)
             want_sql = (
-                "SHOW TAGS LIKE 'COST_CENTER'" if tag_name == "sch.cost_center" else "SHOW TAGS LIKE 'cost_center'"
+                "SHOW TAGS LIKE 'COST_CENTER' IN ACCOUNT"
+                if tag_name == "sch.cost_center"
+                else "SHOW TAGS LIKE 'cost_center' IN ACCOUNT"
             )
             assert run.call_args.args[0] == want_sql
+            assert "IN ACCOUNT" in run.call_args.args[0]
             assert "IN SCHEMA" not in run.call_args.args[0]
             assert "IN DATABASE" not in run.call_args.args[0]
             assert result.is_error, tag_name
@@ -340,7 +348,7 @@ async def test_describe_tag_with_no_database_refuses_a_tag_found_in_two_database
             assert "database.schema.tag" in error, error
         # With no schema either, the error still names both databases.
         result = await client.call_tool("tags_describe_tag", {"tag_name": "cost_center"}, raise_on_error=False)
-        assert run.call_args.args[0] == "SHOW TAGS LIKE 'cost_center'"
+        assert run.call_args.args[0] == "SHOW TAGS LIKE 'cost_center' IN ACCOUNT"
         error = json.loads(result.content[0].text)["error"]
         assert 'Tag "COST_CENTER" is ambiguous: it was found in more than one database ("DB1", "Db2")' in error
 
@@ -358,9 +366,12 @@ async def test_describe_tag_with_no_database_refuses_when_show_tags_is_cut_off()
         for tag_name in ('sch."cost_center"', "sch.cost_center"):
             result = await client.call_tool("tags_describe_tag", {"tag_name": tag_name}, raise_on_error=False)
             want_sql = (
-                "SHOW TAGS LIKE 'COST_CENTER'" if tag_name == "sch.cost_center" else "SHOW TAGS LIKE 'cost_center'"
+                "SHOW TAGS LIKE 'COST_CENTER' IN ACCOUNT"
+                if tag_name == "sch.cost_center"
+                else "SHOW TAGS LIKE 'cost_center' IN ACCOUNT"
             )
             assert run.call_args.args[0] == want_sql
+            assert "IN ACCOUNT" in run.call_args.args[0]
             assert "IN SCHEMA" not in run.call_args.args[0]
             assert "IN DATABASE" not in run.call_args.args[0]
             assert result.is_error, tag_name
@@ -368,7 +379,7 @@ async def test_describe_tag_with_no_database_refuses_when_show_tags_is_cut_off()
             assert "is ambiguous: SHOW TAGS returned as many rows as the row cap allows" in error, error
             assert 'so it may be in schema "SCH" of more than one database. Name it as database.schema.tag' in error
         result = await client.call_tool("tags_describe_tag", {"tag_name": "cost_center"}, raise_on_error=False)
-        assert run.call_args.args[0] == "SHOW TAGS LIKE 'cost_center'"
+        assert run.call_args.args[0] == "SHOW TAGS LIKE 'cost_center' IN ACCOUNT"
         assert result.is_error
         assert json.loads(result.content[0].text)["error"] == (
             'Tag "COST_CENTER" is ambiguous: SHOW TAGS returned as many rows as the row cap allows, so it '
@@ -400,6 +411,8 @@ async def test_describe_tag_with_a_database_returns_the_row_when_show_tags_is_cu
     sf.execute_query = run  # type: ignore[method-assign]
     async with Client(create_server(client=sf)) as client:
         got = _payload(await client.call_tool("tags_describe_tag", {"tag_name": "db1.sch.cost_center"}))
+    assert run.call_args.args[0] == 'SHOW TAGS LIKE \'COST_CENTER\' IN SCHEMA "DB1"."SCH"'
+    assert "IN ACCOUNT" not in run.call_args.args[0]
     assert got["details"] == row
 
 
@@ -412,7 +425,8 @@ async def test_describe_tag_with_no_database_returns_a_tag_found_in_one_database
     sf.execute_query = run  # type: ignore[method-assign]
     async with Client(create_server(client=sf)) as client:
         got = _payload(await client.call_tool("tags_describe_tag", {"tag_name": 'sch."cost_center"'}))
-    assert run.call_args.args[0] == "SHOW TAGS LIKE 'cost_center'"
+    assert run.call_args.args[0] == "SHOW TAGS LIKE 'cost_center' IN ACCOUNT"
+    assert "IN ACCOUNT" in run.call_args.args[0]
     assert "IN SCHEMA" not in run.call_args.args[0]
     assert "IN DATABASE" not in run.call_args.args[0]
     assert got["details"] == row

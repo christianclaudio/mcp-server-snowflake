@@ -108,12 +108,17 @@ async def test_describe_tag_quotes_name_and_scope(client: SnowflakeClient) -> No
     with pytest.raises(ToolError, match="does not exist"):
         await fn("PII", database="DB", schema_name="SCH")
     assert _sql(client) == 'SHOW TAGS LIKE \'PII\' IN SCHEMA "DB"."SCH"'
+    assert "IN ACCOUNT" not in _sql(client)
     with pytest.raises(ToolError, match="does not exist"):
         await fn("it's", database="DB")
     assert _sql(client) == "SHOW TAGS LIKE 'it''s' IN DATABASE \"DB\""
+    assert "IN ACCOUNT" not in _sql(client)
     with pytest.raises(ToolError, match="does not exist"):
         await fn("PII")
-    assert _sql(client) == "SHOW TAGS LIKE 'PII'"
+    assert _sql(client) == "SHOW TAGS LIKE 'PII' IN ACCOUNT"
+    assert "IN ACCOUNT" in _sql(client)
+    assert "IN SCHEMA" not in _sql(client)
+    assert "IN DATABASE" not in _sql(client)
 
 
 @pytest.mark.asyncio

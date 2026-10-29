@@ -71,10 +71,12 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         (``database.schema.tag``), parsed quote-aware like every other object name; the missing
         parts come from *database* and *schema_name*, then the session defaults; ``db..tag`` means
         the database's PUBLIC schema (https://docs.snowflake.com/en/sql-reference/name-resolution).
-        When a schema resolves with no database, ``SHOW TAGS LIKE`` runs with no ``IN SCHEMA`` and
-        no ``IN DATABASE`` clause: if the session has a current database the command is scoped to
-        that database, otherwise to the account (https://docs.snowflake.com/en/sql-reference/sql/show-tags).
-        The tag part alone goes to ``LIKE``. A tag part in double quotes (as in a list
+        When no database resolves (a schema-only name or a bare or wildcard name with no
+        database anywhere), ``SHOW TAGS LIKE`` runs with ``IN ACCOUNT``: without an ``IN``
+        clause, "Objects with the same name are only displayed once if no ``IN`` clause is
+        used" (https://docs.snowflake.com/en/sql-reference/sql/show-tags), and ``IN ACCOUNT``
+        returns the whole account and works with no current database. The tag part alone
+        goes to ``LIKE``. A tag part in double quotes (as in a list
         tool's ``quoted_name`` or ``quoted_qualified_name``) is unquoted and sent to ``LIKE`` as
         is, and only the row whose name equals it exactly, case-sensitively, is kept; if there is
         none, the call fails with a not-found error. An unquoted tag part keeps the
@@ -83,8 +85,8 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
         Schema filter: only rows whose ``schema_name`` equals the resolved schema, and, when a
         database resolves, whose ``database_name`` equals it, are kept, compared case-sensitively
-        like names. With no database resolved the query is not scoped to one database, so rows can
-        come from several; the schema filter still drops other schemas. When a database resolves,
+        like names. With no database resolved ``SHOW TAGS`` runs ``IN ACCOUNT``, so rows can
+        come from several databases; the schema filter still drops other schemas. When a database resolves,
         rows from another database are dropped too. When none does, the rows left are grouped by
         ``database_name``: rows from more than one database fail with an ambiguity error that names
         those databases and asks for ``database.schema.tag``; rows from exactly one database are
@@ -112,6 +114,11 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             exact = parts[-1] if str(tag_name).rstrip().endswith('"') else None
             pattern = parts[-1] if len(parts) > 1 or exact is not None else tag_name
             sql = show_sql("TAGS", pattern=pattern, database=scope[0], schema=scope[1])
+            if not scope[0]:
+                # Without an IN clause, "Objects with the same name are only displayed once"
+                # (https://docs.snowflake.com/en/sql-reference/sql/show-tags). IN ACCOUNT
+                # returns the whole account and works with no current database.
+                sql += " IN ACCOUNT"
 
             res = client.execute_query(sql)
             data = res.get("data", [])
@@ -126,8 +133,11 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
                 # A miss has one shape, quoted or not: the not-found error.
                 raise show_not_found("Tag", name)
             if not resolved[0]:
-                # With no database resolved, the query is not scoped to one database, so rows can
-                # come from several; one of them is not picked silently.
+                # With no database resolved, SHOW TAGS runs IN ACCOUNT because "Objects with the
+                # same name are only displayed once if no IN clause is used"
+                # (https://docs.snowflake.com/en/sql-reference/sql/show-tags); rows are then
+                # filtered to the schema client-side and grouped by database_name, so one of
+                # them is not picked silently.
                 where = f" schema {quote_resolved(resolved[1])} of" if resolved[1] else ""
                 if res.get("has_more"):
                     # The rows stopped at the row cap, so another database's match can be cut off
