@@ -121,6 +121,23 @@ The `cortex` fixtures are `cortex_analyst_query`, `cortex_complete`, `cortex_emb
 - A result or exception whose text matches `_CORTEX_UNAVAILABLE_MARKERS` (`unknown function`, `cortex not enabled`, `not available`) is the same skip when the account does not offer Cortex.
 - A match on `_SAFE_REJECTION_MARKERS` is a pass for `expect: cortex`, not a skip.
 
+### Live run with only account, user and token
+
+The live test needs only `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER` and `SNOWFLAKE_TOKEN`. `SNOWFLAKE_DATABASE`, `SNOWFLAKE_SCHEMA`, `SNOWFLAKE_WAREHOUSE` and `SNOWFLAKE_ROLE` are optional. With no current database, a bare object name cannot resolve, so the schema-scoped probes use fully qualified names. The harness never runs `USE` and never changes session state.
+
+Discovery is read-only, through the server's own tools. `databases_list_databases` lists the databases; only rows with `kind` `STANDARD` are kept, sorted by name, and the first 10 are tried. For each, `schemas_list_schemas` lists its schemas; `INFORMATION_SCHEMA` is skipped and `PUBLIC` is preferred, else the first by name. Names are passed double-quoted, with `"` doubled.
+
+`_NAMESPACED` lists the 24 qualified fixtures. Each is `rejected` unless it is a soft-empty success tool in `_EMPTY_SUCCESS_TOOLS`, which keeps `success`. Sixteen send a dotted name (`schemas_describe_schema` sends `<database>.<schema>`, the rest `<database>.<schema>.<object>`). Eight keep the bare name and pass `database` and `schema_name` instead: `programmability_describe_procedure`, `programmability_describe_function`, `programmability_describe_secret`, `pipes_describe_pipe`, `alerts_describe_alert`, `horizon_describe_masking_policy`, `horizon_describe_row_access_policy` and `tags_describe_tag` (`SHOW TAGS` is then scoped `IN SCHEMA <database>.<schema>`). `TOOL_FIXTURES` itself is not changed.
+
+The run prints three lines: the discovered database and schema (or `none`), the current role on its own line, and the warehouse state with whether a warehouse is configured. The account identifier and user are never printed.
+
+Two skips, each with its reason:
+
+- **No namespace:** when no readable database and schema is found, the 24 qualified fixtures skip before the call: `No readable database and schema for the current role among the first 10 databases (kind STANDARD) and their schemas, so the fully qualified probe could not be built.`
+- **No warehouse:** the state comes once from `governance_get_current_context` (`WAREHOUSE` in its `context` row): present, NULL, or unknown when the call fails or the row or key is missing. A `success`, `rejected` or `cortex` fixture skips only when the state is NULL, no warehouse is configured (`SNOWFLAKE_WAREHOUSE` or `connections.toml`), and the error text (exception, `isError` body, or a non-error body whose `status` is `partial`) matches `no active warehouse selected` without `fallback failed`. Reason: `No current warehouse: CURRENT_WAREHOUSE() is NULL and none is configured (SNOWFLAKE_WAREHOUSE or connections.toml); a query cannot be submitted without one.` If the context call itself fails with that error, raised or as an `isError` body, and no warehouse is configured, the state is NULL; a context error joined with `fallback failed` leaves it unknown. A configured warehouse, an unknown state, a joined `fallback failed` error or a `confirm` fixture never skips; those fail as before.
+
+Fixtures that submit a query and so need a warehouse (`DESCRIBE` and `SHOW` need none): `governance_get_current_context`, `recipes_health_check`, `queries_query`, `queries_get_query_history`, `queries_get_query_plan`, `queries_get_query_operator_stats`, `recipes_account_usage_summary`, `horizon_get_object_lineage`, `horizon_get_column_lineage`, `warehouses_get_warehouse_load_history`, `databases_get_database_ddl`, `tables_get_table_ddl`, `tables_sample_table`, `streams_read_stream_changes`, `recipes_inspect_table_with_sample`, `recipes_profile_table`, `pipes_get_pipe_status`, `tags_get_object_tag_references`, and the eight `cortex` fixtures.
+
 ### When a live run fails on an expect mismatch
 
 Update the harness in the same pull request. Change `_SAFE_REJECTION_MARKERS`, `_TOOL_REJECTION_MARKERS`, `_CONFIRM_MARKERS`, or the fixture `expect` so the table matches the product behavior you reproduced, and update this section when a bucket or marker list changes.
