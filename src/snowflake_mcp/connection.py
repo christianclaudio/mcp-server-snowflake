@@ -6,7 +6,7 @@ import logging
 import os
 import re
 from dataclasses import dataclass
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
 import snowflake.connector
 from cryptography.hazmat.backends import default_backend
@@ -824,7 +824,7 @@ class SnowflakeClient:
         cursor = conn.cursor(DictCursor)
         try:
             cursor.execute(query, params)
-            rows: list[dict[str, Any]] = cursor.fetchmany(limit)
+            rows = cast(list[dict[str, Any]], cursor.fetchmany(limit))
             query_id = cursor.sfqid or ""
             rowcount = cursor.rowcount if cursor.rowcount is not None and cursor.rowcount >= 0 else len(rows)
             description = cursor.description or []

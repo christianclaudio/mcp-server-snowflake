@@ -47,9 +47,9 @@ dependencies = [
     # certifi floor from FastMCP's October 2026 certificate authority incident notice:
     # https://github.com/PrefectHQ/fastmcp/blob/main/SECURITY.md#certificate-authority-incident-october-2026
     # snowflake-connector-python verifies Snowflake TLS against certifi's bundle.
-    "certifi>=2026.10.19",
-    "snowflake-connector-python>=4.8.0",
-    "snowflake-core>=1.13.2",
+    "certifi>=2026.10.23",
+    "snowflake-connector-python>=5.1.0",
+    "snowflake-core>=1.14.0",
     "pydantic>=2.14.1",
     "cryptography>=50.0.2",
     "python-dotenv>=1.2.4",
@@ -63,7 +63,7 @@ dev = [
     "httpx>=0.28.1",
     "opentelemetry-sdk>=1.45.1,<1.46",
     "mypy>=2.4.0",
-    "ruff>=0.17.1",
+    "ruff>=0.17.2",
     "build>=1.6.1",
     "twine>=7.0.0",
 ]
