@@ -65,14 +65,16 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         database: OptionalIdentifier = None,
         schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
-        """Describe tag via SHOW TAGS, scoped to the tag's database and schema.
+        """Describe tag via SHOW TAGS, scoped to the tag's database and schema when known.
 
         A dotted *tag_name* supplies its own schema (``schema.tag``) or database and schema
         (``database.schema.tag``), parsed quote-aware like every other object name; the missing
         parts come from *database* and *schema_name*, then the session defaults; ``db..tag`` means
         the database's PUBLIC schema (https://docs.snowflake.com/en/sql-reference/name-resolution).
-        A schema with no database scopes the lookup to ``IN SCHEMA <schema>`` in the current
-        database. The tag part alone goes to ``LIKE``. A tag part in double quotes (as in a list
+        When a schema resolves with no database, ``SHOW TAGS LIKE`` runs with no ``IN SCHEMA`` and
+        no ``IN DATABASE`` clause: if the session has a current database the command is scoped to
+        that database, otherwise to the account (https://docs.snowflake.com/en/sql-reference/sql/show-tags).
+        The tag part alone goes to ``LIKE``. A tag part in double quotes (as in a list
         tool's ``quoted_name`` or ``quoted_qualified_name``) is unquoted and sent to ``LIKE`` as
         is, and only the row whose name equals it exactly, case-sensitively, is kept; if there is
         none, the call fails with a not-found error. An unquoted tag part keeps the
@@ -81,14 +83,13 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
         Schema filter: only rows whose ``schema_name`` equals the resolved schema, and, when a
         database resolves, whose ``database_name`` equals it, are kept, compared case-sensitively
-        like names. ``IN SCHEMA`` alone is not enough: "If no database is in use, specifying
-        SCHEMA has no effect on the output" (https://docs.snowflake.com/en/sql-reference/sql/show-tags),
-        so a same-named tag from another schema, or from the same-named schema in another
-        database, could come back. Rows from another schema are dropped. When a database
-        resolves, rows from another database are dropped too. When none does, the rows left are
-        grouped by ``database_name``: rows from more than one database fail with an ambiguity
-        error that names those databases and asks for ``database.schema.tag``; rows from exactly
-        one database are returned as usual; no row is the not-found error.
+        like names. With no database resolved the query is not scoped to one database, so rows can
+        come from several; the schema filter still drops other schemas. When a database resolves,
+        rows from another database are dropped too. When none does, the rows left are grouped by
+        ``database_name``: rows from more than one database fail with an ambiguity error that names
+        those databases and asks for ``database.schema.tag``; rows from exactly one database are
+        returned as usual; no row is the not-found error. Prefer a three-part name when the
+        session has no current database.
 
         Row cap: ``SHOW ... LIKE`` treats ``_`` and ``%`` as wildcards with no documented escape
         (https://docs.snowflake.com/en/sql-reference/sql/show-tags), so a name containing them
@@ -111,11 +112,6 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             exact = parts[-1] if str(tag_name).rstrip().endswith('"') else None
             pattern = parts[-1] if len(parts) > 1 or exact is not None else tag_name
             sql = show_sql("TAGS", pattern=pattern, database=scope[0], schema=scope[1])
-            if scope[1] and not scope[0]:
-                # A schema with no database: scope to it in the current database, as the other
-                # tools resolve a schema-only name, rather than search the whole database. SHOW
-                # TAGS takes IN SCHEMA <schema_name> (https://docs.snowflake.com/en/sql-reference/sql/show-tags).
-                sql += f" IN SCHEMA {scope[1]}"
 
             res = client.execute_query(sql)
             data = res.get("data", [])
@@ -130,8 +126,8 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
                 # A miss has one shape, quoted or not: the not-found error.
                 raise show_not_found("Tag", name)
             if not resolved[0]:
-                # IN SCHEMA has no effect with no database in use, so rows can come from several
-                # databases; one of them is not picked silently.
+                # With no database resolved, the query is not scoped to one database, so rows can
+                # come from several; one of them is not picked silently.
                 where = f" schema {quote_resolved(resolved[1])} of" if resolved[1] else ""
                 if res.get("has_more"):
                     # The rows stopped at the row cap, so another database's match can be cut off
