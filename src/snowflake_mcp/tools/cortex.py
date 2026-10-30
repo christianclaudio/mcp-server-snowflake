@@ -16,7 +16,7 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="complete",
-        description="Run LLM completion via Snowflake AI_COMPLETE (e.g., 'llama3.3-70b', 'mistral-large2', 'snowflake-arctic').",
+        description="Run LLM completion via Snowflake AI_COMPLETE (e.g., 'llama3.3-70b', 'llama3.1-8b').",
     )
     async def snowflake_cortex_complete(
         prompt: str,
