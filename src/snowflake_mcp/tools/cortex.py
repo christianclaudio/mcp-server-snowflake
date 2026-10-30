@@ -36,11 +36,16 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             row = data[0] if data else None
             if row is not None and ("RESPONSE" in row or "response" in row):
                 response_text = row["RESPONSE"] if "RESPONSE" in row else row["response"]
+                if response_text is None:
+                    failure = status_error("AI_COMPLETE returned NULL; the input could not be processed")
+                else:
+                    return {
+                        "status": "success",
+                        "model": model,
+                        "response": response_text,
+                    }
             else:
                 response_text = row.get("RESPONSE") or row.get("response") if row else ""
-            if response_text is None:
-                failure = status_error("AI_COMPLETE returned NULL; the input could not be processed")
-            else:
                 return {
                     "status": "success",
                     "model": model,
@@ -200,11 +205,18 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             row = data[0] if data else None
             if row is not None and ("ANSWER" in row or "answer" in row):
                 ans = row["ANSWER"] if "ANSWER" in row else row["answer"]
+                if ans is None:
+                    failure = status_error("AI_COMPLETE returned NULL; the input could not be processed")
+                else:
+                    return {
+                        "status": "success",
+                        "question": question,
+                        "semantic_model_path": semantic_model_path,
+                        "generated_analysis": ans,
+                        "execution_mode": "cortex_complete_semantic_fallback",
+                    }
             else:
                 ans = row.get("ANSWER") or row.get("answer") if row else ""
-            if ans is None:
-                failure = status_error("AI_COMPLETE returned NULL; the input could not be processed")
-            else:
                 return {
                     "status": "success",
                     "question": question,
