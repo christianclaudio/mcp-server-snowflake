@@ -16,7 +16,7 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="complete",
-        description="Run LLM completion using Snowflake Cortex AI (e.g., 'llama3.3-70b', 'mistral-large2', 'snowflake-arctic').",
+        description="Run LLM completion via Snowflake AI_COMPLETE (e.g., 'llama3.3-70b', 'mistral-large2', 'snowflake-arctic').",
     )
     async def snowflake_cortex_complete(
         prompt: str,
@@ -24,9 +24,11 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         temperature: float = 0.0,
         max_tokens: int = 1024,
     ) -> dict[str, Any]:
-        """Execute Cortex AI LLM completion."""
+        """Execute LLM completion with AI_COMPLETE (string prompt form)."""
         try:
-            sql = f"SELECT SNOWFLAKE.CORTEX.COMPLETE({quote_literal(model)}, {quote_literal(prompt)}) AS response"
+            # Drop-in for basic COMPLETE(model, prompt); both return a string.
+            # https://docs.snowflake.com/en/user-guide/snowflake-cortex/aisql-migrate-legacy-functions
+            sql = f"SELECT AI_COMPLETE({quote_literal(model)}, {quote_literal(prompt)}) AS response"
             res = client.execute_query(sql)
             data = res.get("data", [])
             response_text = data[0].get("RESPONSE") or data[0].get("response") if data else ""

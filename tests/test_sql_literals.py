@@ -115,7 +115,7 @@ CORTEX_CASES = [
     (
         "cortex_complete",
         lambda v: {"prompt": v, "model": "m"},
-        "SELECT SNOWFLAKE.CORTEX.COMPLETE(?, ?) AS response",
+        "SELECT AI_COMPLETE(?, ?) AS response",
         lambda v: ["m", v],
     ),
     ("cortex_summarize", lambda v: {"text": v}, "SELECT SNOWFLAKE.CORTEX.SUMMARIZE(?) AS summary", lambda v: [v]),

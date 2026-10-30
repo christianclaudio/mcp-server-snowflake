@@ -106,6 +106,25 @@ async def test_cortex_model_and_language_names_are_quoted(client: SnowflakeClien
     await tools["cortex_embed_text_768"].fn(text="hi")
     assert _sql(client) == "SELECT SNOWFLAKE.CORTEX.EMBED_TEXT_768('snowflake-arctic-embed-m', 'hi') AS embedding"
     await tools["cortex_complete"].fn(prompt="p", model="m'\\")
-    assert _sql(client) == "SELECT SNOWFLAKE.CORTEX.COMPLETE('m''\\\\', 'p') AS response"
+    assert _sql(client) == "SELECT AI_COMPLETE('m''\\\\', 'p') AS response"
     await tools["cortex_translate"].fn(text="t", source_language="en'", target_language="de")
     assert _sql(client) == "SELECT SNOWFLAKE.CORTEX.TRANSLATE('t', 'en''', 'de') AS translation"
+
+
+@pytest.mark.asyncio
+async def test_cortex_complete_returns_string_response(client: SnowflakeClient) -> None:
+    """AI_COMPLETE plain (model, prompt) returns a string; tool exposes it as response.
+
+    https://docs.snowflake.com/en/sql-reference/functions/ai_complete-single-string
+    https://docs.snowflake.com/en/user-guide/snowflake-cortex/aisql-migrate-legacy-functions
+    """
+    client.execute_query.return_value = {"data": [{"RESPONSE": "hello from model"}]}  # type: ignore[attr-defined]
+    tools = _tools(client)
+    res = await tools["cortex_complete"].fn(prompt="say hi", model="llama3.3-70b")
+    assert res == {"status": "success", "model": "llama3.3-70b", "response": "hello from model"}
+    assert _sql(client) == "SELECT AI_COMPLETE('llama3.3-70b', 'say hi') AS response"
+
+    client.execute_query.return_value = {"data": [{"response": "lower key"}]}  # type: ignore[attr-defined]
+    res = await tools["cortex_complete"].fn(prompt="p")
+    assert res["response"] == "lower key"
+    assert res["model"] == "llama3.3-70b"
