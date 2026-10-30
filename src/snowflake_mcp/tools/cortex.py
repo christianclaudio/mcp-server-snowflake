@@ -32,11 +32,16 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             data = res.get("data", [])
             response_text = data[0].get("RESPONSE") or data[0].get("response") if data else ""
-            return {
-                "status": "success",
-                "model": model,
-                "response": response_text,
-            }
+            # AI_COMPLETE returns NULL when it cannot process the input.
+            # https://docs.snowflake.com/en/user-guide/snowflake-cortex/aisql-migrate-legacy-functions
+            if response_text is None:
+                failure = status_error("AI_COMPLETE returned NULL; the input could not be processed")
+            else:
+                return {
+                    "status": "success",
+                    "model": model,
+                    "response": response_text,
+                }
         except Exception as e:
             failure = status_error(e)
         raise failure from None
@@ -187,13 +192,18 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             data = res.get("data", [])
             ans = data[0].get("ANSWER") or data[0].get("answer") if data else ""
-            return {
-                "status": "success",
-                "question": question,
-                "semantic_model_path": semantic_model_path,
-                "generated_analysis": ans,
-                "execution_mode": "cortex_complete_semantic_fallback",
-            }
+            # AI_COMPLETE returns NULL when it cannot process the input.
+            # https://docs.snowflake.com/en/user-guide/snowflake-cortex/aisql-migrate-legacy-functions
+            if ans is None:
+                failure = status_error("AI_COMPLETE returned NULL; the input could not be processed")
+            else:
+                return {
+                    "status": "success",
+                    "question": question,
+                    "semantic_model_path": semantic_model_path,
+                    "generated_analysis": ans,
+                    "execution_mode": "cortex_complete_semantic_fallback",
+                }
         except Exception as e:
             failure = status_error(e)
         raise failure from None

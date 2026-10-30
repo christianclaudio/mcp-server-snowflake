@@ -7,6 +7,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from fastmcp.exceptions import ToolError
 
 from snowflake_mcp.config import SnowflakeConfig
 from snowflake_mcp.connection import SnowflakeClient
@@ -161,3 +162,35 @@ async def test_cortex_analyst_query_uses_ai_complete(client: SnowflakeClient) ->
         "SELECT AI_COMPLETE('llama3.3-70b', 'Given semantic model DB.SCH.MODEL, "
         "answer the following analytical request: q') AS answer"
     )
+
+
+@pytest.mark.asyncio
+async def test_cortex_complete_null_response_is_error(client: SnowflakeClient) -> None:
+    """AI_COMPLETE NULL becomes a status_error ToolError (not a success with null response).
+
+    https://docs.snowflake.com/en/user-guide/snowflake-cortex/aisql-migrate-legacy-functions
+    https://docs.snowflake.com/en/sql-reference/functions/ai_complete
+    """
+    client.execute_query.return_value = {"data": [{"RESPONSE": None}]}  # type: ignore[attr-defined]
+    with pytest.raises(ToolError) as excinfo:
+        await _tools(client)["cortex_complete"].fn(prompt="p")
+    payload = json.loads(str(excinfo.value))
+    assert payload["status"] == "error"
+    assert "NULL" in payload["error"]
+    assert _sql(client) == "SELECT AI_COMPLETE('llama3.3-70b', 'p') AS response"
+
+
+@pytest.mark.asyncio
+async def test_cortex_analyst_query_null_answer_is_error(client: SnowflakeClient) -> None:
+    """analyst_query AI_COMPLETE NULL becomes a status_error ToolError.
+
+    https://docs.snowflake.com/en/user-guide/snowflake-cortex/aisql-migrate-legacy-functions
+    """
+    client.execute_query.return_value = {"data": [{"ANSWER": None}]}  # type: ignore[attr-defined]
+    with pytest.raises(ToolError) as excinfo:
+        await _tools(client)["cortex_analyst_query"].fn(question="q")
+    payload = json.loads(str(excinfo.value))
+    assert payload["status"] == "error"
+    assert "NULL" in payload["error"]
+    assert "AI_COMPLETE" in _sql(client)
+    assert "CORTEX.COMPLETE" not in _sql(client)
