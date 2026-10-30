@@ -31,9 +31,13 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             sql = f"SELECT AI_COMPLETE({quote_literal(model)}, {quote_literal(prompt)}) AS response"
             res = client.execute_query(sql)
             data = res.get("data", [])
-            response_text = data[0].get("RESPONSE") or data[0].get("response") if data else ""
-            # AI_COMPLETE returns NULL when it cannot process the input.
+            # Prefer RESPONSE; only treat an explicit None as SQL NULL (missing key is not NULL).
             # https://docs.snowflake.com/en/user-guide/snowflake-cortex/aisql-migrate-legacy-functions
+            row = data[0] if data else None
+            if row is not None and ("RESPONSE" in row or "response" in row):
+                response_text = row["RESPONSE"] if "RESPONSE" in row else row["response"]
+            else:
+                response_text = row.get("RESPONSE") or row.get("response") if row else ""
             if response_text is None:
                 failure = status_error("AI_COMPLETE returned NULL; the input could not be processed")
             else:
@@ -191,9 +195,13 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             sql = f"SELECT AI_COMPLETE('llama3.3-70b', {quote_literal(prompt)}) AS answer"
             res = client.execute_query(sql)
             data = res.get("data", [])
-            ans = data[0].get("ANSWER") or data[0].get("answer") if data else ""
-            # AI_COMPLETE returns NULL when it cannot process the input.
+            # Prefer ANSWER; only treat an explicit None as SQL NULL (missing key is not NULL).
             # https://docs.snowflake.com/en/user-guide/snowflake-cortex/aisql-migrate-legacy-functions
+            row = data[0] if data else None
+            if row is not None and ("ANSWER" in row or "answer" in row):
+                ans = row["ANSWER"] if "ANSWER" in row else row["answer"]
+            else:
+                ans = row.get("ANSWER") or row.get("answer") if row else ""
             if ans is None:
                 failure = status_error("AI_COMPLETE returned NULL; the input could not be processed")
             else:
