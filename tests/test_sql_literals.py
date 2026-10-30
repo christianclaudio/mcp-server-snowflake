@@ -141,7 +141,7 @@ CORTEX_CASES = [
     (
         "cortex_analyst_query",
         lambda v: {"question": v},
-        "SELECT SNOWFLAKE.CORTEX.COMPLETE(?, ?) AS answer",
+        "SELECT AI_COMPLETE(?, ?) AS answer",
         lambda v: ["llama3.3-70b", f"answer the following analytical request: {v}"],
     ),
 ]

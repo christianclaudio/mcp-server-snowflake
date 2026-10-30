@@ -181,7 +181,9 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             model_ctx = f"Given semantic model {semantic_model_path}, " if semantic_model_path else ""
             prompt = f"{model_ctx}answer the following analytical request: {question}"
-            sql = f"SELECT SNOWFLAKE.CORTEX.COMPLETE('llama3.3-70b', {quote_literal(prompt)}) AS answer"
+            # Drop-in for basic COMPLETE(model, prompt); both return a string.
+            # https://docs.snowflake.com/en/user-guide/snowflake-cortex/aisql-migrate-legacy-functions
+            sql = f"SELECT AI_COMPLETE('llama3.3-70b', {quote_literal(prompt)}) AS answer"
             res = client.execute_query(sql)
             data = res.get("data", [])
             ans = data[0].get("ANSWER") or data[0].get("answer") if data else ""
