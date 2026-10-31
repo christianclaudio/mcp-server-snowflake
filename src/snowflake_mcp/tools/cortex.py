@@ -16,7 +16,7 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="complete",
-        description="Run LLM completion using Snowflake Cortex AI (e.g., 'llama3.3-70b', 'mistral-large2', 'snowflake-arctic').",
+        description="Run LLM completion via Snowflake AI_COMPLETE (e.g., 'llama3.3-70b', 'llama3.1-8b').",
     )
     async def snowflake_cortex_complete(
         prompt: str,
@@ -24,17 +24,33 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         temperature: float = 0.0,
         max_tokens: int = 1024,
     ) -> dict[str, Any]:
-        """Execute Cortex AI LLM completion."""
+        """Execute LLM completion with AI_COMPLETE (string prompt form)."""
         try:
-            sql = f"SELECT SNOWFLAKE.CORTEX.COMPLETE({quote_literal(model)}, {quote_literal(prompt)}) AS response"
+            # Drop-in for basic COMPLETE(model, prompt); both return a string.
+            # https://docs.snowflake.com/en/user-guide/snowflake-cortex/aisql-migrate-legacy-functions
+            sql = f"SELECT AI_COMPLETE({quote_literal(model)}, {quote_literal(prompt)}) AS response"
             res = client.execute_query(sql)
             data = res.get("data", [])
-            response_text = data[0].get("RESPONSE") or data[0].get("response") if data else ""
-            return {
-                "status": "success",
-                "model": model,
-                "response": response_text,
-            }
+            # Prefer RESPONSE; only treat an explicit None as SQL NULL (missing key is not NULL).
+            # https://docs.snowflake.com/en/user-guide/snowflake-cortex/aisql-migrate-legacy-functions
+            row = data[0] if data else None
+            if row is not None and ("RESPONSE" in row or "response" in row):
+                response_text = row["RESPONSE"] if "RESPONSE" in row else row["response"]
+                if response_text is None:
+                    failure = status_error("AI_COMPLETE returned NULL; the input could not be processed")
+                else:
+                    return {
+                        "status": "success",
+                        "model": model,
+                        "response": response_text,
+                    }
+            else:
+                response_text = row.get("RESPONSE") or row.get("response") if row else ""
+                return {
+                    "status": "success",
+                    "model": model,
+                    "response": response_text,
+                }
         except Exception as e:
             failure = status_error(e)
         raise failure from None
@@ -179,17 +195,35 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             model_ctx = f"Given semantic model {semantic_model_path}, " if semantic_model_path else ""
             prompt = f"{model_ctx}answer the following analytical request: {question}"
-            sql = f"SELECT SNOWFLAKE.CORTEX.COMPLETE('llama3.3-70b', {quote_literal(prompt)}) AS answer"
+            # Drop-in for basic COMPLETE(model, prompt); both return a string.
+            # https://docs.snowflake.com/en/user-guide/snowflake-cortex/aisql-migrate-legacy-functions
+            sql = f"SELECT AI_COMPLETE('llama3.3-70b', {quote_literal(prompt)}) AS answer"
             res = client.execute_query(sql)
             data = res.get("data", [])
-            ans = data[0].get("ANSWER") or data[0].get("answer") if data else ""
-            return {
-                "status": "success",
-                "question": question,
-                "semantic_model_path": semantic_model_path,
-                "generated_analysis": ans,
-                "execution_mode": "cortex_complete_semantic_fallback",
-            }
+            # Prefer ANSWER; only treat an explicit None as SQL NULL (missing key is not NULL).
+            # https://docs.snowflake.com/en/user-guide/snowflake-cortex/aisql-migrate-legacy-functions
+            row = data[0] if data else None
+            if row is not None and ("ANSWER" in row or "answer" in row):
+                ans = row["ANSWER"] if "ANSWER" in row else row["answer"]
+                if ans is None:
+                    failure = status_error("AI_COMPLETE returned NULL; the input could not be processed")
+                else:
+                    return {
+                        "status": "success",
+                        "question": question,
+                        "semantic_model_path": semantic_model_path,
+                        "generated_analysis": ans,
+                        "execution_mode": "cortex_complete_semantic_fallback",
+                    }
+            else:
+                ans = row.get("ANSWER") or row.get("answer") if row else ""
+                return {
+                    "status": "success",
+                    "question": question,
+                    "semantic_model_path": semantic_model_path,
+                    "generated_analysis": ans,
+                    "execution_mode": "cortex_complete_semantic_fallback",
+                }
         except Exception as e:
             failure = status_error(e)
         raise failure from None
