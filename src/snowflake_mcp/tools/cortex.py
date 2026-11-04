@@ -11,6 +11,21 @@ from snowflake_mcp.connection import SnowflakeClient, quote_literal
 from snowflake_mcp.errors import status_error
 
 
+def _decode_object(value: Any, function: str) -> Any:
+    """Decode an OBJECT/VARIANT column the Snowflake connector returned as a JSON string.
+
+    The Python connector returns semi-structured values (OBJECT, VARIANT, ARRAY) as JSON
+    text, so AI_SENTIMENT and AI_EXTRACT results arrive as strings unless decoded.
+    https://docs.snowflake.com/en/developer-guide/python-connector/python-connector-api
+    """
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"{function} returned invalid JSON: {e.msg}") from None
+    return value
+
+
 def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     """Register Cortex AI, Search, Translation, Embeddings, and NLP tools."""
 
@@ -106,7 +121,7 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
                 if sentiment is None:
                     failure = status_error("AI_SENTIMENT returned NULL; the input could not be processed")
                 else:
-                    return {"status": "success", "sentiment": sentiment}
+                    return {"status": "success", "sentiment": _decode_object(sentiment, "AI_SENTIMENT")}
             else:
                 sentiment = row.get("SENTIMENT") or row.get("sentiment") if row else None
                 return {"status": "success", "sentiment": sentiment}
@@ -148,7 +163,11 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
                 if ans is None:
                     failure = status_error("AI_EXTRACT returned NULL; the input could not be processed")
                 else:
-                    return {"status": "success", "question": question, "answer": ans}
+                    ans = _decode_object(ans, "AI_EXTRACT")
+                    if isinstance(ans, dict) and ans.get("error") is not None:
+                        failure = status_error(f"AI_EXTRACT returned an error: {ans['error']}")
+                    else:
+                        return {"status": "success", "question": question, "answer": ans}
             else:
                 ans = row.get("ANSWER") or row.get("answer") if row else None
                 return {"status": "success", "question": question, "answer": ans}

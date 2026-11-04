@@ -287,3 +287,53 @@ async def test_cortex_extract_answer_null_is_error(client: SnowflakeClient) -> N
     assert payload["status"] == "error"
     assert "NULL" in payload["error"]
     assert "AI_EXTRACT" in _sql(client)
+
+
+@pytest.mark.asyncio
+async def test_cortex_sentiment_and_extract_decode_connector_json_strings(client: SnowflakeClient) -> None:
+    """The connector returns OBJECT columns as JSON text; both tools decode them."""
+    sentiment = {"categories": [{"name": "overall", "sentiment": "positive"}]}
+    client.execute_query.return_value = {"data": [{"SENTIMENT": json.dumps(sentiment)}]}  # type: ignore[attr-defined]
+    tools = _tools(client)
+    res = await tools["cortex_sentiment"].fn(text="great")
+    assert res == {"status": "success", "sentiment": sentiment}
+
+    extraction = {"error": None, "response": {"answer": "42"}}
+    client.execute_query.return_value = {"data": [{"ANSWER": json.dumps(extraction)}]}  # type: ignore[attr-defined]
+    res = await tools["cortex_extract_answer"].fn(source_text="doc", question="how many?")
+    assert res == {"status": "success", "question": "how many?", "answer": extraction}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tool", "column", "function"),
+    [("cortex_sentiment", "SENTIMENT", "AI_SENTIMENT"), ("cortex_extract_answer", "ANSWER", "AI_EXTRACT")],
+)
+async def test_cortex_object_invalid_json_is_error(
+    client: SnowflakeClient, tool: str, column: str, function: str
+) -> None:
+    """A JSON string that does not parse becomes a status_error ToolError."""
+    client.execute_query.return_value = {"data": [{column: "{not json"}]}  # type: ignore[attr-defined]
+    args = {"text": "x"} if tool == "cortex_sentiment" else {"source_text": "s", "question": "q"}
+    with pytest.raises(ToolError) as excinfo:
+        await _tools(client)[tool].fn(**args)
+    payload = json.loads(str(excinfo.value))
+    assert payload["status"] == "error"
+    assert f"{function} returned invalid JSON" in payload["error"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("as_string", [False, True])
+async def test_cortex_extract_answer_error_field_is_error(client: SnowflakeClient, as_string: bool) -> None:
+    """A non-null AI_EXTRACT error field becomes a status_error ToolError.
+
+    https://docs.snowflake.com/en/sql-reference/functions/ai_extract
+    """
+    extraction = {"error": "document could not be parsed", "response": None}
+    value: Any = json.dumps(extraction) if as_string else extraction
+    client.execute_query.return_value = {"data": [{"ANSWER": value}]}  # type: ignore[attr-defined]
+    with pytest.raises(ToolError) as excinfo:
+        await _tools(client)["cortex_extract_answer"].fn(source_text="s", question="q")
+    payload = json.loads(str(excinfo.value))
+    assert payload["status"] == "error"
+    assert "AI_EXTRACT returned an error: document could not be parsed" in payload["error"]
