@@ -189,8 +189,8 @@ async def test_cortex_and_recipes(mock_client: SnowflakeClient) -> None:
     mock_client.execute_query.side_effect = [  # type: ignore[attr-defined]
         {"data": [{"RESPONSE": "AI Response"}]},
         {"data": [{"SUMMARY": "Summary Text"}]},
-        {"data": [{"SENTIMENT": 0.85}]},
-        {"data": [{"ANSWER": "Answer Text"}]},
+        {"data": [{"SENTIMENT": {"categories": [{"name": "overall", "sentiment": "positive"}]}}]},
+        {"data": [{"ANSWER": {"error": None, "response": {"answer": "Answer Text"}}}]},
         # Health check queries
         {"data": [{"USER": "ADMIN", "WAREHOUSE": "COMPUTE_WH"}]},
         {"data": [{"size": "XSMALL"}]},

@@ -27,7 +27,7 @@ This skill provides expert operating guidelines, architectural recipes, and safe
 
 ### 4. Cortex AI & NLP Workflows
 - **Enterprise LLM Inference** — Call `cortex_complete(prompt=..., model="llama3.3-70b")` or `claude-3-5-sonnet` inside the Snowflake security perimeter.
-- **Semantic Text Search & Embeddings** — Generate 768-dimensional embeddings using `cortex_embed_text_768(text=..., model="snowflake-arctic-embed-m")`.
+- **Semantic Text Search & Embeddings** — Generate embeddings via AI_EMBED using `cortex_embed_text_768(text=..., model="snowflake-arctic-embed-m")` (dimension follows the model; arctic-embed-m is 768).
 - **Document Question Answering** — Extract answers from unstructured context with `cortex_extract_answer(source_text=..., question=...)`.
 
 ### 5. Horizon Lineage & Governance
