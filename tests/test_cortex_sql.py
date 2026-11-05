@@ -103,13 +103,13 @@ async def test_cortex_model_and_language_names_are_quoted(client: SnowflakeClien
     client.execute_query.return_value = {"data": [{"EMBEDDING": [0.1]}]}  # type: ignore[attr-defined]
     tools = _tools(client)
     await tools["cortex_embed_text_768"].fn(text="hi", model="m', 'x")
-    assert _sql(client) == "SELECT SNOWFLAKE.CORTEX.EMBED_TEXT_768('m'', ''x', 'hi') AS embedding"
+    assert _sql(client) == "SELECT AI_EMBED('m'', ''x', 'hi') AS embedding"
     await tools["cortex_embed_text_768"].fn(text="hi")
-    assert _sql(client) == "SELECT SNOWFLAKE.CORTEX.EMBED_TEXT_768('snowflake-arctic-embed-m', 'hi') AS embedding"
+    assert _sql(client) == "SELECT AI_EMBED('snowflake-arctic-embed-m', 'hi') AS embedding"
     await tools["cortex_complete"].fn(prompt="p", model="m'\\")
     assert _sql(client) == "SELECT AI_COMPLETE('m''\\\\', 'p') AS response"
     await tools["cortex_translate"].fn(text="t", source_language="en'", target_language="de")
-    assert _sql(client) == "SELECT SNOWFLAKE.CORTEX.TRANSLATE('t', 'en''', 'de') AS translation"
+    assert _sql(client) == "SELECT AI_TRANSLATE('t', 'en''', 'de') AS translation"
 
 
 @pytest.mark.asyncio
@@ -194,3 +194,146 @@ async def test_cortex_analyst_query_null_answer_is_error(client: SnowflakeClient
     assert "NULL" in payload["error"]
     assert "AI_COMPLETE" in _sql(client)
     assert "CORTEX.COMPLETE" not in _sql(client)
+
+
+@pytest.mark.asyncio
+async def test_cortex_summarize_translate_use_ai_functions(client: SnowflakeClient) -> None:
+    """SUMMARIZE/TRANSLATE are direct AI_* renames.
+
+    https://docs.snowflake.com/en/user-guide/snowflake-cortex/aisql-migrate-legacy-functions
+    https://docs.snowflake.com/en/sql-reference/functions/ai_summarize
+    https://docs.snowflake.com/en/sql-reference/functions/ai_translate
+    """
+    client.execute_query.return_value = {"data": [{"SUMMARY": "short"}]}  # type: ignore[attr-defined]
+    tools = _tools(client)
+    res = await tools["cortex_summarize"].fn(text="long text")
+    assert res == {"status": "success", "summary": "short"}
+    assert _sql(client) == "SELECT AI_SUMMARIZE('long text') AS summary"
+    client.execute_query.return_value = {"data": [{"TRANSLATION": "hola"}]}  # type: ignore[attr-defined]
+    res = await tools["cortex_translate"].fn(text="hi", source_language="en", target_language="es")
+    assert res == {"status": "success", "translated_text": "hola"}
+    assert _sql(client) == "SELECT AI_TRANSLATE('hi', 'en', 'es') AS translation"
+
+
+@pytest.mark.asyncio
+async def test_cortex_sentiment_returns_ai_sentiment_object(client: SnowflakeClient) -> None:
+    """AI_SENTIMENT returns an object with categories, not a FLOAT score.
+
+    https://docs.snowflake.com/en/sql-reference/functions/ai_sentiment
+    https://docs.snowflake.com/en/user-guide/snowflake-cortex/aisql-migrate-legacy-functions
+    """
+    payload = {"categories": [{"name": "overall", "sentiment": "positive"}]}
+    client.execute_query.return_value = {"data": [{"SENTIMENT": payload}]}  # type: ignore[attr-defined]
+    tools = _tools(client)
+    res = await tools["cortex_sentiment"].fn(text="great")
+    assert res == {"status": "success", "sentiment": payload}
+    assert "sentiment_score" not in res
+    assert _sql(client) == "SELECT AI_SENTIMENT('great') AS sentiment"
+
+    client.execute_query.return_value = {"data": [{"sentiment": payload}]}  # type: ignore[attr-defined]
+    res = await tools["cortex_sentiment"].fn(text="ok")
+    assert res["sentiment"] == payload
+
+
+@pytest.mark.asyncio
+async def test_cortex_sentiment_null_is_error(client: SnowflakeClient) -> None:
+    """AI_SENTIMENT NULL becomes a status_error ToolError.
+
+    https://docs.snowflake.com/en/sql-reference/functions/ai_sentiment
+    """
+    client.execute_query.return_value = {"data": [{"SENTIMENT": None}]}  # type: ignore[attr-defined]
+    with pytest.raises(ToolError) as excinfo:
+        await _tools(client)["cortex_sentiment"].fn(text="x")
+    payload = json.loads(str(excinfo.value))
+    assert payload["status"] == "error"
+    assert "NULL" in payload["error"]
+    assert "AI_SENTIMENT" in _sql(client)
+
+
+@pytest.mark.asyncio
+async def test_cortex_extract_answer_uses_ai_extract(client: SnowflakeClient) -> None:
+    """AI_EXTRACT uses responseFormat and returns a JSON object.
+
+    https://docs.snowflake.com/en/sql-reference/functions/ai_extract
+    https://docs.snowflake.com/en/user-guide/snowflake-cortex/aisql-migrate-legacy-functions
+    """
+    extraction = {"error": None, "response": {"answer": "42"}}
+    client.execute_query.return_value = {"data": [{"ANSWER": extraction}]}  # type: ignore[attr-defined]
+    tools = _tools(client)
+    res = await tools["cortex_extract_answer"].fn(source_text="doc", question="how many?")
+    assert res == {"status": "success", "question": "how many?", "answer": extraction}
+    assert _sql(client) == (
+        "SELECT AI_EXTRACT(text => 'doc', responseFormat => PARSE_JSON('{\"answer\": \"how many?\"}')) AS answer"
+    )
+
+    client.execute_query.return_value = {"data": [{"answer": extraction}]}  # type: ignore[attr-defined]
+    res = await tools["cortex_extract_answer"].fn(source_text="s", question="q")
+    assert res["answer"] == extraction
+    assert _sql(client) == (
+        "SELECT AI_EXTRACT(text => 's', responseFormat => PARSE_JSON('{\"answer\": \"q\"}')) AS answer"
+    )
+
+
+@pytest.mark.asyncio
+async def test_cortex_extract_answer_null_is_error(client: SnowflakeClient) -> None:
+    """AI_EXTRACT NULL becomes a status_error ToolError.
+
+    https://docs.snowflake.com/en/sql-reference/functions/ai_extract
+    """
+    client.execute_query.return_value = {"data": [{"ANSWER": None}]}  # type: ignore[attr-defined]
+    with pytest.raises(ToolError) as excinfo:
+        await _tools(client)["cortex_extract_answer"].fn(source_text="s", question="q")
+    payload = json.loads(str(excinfo.value))
+    assert payload["status"] == "error"
+    assert "NULL" in payload["error"]
+    assert "AI_EXTRACT" in _sql(client)
+
+
+@pytest.mark.asyncio
+async def test_cortex_sentiment_and_extract_decode_connector_json_strings(client: SnowflakeClient) -> None:
+    """The connector returns OBJECT columns as JSON text; both tools decode them."""
+    sentiment = {"categories": [{"name": "overall", "sentiment": "positive"}]}
+    client.execute_query.return_value = {"data": [{"SENTIMENT": json.dumps(sentiment)}]}  # type: ignore[attr-defined]
+    tools = _tools(client)
+    res = await tools["cortex_sentiment"].fn(text="great")
+    assert res == {"status": "success", "sentiment": sentiment}
+
+    extraction = {"error": None, "response": {"answer": "42"}}
+    client.execute_query.return_value = {"data": [{"ANSWER": json.dumps(extraction)}]}  # type: ignore[attr-defined]
+    res = await tools["cortex_extract_answer"].fn(source_text="doc", question="how many?")
+    assert res == {"status": "success", "question": "how many?", "answer": extraction}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("tool", "column", "function"),
+    [("cortex_sentiment", "SENTIMENT", "AI_SENTIMENT"), ("cortex_extract_answer", "ANSWER", "AI_EXTRACT")],
+)
+async def test_cortex_object_invalid_json_is_error(
+    client: SnowflakeClient, tool: str, column: str, function: str
+) -> None:
+    """A JSON string that does not parse becomes a status_error ToolError."""
+    client.execute_query.return_value = {"data": [{column: "{not json"}]}  # type: ignore[attr-defined]
+    args = {"text": "x"} if tool == "cortex_sentiment" else {"source_text": "s", "question": "q"}
+    with pytest.raises(ToolError) as excinfo:
+        await _tools(client)[tool].fn(**args)
+    payload = json.loads(str(excinfo.value))
+    assert payload["status"] == "error"
+    assert f"{function} returned invalid JSON" in payload["error"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("as_string", [False, True])
+async def test_cortex_extract_answer_error_field_is_error(client: SnowflakeClient, as_string: bool) -> None:
+    """A non-null AI_EXTRACT error field becomes a status_error ToolError.
+
+    https://docs.snowflake.com/en/sql-reference/functions/ai_extract
+    """
+    extraction = {"error": "document could not be parsed", "response": None}
+    value: Any = json.dumps(extraction) if as_string else extraction
+    client.execute_query.return_value = {"data": [{"ANSWER": value}]}  # type: ignore[attr-defined]
+    with pytest.raises(ToolError) as excinfo:
+        await _tools(client)["cortex_extract_answer"].fn(source_text="s", question="q")
+    payload = json.loads(str(excinfo.value))
+    assert payload["status"] == "error"
+    assert "AI_EXTRACT returned an error: document could not be parsed" in payload["error"]

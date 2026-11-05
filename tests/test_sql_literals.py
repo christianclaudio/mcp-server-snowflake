@@ -8,6 +8,7 @@ value ending in ``\\`` escaped the closing quote, and an embedded ``\\'`` ended 
 
 from __future__ import annotations
 
+import json
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -118,24 +119,24 @@ CORTEX_CASES = [
         "SELECT AI_COMPLETE(?, ?) AS response",
         lambda v: ["m", v],
     ),
-    ("cortex_summarize", lambda v: {"text": v}, "SELECT SNOWFLAKE.CORTEX.SUMMARIZE(?) AS summary", lambda v: [v]),
-    ("cortex_sentiment", lambda v: {"text": v}, "SELECT SNOWFLAKE.CORTEX.SENTIMENT(?) AS sentiment", lambda v: [v]),
+    ("cortex_summarize", lambda v: {"text": v}, "SELECT AI_SUMMARIZE(?) AS summary", lambda v: [v]),
+    ("cortex_sentiment", lambda v: {"text": v}, "SELECT AI_SENTIMENT(?) AS sentiment", lambda v: [v]),
     (
         "cortex_extract_answer",
         lambda v: {"source_text": v, "question": v + "?"},
-        "SELECT SNOWFLAKE.CORTEX.EXTRACT_ANSWER(?, ?) AS answer",
-        lambda v: [v, v + "?"],
+        "SELECT AI_EXTRACT(text => ?, responseFormat => PARSE_JSON(?)) AS answer",
+        lambda v: [v, json.dumps({"answer": v + "?"})],
     ),
     (
         "cortex_translate",
         lambda v: {"text": v, "source_language": "en", "target_language": "de"},
-        "SELECT SNOWFLAKE.CORTEX.TRANSLATE(?, ?, ?) AS translation",
+        "SELECT AI_TRANSLATE(?, ?, ?) AS translation",
         lambda v: [v, "en", "de"],
     ),
     (
         "cortex_embed_text_768",
         lambda v: {"text": v},
-        "SELECT SNOWFLAKE.CORTEX.EMBED_TEXT_768(?, ?) AS embedding",
+        "SELECT AI_EMBED(?, ?) AS embedding",
         lambda v: ["snowflake-arctic-embed-m", v],
     ),
     (
