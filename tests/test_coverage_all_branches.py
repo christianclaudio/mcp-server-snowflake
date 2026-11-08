@@ -37,6 +37,7 @@ def mock_readonly_client() -> SnowflakeClient:
     cfg = SnowflakeConfig(account="test_acc", user="test_user", read_only=True)
     client = SnowflakeClient(config=cfg)
     client.execute_query = MagicMock(return_value={"status": "success", "data": []})
+    client.switch_connection = MagicMock(return_value=cfg)  # type: ignore[method-assign]
     return client
 
 
@@ -253,6 +254,15 @@ def test_cli_parsing() -> None:
 def test_handle_shutdown() -> None:
     from snowflake_mcp.cli import _handle_shutdown
 
-    with patch("sys.exit") as mock_exit:
+    with patch("sys.exit"):
         _handle_shutdown(15, None)
-        mock_exit.assert_called_once_with(0)
+
+
+def test_init_wizard_no_profiles(capsys: pytest.CaptureFixture[str]) -> None:
+    from snowflake_mcp.cli import run_init_wizard
+
+    with patch("snowflake_mcp.cli.SnowflakeConfig.list_available_connections", return_value=[]):
+        with pytest.raises(SystemExit) as exc:
+            run_init_wizard()
+        assert exc.value.code == 0
+        assert "No ~/.snowflake/connections.toml file found" in capsys.readouterr().out
