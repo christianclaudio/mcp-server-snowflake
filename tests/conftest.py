@@ -16,8 +16,10 @@ from snowflake_mcp.auth import ALLOW_UNAUTHENTICATED_BIND_ENV, AUTH_TOKEN_ENV
 
 
 @pytest.fixture(autouse=True)
-def _clear_http_auth_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+def _clear_http_auth_env(monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory) -> Iterator[None]:
     monkeypatch.delenv(AUTH_TOKEN_ENV, raising=False)
     monkeypatch.delenv(ALLOW_UNAUTHENTICATED_BIND_ENV, raising=False)
     monkeypatch.setattr(server_mod, "_default_mcp", None)
+    empty_home = tmp_path_factory.mktemp("no_snowflake_home")
+    monkeypatch.setenv("SNOWFLAKE_HOME", str(empty_home))
     yield

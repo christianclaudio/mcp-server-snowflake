@@ -7,11 +7,11 @@
   "environment": {
     "dependencies": [
       "mcp>=2.3.0",
-      "fastmcp>=4.1.5",
-      "certifi>=2026.10.19",
-      "snowflake-connector-python>=4.8.0",
-      "snowflake-core>=1.13.2",
-      "pydantic>=2.14.1",
+      "fastmcp>=4.1.6",
+      "certifi>=2026.10.23",
+      "snowflake-connector-python>=5.2.0",
+      "snowflake-core>=1.14.0",
+      "pydantic>=2.14.3",
       "cryptography>=50.0.2",
       "python-dotenv>=1.2.4"
     ]
