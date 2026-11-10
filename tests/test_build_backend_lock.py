@@ -45,8 +45,42 @@ def test_group_pins_are_exact_and_inside_build_system_ranges() -> None:
 
 def test_base_python_reads_the_dockerfile() -> None:
     assert gen_build_backend.base_python("FROM python:3.14-slim@sha256:abc AS builder\n") == "3.14"
+    assert gen_build_backend.base_python("FROM python:3.12-slim-trixie@sha256:abc AS builder\n") == "3.12"
     with pytest.raises(ValueError, match="one python"):
         gen_build_backend.base_python("FROM python:3.13-slim\nFROM python:3.14-slim\n")
+
+
+_PIN = "@sha256:" + "ab" * 32
+
+
+def test_image_glibc_reads_the_debian_release_in_the_tag() -> None:
+    dockerfile = (gen_build_backend.ROOT / "Dockerfile").read_text(encoding="utf-8")
+    assert gen_build_backend.image_glibc(dockerfile) == (2, 41)
+    bookworm = f"FROM python:3.12-slim-bookworm{_PIN} AS builder\n"
+    assert gen_build_backend.image_glibc(bookworm) == (2, 36)
+
+
+def test_image_glibc_rejects_an_unpinned_base() -> None:
+    with pytest.raises(ValueError, match="not pinned"):
+        gen_build_backend.image_glibc("FROM python:3.12-slim-trixie AS builder\n")
+    with pytest.raises(ValueError, match="not pinned"):
+        gen_build_backend.image_glibc("")
+
+
+def test_image_glibc_rejects_a_missing_release_suffix() -> None:
+    with pytest.raises(ValueError, match="no Debian release"):
+        gen_build_backend.image_glibc(f"FROM python:3.12-slim{_PIN} AS builder\n")
+
+
+def test_image_glibc_rejects_mixed_releases() -> None:
+    text = f"FROM python:3.12-slim-trixie{_PIN} AS builder\nFROM python:3.12-slim-bookworm{_PIN} AS runtime\n"
+    with pytest.raises(ValueError, match="mixed Debian releases"):
+        gen_build_backend.image_glibc(text)
+
+
+def test_image_glibc_rejects_an_unknown_release() -> None:
+    with pytest.raises(ValueError, match="unknown Debian release"):
+        gen_build_backend.image_glibc(f"FROM python:3.12-slim-sid{_PIN} AS builder\n")
 
 
 @pytest.mark.parametrize(
@@ -126,16 +160,70 @@ def test_digests_picks_one_native_wheel_per_arch() -> None:
             _wheel("markupsafe-3.0.4-cp312-cp312-win_amd64.whl", "5" * 64),
         ],
     }
-    assert gen_build_backend._digests(package, "3.12") == [x86_64, aarch64]
+    assert gen_build_backend._digests(package, "3.12", (2, 41)) == [x86_64, aarch64]
 
 
 def test_digests_prefers_the_py3_none_any_wheel() -> None:
     universal = "6" * 64
     package = {"name": "pluggy", "wheels": [_wheel("pluggy-1.6.0-py3-none-any.whl", universal)]}
-    assert gen_build_backend._digests(package, "3.12") == [universal]
+    assert gen_build_backend._digests(package, "3.12", (2, 41)) == [universal]
 
 
 def test_digests_rejects_a_missing_arch() -> None:
     wheel = _wheel("markupsafe-3.0.4-cp312-cp312-manylinux2014_x86_64.whl", "1" * 64)
     with pytest.raises(ValueError, match="no single cp312 wheel per arch"):
-        gen_build_backend._digests({"name": "markupsafe", "wheels": [wheel]}, "3.12")
+        gen_build_backend._digests({"name": "markupsafe", "wheels": [wheel]}, "3.12", (2, 41))
+
+
+@pytest.mark.parametrize(
+    ("tag", "arch", "floor"),
+    [
+        ("manylinux_2_28_x86_64", "x86_64", (2, 28)),
+        ("manylinux_2_41_aarch64", "aarch64", (2, 41)),
+        ("manylinux1_x86_64", "x86_64", (2, 5)),
+        ("manylinux2010_aarch64", "aarch64", (2, 12)),
+        ("manylinux2014_x86_64", "x86_64", (2, 17)),
+        ("musllinux_1_2_x86_64", "x86_64", None),
+        ("manylinux_2_17_x86_64", "aarch64", None),
+        ("manylinux_2_17_armv7l", "x86_64", None),
+        ("linux_x86_64", "x86_64", None),
+        ("win_amd64", "x86_64", None),
+    ],
+)
+def test_manylinux_floor(tag: str, arch: str, floor: tuple[int, int] | None) -> None:
+    assert gen_build_backend._manylinux_floor(tag, arch) == floor
+
+
+def test_digests_skips_a_manylinux_floor_above_the_image_glibc() -> None:
+    """A wheel whose floor exceeds the image glibc must not be pinned."""
+    too_new = _wheel("markupsafe-3.0.4-cp312-cp312-manylinux_2_39_x86_64.whl", "9" * 64)
+    at_floor = _wheel("markupsafe-3.0.4-cp312-cp312-manylinux_2_36_x86_64.whl", "1" * 64)
+    arm = _wheel(
+        "markupsafe-3.0.4-cp312-cp312-manylinux_2_39_aarch64.manylinux_2_17_aarch64.whl",
+        "2" * 64,
+    )
+    musl = _wheel("markupsafe-3.0.4-cp312-cp312-musllinux_1_2_x86_64.whl", "4" * 64)
+    package = {"name": "markupsafe", "wheels": [too_new, at_floor, arm, musl]}
+    assert gen_build_backend._digests(package, "3.12", (2, 36)) == ["1" * 64, "2" * 64]
+
+
+def test_digests_rejects_musllinux_even_when_both_arches_exist() -> None:
+    wheels = [
+        _wheel("markupsafe-3.0.4-cp312-cp312-musllinux_1_2_x86_64.whl", "4" * 64),
+        _wheel("markupsafe-3.0.4-cp312-cp312-musllinux_1_2_aarch64.whl", "5" * 64),
+    ]
+    with pytest.raises(ValueError, match="no single cp312 wheel per arch"):
+        gen_build_backend._digests({"name": "markupsafe", "wheels": wheels}, "3.12", (2, 41))
+
+
+def test_digests_keeps_a_wheel_exactly_at_the_image_glibc_floor() -> None:
+    x86_64 = "1" * 64
+    aarch64 = "2" * 64
+    package = {
+        "name": "markupsafe",
+        "wheels": [
+            _wheel("markupsafe-3.0.4-cp312-cp312-manylinux_2_41_x86_64.whl", x86_64),
+            _wheel("markupsafe-3.0.4-cp312-cp312-manylinux1_aarch64.whl", aarch64),
+        ],
+    }
+    assert gen_build_backend._digests(package, "3.12", (2, 41)) == [x86_64, aarch64]
