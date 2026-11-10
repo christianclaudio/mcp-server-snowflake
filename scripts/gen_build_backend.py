@@ -3,8 +3,8 @@
 The Dockerfile installs the project build backend from that file with ``--require-hashes``,
 outside the runtime venv. uv.lock already records the group's closure with every wheel hash,
 so this keeps only the wheels the base image can install: ``py3-none-any``, or for compiled
-packages the manylinux x86_64 and aarch64 wheels for the base image's CPython ABI whose
-glibc floor is at most the glibc of the Debian release named in the base image tag.
+packages one manylinux x86_64 wheel and one manylinux aarch64 wheel for the base image's CPython ABI
+whose glibc floor that image can load. A higher floor installs and then fails to load.
 
 Usage: ``uv run python scripts/gen_build_backend.py`` writes the file; ``--check`` exits 1 and
 lists the differences instead. tests/test_build_backend_lock.py runs the same check.
@@ -26,26 +26,24 @@ ROOT = Path(__file__).resolve().parent.parent
 GROUP = "build-backend"
 TARGET = ROOT / "docker" / "build-backend.txt"
 ARCHES = ("x86_64", "aarch64")
-# PEP 600 (https://peps.python.org/pep-0600/) names the glibc floor in the tag as
-# manylinux_X_Y. The perennial tags are aliases: manylinux1 is glibc 2.5 (PEP 513,
-# https://peps.python.org/pep-0513/), manylinux2010 is 2.12 (PEP 571,
-# https://peps.python.org/pep-0571/), and manylinux2014 is 2.17 (PEP 599,
-# https://peps.python.org/pep-0599/). musllinux (PEP 656, https://peps.python.org/pep-0656/)
-# is musl, not glibc, and never qualifies.
-_GLIBC_ALIAS: dict[str, tuple[int, int]] = {
-    "manylinux1": (2, 5),
-    "manylinux2010": (2, 12),
-    "manylinux2014": (2, 17),
-}
-# libc6 in each Debian release, from the source package on packages.debian.org:
-# https://packages.debian.org/trixie/libc6 (2.41) and
-# https://packages.debian.org/bookworm/libc6 (2.36).
+# glibc of the Debian release named by the base image tag (python:X.Y-slim-<release>).
+# The digest is not the key. Sources are the libc6 packages for each release:
+# trixie (Debian 13): https://packages.debian.org/trixie/libc6 is 2.41
+# bookworm (Debian 12): https://packages.debian.org/bookworm/libc6 is 2.36
 _DEBIAN_GLIBC: dict[str, tuple[int, int]] = {
     "trixie": (2, 41),
     "bookworm": (2, 36),
 }
-_BASE_TAG = re.compile(
-    r"^FROM python:\d+\.\d+-slim(?:-([a-z]+))?(@sha256:[0-9a-fA-F]+)?",
+# PEP 600: manylinux_X_Y_<arch> means glibc X.Y. Legacy aliases: manylinux1 = 2.5
+# (PEP 513), manylinux2010 = 2.12 (PEP 571), manylinux2014 = 2.17 (PEP 599).
+_MANYLINUX_ALIAS: dict[str, tuple[int, int]] = {
+    "manylinux1": (2, 5),
+    "manylinux2010": (2, 12),
+    "manylinux2014": (2, 17),
+}
+_FROM_SLIM = re.compile(
+    r"^FROM python:\d+\.\d+-slim(?:-(?P<release>[A-Za-z0-9.]+))?"
+    r"(?:@(?P<digest>sha256:[0-9a-f]{64}))?",
     re.MULTILINE,
 )
 HEADER = (
@@ -66,42 +64,29 @@ def base_python(dockerfile: str) -> str:
 
 
 def image_glibc(dockerfile: str) -> tuple[int, int]:
-    """Return the glibc of the Debian release named in the pinned base image tag.
+    """Return the glibc of the Debian release named by the base image tag.
 
-    The digest does not name the Debian release. The tag suffix does
-    (``python:3.12-slim-trixie@sha256:...``), and every stage must name the same one.
+    ``base_python`` still requires one ``python:X.Y-slim`` version. The floor is
+    the ``_DEBIAN_GLIBC`` entry for the release suffix, so a digest change within
+    that release does not move it. An unpinned base, a tag with no release, two
+    FROM lines that name different releases, or an unknown release raises
+    ``ValueError``.
     """
-    images = list(_BASE_TAG.finditer(dockerfile))
-    if not images or any(image.group(2) is None for image in images):
-        raise ValueError("base image is not pinned by digest")
-    releases = [image.group(1) for image in images]
+    base_python(dockerfile)
+    images = list(_FROM_SLIM.finditer(dockerfile))
+    if not images or any(image.group("digest") is None for image in images):
+        raise ValueError("expected a pinned python:X.Y-slim-<release>@sha256 base image")
+    releases = [image.group("release") for image in images]
     if any(release is None for release in releases):
-        raise ValueError("base image tag has no Debian release suffix")
-    unique = {release for release in releases if release is not None}
-    if len(unique) != 1:
-        raise ValueError(f"mixed Debian releases in the base image: {', '.join(sorted(unique))}")
-    (release,) = unique
-    try:
-        return _DEBIAN_GLIBC[release]
-    except KeyError:
-        raise ValueError(f"unknown Debian release {release!r}") from None
-
-
-def _manylinux_floor(platform: str, arch: str) -> tuple[int, int] | None:
-    """Return the glibc ``(major, minor)`` a manylinux tag requires for ``arch``.
-
-    ``None`` for musllinux and every other tag, so those wheels never qualify.
-    """
-    suffix = f"_{arch}"
-    if not platform.endswith(suffix):
-        return None
-    name = platform[: -len(suffix)]
-    if name in _GLIBC_ALIAS:
-        return _GLIBC_ALIAS[name]
-    match = re.fullmatch(r"manylinux_(\d+)_(\d+)", name)
-    if match is None:
-        return None
-    return int(match.group(1)), int(match.group(2))
+        raise ValueError("python:X.Y-slim has no Debian release suffix")
+    names = sorted({release for release in releases if release is not None})
+    if len(names) != 1:
+        raise ValueError(f"expected one Debian release, found {names}")
+    release = names[0]
+    glibc = _DEBIAN_GLIBC.get(release)
+    if glibc is None:
+        raise ValueError(f"Debian release {release} has no glibc entry; update _DEBIAN_GLIBC")
+    return glibc
 
 
 def _environment(python: str, machine: str) -> dict[str, str]:
@@ -165,12 +150,33 @@ def _closure(lock: dict[str, Any], python: str) -> list[dict[str, Any]]:
     return [seen[name] for name in sorted(seen)]
 
 
-def _digests(package: dict[str, Any], python: str, glibc: tuple[int, int]) -> list[str]:
-    """Hashes the base image can load: py3-none-any, or one manylinux wheel per arch.
+def _manylinux_tag(platform: str) -> tuple[tuple[int, int], str] | None:
+    """Return ``(glibc floor, arch)`` for a manylinux tag, or None for anything else."""
+    perennial = re.fullmatch(r"manylinux_(\d+)_(\d+)_(.+)", platform)
+    if perennial:
+        floor = (int(perennial.group(1)), int(perennial.group(2)))
+        return floor, perennial.group(3)
+    legacy = re.fullmatch(r"(manylinux2010|manylinux2014|manylinux1)_(.+)", platform)
+    if legacy is None:
+        return None
+    return _MANYLINUX_ALIAS[legacy.group(1)], legacy.group(2)
 
-    A native wheel counts for an arch when one of its manylinux tags for that arch
-    has a glibc floor at or below ``glibc``. A tag above the image would install and
-    then fail to load. musllinux never counts.
+
+def _loads_on(platform: str, arch: str, glibc: tuple[int, int]) -> bool:
+    """True when ``platform`` is manylinux for ``arch`` and its floor is <= ``glibc``."""
+    parsed = _manylinux_tag(platform)
+    if parsed is None:
+        return False
+    floor, tag_arch = parsed
+    return tag_arch == arch and floor <= glibc
+
+
+def _digests(package: dict[str, Any], python: str, glibc: tuple[int, int]) -> list[str]:
+    """Return wheel hashes the base image can install.
+
+    A ``py3-none-any`` wheel wins. Otherwise exactly one cp wheel per architecture,
+    counting a wheel when any dotted manylinux tag for that arch has a glibc floor
+    at or below ``glibc``. musllinux never qualifies.
     """
     abi = "cp" + python.replace(".", "")
     universal: list[str] = []
@@ -184,9 +190,7 @@ def _digests(package: dict[str, Any], python: str, glibc: tuple[int, int]) -> li
         elif py_tag == abi and abi_tag == abi:
             platforms = platform_tag.split(".")
             for arch in ARCHES:
-                if any(
-                    (floor := _manylinux_floor(platform, arch)) is not None and floor <= glibc for platform in platforms
-                ):
+                if any(_loads_on(platform, arch, glibc) for platform in platforms):
                     native[arch].append(digest)
     if universal:
         return sorted(universal)
@@ -197,12 +201,15 @@ def _digests(package: dict[str, Any], python: str, glibc: tuple[int, int]) -> li
 
 def expected() -> dict[str, tuple[str, list[str]]]:
     """Map package name to (version, sha256 digests) for the group closure in uv.lock."""
-    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     lock = tomllib.loads((ROOT / "uv.lock").read_text(encoding="utf-8"))
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     python = base_python(dockerfile)
     glibc = image_glibc(dockerfile)
     return {
-        canonicalize_name(package["name"]): (package["version"], _digests(package, python, glibc))
+        canonicalize_name(package["name"]): (
+            package["version"],
+            _digests(package, python, glibc),
+        )
         for package in _closure(lock, python)
     }
 

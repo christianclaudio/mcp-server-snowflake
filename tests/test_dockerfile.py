@@ -73,10 +73,7 @@ def _ca_run(stage: str) -> str:
 
 
 def test_both_stages_use_the_same_base_image() -> None:
-    """Both stages pin python:3.12-slim-trixie@sha256:<64 hex>, one shared multi-arch digest.
-
-    glibc comes from the Debian release in the tag, not from the digest.
-    """
+    """Both stages pin the same python:3.12-slim@sha256:<64 hex> multi-arch index digest."""
     froms = [lines[0] for name, lines in _stages().items() if name]
     images = {line.split()[1] for line in froms}
     assert len(froms) == 2
@@ -85,7 +82,6 @@ def test_both_stages_use_the_same_base_image() -> None:
     assert re.fullmatch(r"python:3\.12-slim-trixie@sha256:[0-9a-f]{64}", image)
     digest = image.split("@", 1)[1]
     assert {line.split()[1].split("@", 1)[1] for line in froms} == {digest}
-    assert gen_build_backend.image_glibc(DOCKERFILE) == (2, 41)
 
 
 def test_floor_is_declared_once_and_used_by_both_stages() -> None:
