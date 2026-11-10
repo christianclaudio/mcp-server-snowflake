@@ -139,10 +139,7 @@ def test_image_glibc_accepts_an_as_builder_line() -> None:
 
 def test_image_glibc_rejects_builder_junk_when_the_runtime_is_valid() -> None:
     digest = "sha256:" + "ab" * 32
-    text = (
-        f"FROM python:3.14-slim-trixie@{digest}junk AS builder\n"
-        f"FROM python:3.14-slim-trixie@{digest} AS runtime\n"
-    )
+    text = f"FROM python:3.14-slim-trixie@{digest}junk AS builder\nFROM python:3.14-slim-trixie@{digest} AS runtime\n"
     with pytest.raises(ValueError, match=_MALFORMED_FROM):
         gen_build_backend.image_glibc(text)
 
@@ -150,20 +147,14 @@ def test_image_glibc_rejects_builder_junk_when_the_runtime_is_valid() -> None:
 def test_image_glibc_rejects_a_short_builder_digest_when_the_runtime_is_valid() -> None:
     valid = "sha256:" + "ab" * 32
     short = "sha256:" + "a" * 63
-    text = (
-        f"FROM python:3.14-slim-trixie@{short} AS builder\n"
-        f"FROM python:3.14-slim-trixie@{valid} AS runtime\n"
-    )
+    text = f"FROM python:3.14-slim-trixie@{short} AS builder\nFROM python:3.14-slim-trixie@{valid} AS runtime\n"
     with pytest.raises(ValueError, match=_MALFORMED_FROM):
         gen_build_backend.image_glibc(text)
 
 
 def test_image_glibc_rejects_a_malformed_runtime_after_a_valid_builder() -> None:
     digest = "sha256:" + "ab" * 32
-    text = (
-        f"FROM python:3.14-slim-trixie@{digest} AS builder\n"
-        f"FROM python:3.14-slim-trixie@{digest}junk AS runtime\n"
-    )
+    text = f"FROM python:3.14-slim-trixie@{digest} AS builder\nFROM python:3.14-slim-trixie@{digest}junk AS runtime\n"
     with pytest.raises(ValueError, match=_MALFORMED_FROM):
         gen_build_backend.image_glibc(text)
 
