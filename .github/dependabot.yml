@@ -19,6 +19,11 @@ updates:
         update-types:
           - "minor"
           - "patch"
+    # Generated from uv.lock by scripts/gen_build_backend.py. The uv scan treats
+    # requirements-shaped *.txt files as pip manifests, so ignore this one.
+    # Lock bumps still land in uv.lock; regenerate the file with the script.
+    exclude-paths:
+      - "docker/build-backend.txt"
 
   - package-ecosystem: "github-actions"
     directory: "/"

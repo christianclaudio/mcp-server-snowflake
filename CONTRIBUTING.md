@@ -50,7 +50,8 @@ Thank you for your interest in contributing to `mcp-server-snowflake`!
 1. Create a descriptive branch: `git checkout -b feat/my-new-tool`
 2. Ensure all tests pass locally: `pytest`
 3. Commit with conventional commit format (`feat:`, `fix:`, `docs:`, `test:`)
-4. Submit your pull request to `main`!
+4. Do not edit `docker/build-backend.txt` by hand.
+5. Submit your pull request to `main`!
 
 ---
 
