@@ -53,7 +53,7 @@ classifiers = [
 ]
 dependencies = [
     "mcp>=2.3.0",
-    "fastmcp>=4.1.7",
+    "fastmcp>=4.1.8",
     # certifi floor from FastMCP's October 2026 certificate authority incident notice:
     # https://github.com/PrefectHQ/fastmcp/blob/main/SECURITY.md#certificate-authority-incident-october-2026
     # snowflake-connector-python verifies Snowflake TLS against certifi's bundle.
