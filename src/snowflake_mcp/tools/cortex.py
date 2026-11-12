@@ -78,9 +78,11 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         """Execute LLM completion with AI_COMPLETE (string prompt form).
 
         ``temperature`` and ``max_tokens`` are the documented model_parameters and are
-        omitted when unset, so the SQL matches AI_COMPLETE(model, prompt). Out-of-range
-        values fail before any SQL runs. The string return is unchanged when
-        show_details and response_format are absent.
+        omitted when unset, so the SQL matches AI_COMPLETE(model, prompt). When either
+        is set, model and prompt are bound too: the connector's pyformat style runs
+        ``command % params``, so a ``%`` left in the SQL by ``quote_literal`` would
+        raise or misbind. Out-of-range values fail before any SQL runs. The string
+        return is unchanged when show_details and response_format are absent.
 
         https://docs.snowflake.com/en/sql-reference/functions/ai_complete
         https://docs.snowflake.com/en/sql-reference/functions/ai_complete-single-string
@@ -91,13 +93,13 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             # Drop-in for basic COMPLETE(model, prompt); both return a string.
             # https://docs.snowflake.com/en/user-guide/snowflake-cortex/aisql-migrate-legacy-functions
-            sql = f"SELECT AI_COMPLETE({quote_literal(model)}, {quote_literal(prompt)}"
-            params: tuple[float | int, ...] | None = None
             if model_parameters is not None:
-                fragment, params = model_parameters
-                sql += ", " + fragment
-            sql += ") AS response"
-            res = client.execute_query(sql, params) if params is not None else client.execute_query(sql)
+                fragment, values = model_parameters
+                sql = "SELECT AI_COMPLETE(%s, %s, " + fragment + ") AS response"
+                res = client.execute_query(sql, (model, prompt, *values))
+            else:
+                sql = f"SELECT AI_COMPLETE({quote_literal(model)}, {quote_literal(prompt)}) AS response"
+                res = client.execute_query(sql)
             data = res.get("data", [])
             # Prefer RESPONSE; only treat an explicit None as SQL NULL (missing key is not NULL).
             # https://docs.snowflake.com/en/user-guide/snowflake-cortex/aisql-migrate-legacy-functions

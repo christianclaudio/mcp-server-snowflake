@@ -361,27 +361,54 @@ async def test_cortex_complete_sends_model_parameters_only_when_set(client: Snow
 
     await fn(prompt="p", model="m", temperature=0.7)
     sql = _sql(client)
-    assert sql == "SELECT AI_COMPLETE('m', 'p', OBJECT_CONSTRUCT('temperature', %s)) AS response"
+    assert sql == "SELECT AI_COMPLETE(%s, %s, OBJECT_CONSTRUCT('temperature', %s)) AS response"
     assert "0.7" not in sql
-    assert _params(client) == (0.7,)
+    assert "'m'" not in sql and "'p'" not in sql
+    assert _params(client) == ("m", "p", 0.7)
 
     await fn(prompt="p", model="m", max_tokens=10)
     sql = _sql(client)
-    assert sql == "SELECT AI_COMPLETE('m', 'p', OBJECT_CONSTRUCT('max_tokens', %s)) AS response"
+    assert sql == "SELECT AI_COMPLETE(%s, %s, OBJECT_CONSTRUCT('max_tokens', %s)) AS response"
     assert "10" not in sql
-    assert _params(client) == (10,)
+    assert _params(client) == ("m", "p", 10)
 
     await fn(prompt="p", model="m", temperature=0.0, max_tokens=1)
     sql = _sql(client)
-    assert sql == ("SELECT AI_COMPLETE('m', 'p', OBJECT_CONSTRUCT('temperature', %s, 'max_tokens', %s)) AS response")
+    assert sql == ("SELECT AI_COMPLETE(%s, %s, OBJECT_CONSTRUCT('temperature', %s, 'max_tokens', %s)) AS response")
     assert "0.0" not in sql
-    assert _params(client) == (0.0, 1)
+    assert _params(client) == ("m", "p", 0.0, 1)
 
     await fn(prompt="p", model="m", temperature=1)
     sql = _sql(client)
     assert "1.0" not in sql
-    assert "OBJECT_CONSTRUCT('temperature', %s)" in sql
-    assert _params(client) == (1.0,)
+    assert sql == "SELECT AI_COMPLETE(%s, %s, OBJECT_CONSTRUCT('temperature', %s)) AS response"
+    assert _params(client) == ("m", "p", 1.0)
+
+
+@pytest.mark.asyncio
+async def test_cortex_complete_percent_in_prompt_is_not_inlined_with_params(client: SnowflakeClient) -> None:
+    """A ``%`` in the prompt is bound with model parameters and quoted when none are set.
+
+    The connector's pyformat style interpolates ``command % params``, so a prompt
+    such as ``up 50% this year`` cannot stay inside the SQL once any parameter is bound.
+    """
+    client.execute_query.return_value = {"data": [{"RESPONSE": "ok"}]}  # type: ignore[attr-defined]
+    fn = _tools(client)["cortex_complete"].fn
+    prompt = "up 50% this year"
+
+    await fn(prompt=prompt, model="m", temperature=0.2)
+    sql = _sql(client)
+    assert sql == "SELECT AI_COMPLETE(%s, %s, OBJECT_CONSTRUCT('temperature', %s)) AS response"
+    assert prompt not in sql
+    assert "50%" not in sql
+    assert _params(client) == ("m", prompt, 0.2)
+
+    await fn(prompt=prompt, model="llama3.3-70b")
+    assert _sql(client) == "SELECT AI_COMPLETE('llama3.3-70b', 'up 50% this year') AS response"
+    assert len(client.execute_query.call_args.args) == 1  # type: ignore[attr-defined]
+
+    await fn(prompt="p", model="m")
+    assert _sql(client) == "SELECT AI_COMPLETE('m', 'p') AS response"
 
 
 @pytest.mark.asyncio
