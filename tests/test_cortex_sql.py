@@ -337,3 +337,55 @@ async def test_cortex_extract_answer_error_field_is_error(client: SnowflakeClien
     payload = json.loads(str(excinfo.value))
     assert payload["status"] == "error"
     assert "AI_EXTRACT returned an error: document could not be parsed" in payload["error"]
+
+
+@pytest.mark.asyncio
+async def test_cortex_complete_sends_model_parameters_only_when_set(client: SnowflakeClient) -> None:
+    """temperature and max_tokens are AI_COMPLETE's model_parameters object, only when set.
+
+    https://docs.snowflake.com/en/sql-reference/functions/ai_complete
+    https://docs.snowflake.com/en/sql-reference/functions/ai_complete-single-string
+    """
+    client.execute_query.return_value = {"data": [{"RESPONSE": "ok"}]}  # type: ignore[attr-defined]
+    fn = _tools(client)["cortex_complete"].fn
+
+    res = await fn(prompt="p", model="m")
+    assert res["response"] == "ok"
+    assert _sql(client) == "SELECT AI_COMPLETE('m', 'p') AS response"
+
+    await fn(prompt="p", model="m", temperature=0.7)
+    assert _sql(client) == "SELECT AI_COMPLETE('m', 'p', {'temperature': 0.7}) AS response"
+
+    await fn(prompt="p", model="m", max_tokens=10)
+    assert _sql(client) == "SELECT AI_COMPLETE('m', 'p', {'max_tokens': 10}) AS response"
+
+    await fn(prompt="p", model="m", temperature=0.0, max_tokens=1)
+    assert _sql(client) == "SELECT AI_COMPLETE('m', 'p', {'temperature': 0.0, 'max_tokens': 1}) AS response"
+
+    await fn(prompt="p", model="m", temperature=1)
+    assert _sql(client) == "SELECT AI_COMPLETE('m', 'p', {'temperature': 1.0}) AS response"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"temperature": -0.01},
+        {"temperature": 1.1},
+        {"temperature": True},
+        {"temperature": float("nan")},
+        {"max_tokens": 0},
+        {"max_tokens": -5},
+        {"max_tokens": True},
+    ],
+)
+async def test_cortex_complete_rejects_out_of_range_model_parameters(
+    client: SnowflakeClient, kwargs: dict[str, Any]
+) -> None:
+    """Out-of-range model parameters raise status_error before any SQL runs."""
+    fn = _tools(client)["cortex_complete"].fn
+    with pytest.raises(ToolError) as excinfo:
+        await fn(prompt="p", model="m", **kwargs)
+    payload = json.loads(str(excinfo.value))
+    assert payload["status"] == "error"
+    client.execute_query.assert_not_called()  # type: ignore[attr-defined]

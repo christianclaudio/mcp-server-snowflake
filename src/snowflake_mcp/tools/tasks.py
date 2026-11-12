@@ -21,7 +21,24 @@ from snowflake_mcp.connection import (
     show_sql,
     with_quoted_names,
 )
-from snowflake_mcp.errors import SafetyViolationError
+from snowflake_mcp.errors import SafetyViolationError, status_error
+
+# Snowflake reports 091453 as the integer errno 91453 ("091453").
+_TASK_RESUME_ERRNO = 91453
+_TASK_RESUME_TRIGGER = (
+    "Cannot resume this task until it has a SCHEDULE, AFTER, FINALIZE, or WHEN trigger. "
+    "A task with no schedule can still be run once with EXECUTE TASK."
+)
+
+
+def _task_resume_needs_trigger(exc: BaseException) -> bool:
+    """True when RESUME failed because the task has no trigger (error 091453).
+
+    https://docs.snowflake.com/en/sql-reference/sql/alter-task
+    """
+    if getattr(exc, "errno", None) == _TASK_RESUME_ERRNO:
+        return True
+    return "091453" in str(exc)
 
 
 def qualify_task_target(
@@ -80,7 +97,15 @@ def register_task_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="create_task",
-        description="Create a scheduled or serverless task in Snowflake.",
+        description=(
+            "Create a task. schedule is optional and is omitted from CREATE TASK when unset. "
+            "A task with no SCHEDULE runs only via EXECUTE TASK, or as a child (AFTER), a "
+            "finalizer (FINALIZE), or a triggered task (WHEN, for example "
+            "SYSTEM$STREAM_HAS_DATA). This tool sets only an optional SCHEDULE; it does not "
+            "set AFTER, FINALIZE, or WHEN. Resuming fails unless the task has a SCHEDULE, "
+            "AFTER, FINALIZE, or WHEN trigger. A schedule-less task can always be run once "
+            "with EXECUTE TASK."
+        ),
     )
     async def snowflake_create_task(
         task_name: Identifier,
@@ -91,7 +116,18 @@ def register_task_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         schema_name: OptionalIdentifier = None,
         if_not_exists: bool = True,
     ) -> dict[str, Any]:
-        """Create task."""
+        """Create a task. ``schedule`` is not required.
+
+        A standalone task or the root of a task graph runs automatically only when it
+        has a schedule or is a triggered task (``WHEN SYSTEM$STREAM_HAS_DATA(...)``).
+        Otherwise it runs via EXECUTE TASK, or as a child (AFTER) or finalizer
+        (FINALIZE). Resuming fails unless the task has a SCHEDULE, AFTER, FINALIZE, or
+        WHEN trigger. A schedule-less task can always be run once with EXECUTE TASK.
+        This statement sets only the optional SCHEDULE (and warehouse).
+
+        https://docs.snowflake.com/en/sql-reference/sql/create-task
+        https://docs.snowflake.com/en/sql-reference/sql/alter-task
+        """
         enforce_read_only_sql(client.config, sql_statement, tool="tasks_create_task")
         if read_only_enabled(client.config):
             raise SafetyViolationError("Denied in read-only mode.")
@@ -138,14 +174,24 @@ def register_task_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="resume_task",
-        description="Resume a suspended task.",
+        description=(
+            "Resume a suspended task. Snowflake error 091453 means the task has no "
+            "SCHEDULE, AFTER, FINALIZE, or WHEN trigger. A schedule-less task can still "
+            "be run once with EXECUTE TASK."
+        ),
     )
     async def snowflake_resume_task(
         task_name: Identifier,
         database: OptionalIdentifier = None,
         schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
-        """Resume task."""
+        """Resume a task.
+
+        Error 091453 (the task should have a SCHEDULE, AFTER, FINALIZE or WHEN to be
+        resumed) is returned as that explanation. Any other failure is unchanged.
+
+        https://docs.snowflake.com/en/sql-reference/sql/alter-task
+        """
         if client.config.read_only:
             raise SafetyViolationError("Denied in read-only mode.")
         try:
@@ -156,7 +202,11 @@ def register_task_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             res = client.execute_query(sql)
             return {"status": "success", "task": target, "result": res.get("data")}
         except Exception as e:
-            failure = ident_error(e)
+            if _task_resume_needs_trigger(e):
+                # Keep Snowflake's text so redaction still runs on it.
+                failure = status_error(f"{_TASK_RESUME_TRIGGER} Snowflake reported: {e}")
+            else:
+                failure = ident_error(e)
         raise failure from None
 
     @mcp.tool(

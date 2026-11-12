@@ -494,3 +494,31 @@ def test_quoted_token_scan_is_linear() -> None:
     for text in hostile:
         redact_secrets(text)
     assert time.perf_counter() - start < 2.0
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Password policy 'NEXUS_LIVE_P' does not exist or not authorized.",
+        "SQL compilation error: Password policy NEXUS_LIVE_P does not exist.",
+        "password must contain at least 8 characters",
+        "Password expired for user; password reset required",
+    ],
+)
+def test_password_prose_is_not_redacted(message: str) -> None:
+    assert redact_message(message) == message
+
+
+@pytest.mark.parametrize(
+    ("message", "secret"),
+    [
+        ("connect failed: password hunter2abc", "hunter2abc"),
+        ("password=s3cret!!", "s3cret!!"),
+        ("password: letmein99", "letmein99"),
+        ("PASSWORD Tr0ub4dor&3", "Tr0ub4dor&3"),
+    ],
+)
+def test_password_values_still_redacted(message: str, secret: str) -> None:
+    out = redact_message(message)
+    assert secret not in out
+    assert "[REDACTED]" in out

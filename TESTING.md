@@ -73,12 +73,12 @@ The live test sets `SNOWFLAKE_MCP_READONLY=1` before it calls tools. Marker chec
 
 ### Soft-empty success (`_EMPTY_SUCCESS_TOOLS`)
 
-These four tools use `expect: success`. The first three return an empty success for a missing name. `horizon_get_column_lineage` stays on `success` because the call succeeds; its payload can still contain rows. Leave the fixture on `success`:
+These four tools use `expect: success`. Each returns an empty success for a missing name. Leave the fixture on `success`:
 
 - `warehouses_describe_warehouse` (`SHOW WAREHOUSES LIKE`, empty `details`)
 - `governance_describe_role` (`SHOW ROLES LIKE`, empty `details`)
 - `horizon_get_object_lineage` (`OBJECT_DEPENDENCIES` succeeds; empty upstream/downstream when the named object is absent)
-- `horizon_get_column_lineage` (`ACCESS_HISTORY` query succeeds and does not filter on the supplied table or column name, so recent rows can still appear)
+- `horizon_get_column_lineage` (`ACCESS_HISTORY` query succeeds and filters on the supplied table and column, so a missing name yields an empty record list; the view lags up to 3 hours and requires Enterprise Edition)
 
 Most other missing-object describe tools stay `rejected`. `tags_describe_tag` is `rejected` too: a tag name with no match fails with the not-found error (`does not exist or not authorized`).
 

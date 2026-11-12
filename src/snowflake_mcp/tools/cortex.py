@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from typing import Any
 
 from fastmcp import FastMCP
@@ -26,24 +27,71 @@ def _decode_object(value: Any, function: str) -> Any:
     return value
 
 
+def _model_parameters_sql(temperature: object, max_tokens: object) -> str | None:
+    """OBJECT literal for AI_COMPLETE's model_parameters argument, or None when unset.
+
+    Only validated numbers are written, so a caller string is never interpolated.
+    ``temperature`` is from 0 to 1 inclusive and ``max_tokens`` is a positive integer.
+    With model_parameters and no show_details or response_format, AI_COMPLETE still
+    returns a string.
+
+    https://docs.snowflake.com/en/sql-reference/functions/ai_complete
+    https://docs.snowflake.com/en/sql-reference/functions/ai_complete-single-string
+    """
+    parts: list[str] = []
+    if temperature is not None:
+        if isinstance(temperature, bool) or not isinstance(temperature, (int, float)):
+            raise status_error("temperature must be a number from 0 to 1 inclusive")
+        number = float(temperature)
+        if not math.isfinite(number) or number < 0 or number > 1:
+            raise status_error("temperature must be a number from 0 to 1 inclusive")
+        parts.append("'temperature': " + json.dumps(number))
+    if max_tokens is not None:
+        if isinstance(max_tokens, bool) or not isinstance(max_tokens, int) or max_tokens < 1:
+            raise status_error("max_tokens must be a positive integer")
+        parts.append("'max_tokens': " + str(max_tokens))
+    if not parts:
+        return None
+    return "{" + ", ".join(parts) + "}"
+
+
 def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     """Register Cortex AI, Search, Translation, Embeddings, and NLP tools."""
 
     @mcp.tool(
         name="complete",
-        description="Run LLM completion via Snowflake AI_COMPLETE (e.g., 'llama3.3-70b', 'llama3.1-8b').",
+        description=(
+            "Run LLM completion via Snowflake AI_COMPLETE (e.g., 'llama3.3-70b', 'llama3.1-8b'). "
+            "Optional temperature (0 to 1) and max_tokens are sent as model_parameters only when set; "
+            "with neither set the call stays AI_COMPLETE(model, prompt) and still returns a string."
+        ),
     )
     async def snowflake_cortex_complete(
         prompt: str,
         model: str = "llama3.3-70b",
-        temperature: float = 0.0,
-        max_tokens: int = 1024,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
     ) -> dict[str, Any]:
-        """Execute LLM completion with AI_COMPLETE (string prompt form)."""
+        """Execute LLM completion with AI_COMPLETE (string prompt form).
+
+        ``temperature`` and ``max_tokens`` are the documented model_parameters and are
+        omitted when unset, so the SQL matches AI_COMPLETE(model, prompt). Out-of-range
+        values fail before any SQL runs. The string return is unchanged when
+        show_details and response_format are absent.
+
+        https://docs.snowflake.com/en/sql-reference/functions/ai_complete
+        https://docs.snowflake.com/en/sql-reference/functions/ai_complete-single-string
+        https://docs.snowflake.com/en/user-guide/snowflake-cortex/aisql-migrate-legacy-functions
+        """
+        # Invalid input is a status_error before the try (no query is sent).
+        model_parameters = _model_parameters_sql(temperature, max_tokens)
         try:
             # Drop-in for basic COMPLETE(model, prompt); both return a string.
             # https://docs.snowflake.com/en/user-guide/snowflake-cortex/aisql-migrate-legacy-functions
-            sql = f"SELECT AI_COMPLETE({quote_literal(model)}, {quote_literal(prompt)}) AS response"
+            sql = f"SELECT AI_COMPLETE({quote_literal(model)}, {quote_literal(prompt)}"
+            if model_parameters is not None:
+                sql += ", " + model_parameters
+            sql += ") AS response"
             res = client.execute_query(sql)
             data = res.get("data", [])
             # Prefer RESPONSE; only treat an explicit None as SQL NULL (missing key is not NULL).
