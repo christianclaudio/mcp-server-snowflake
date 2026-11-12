@@ -29,6 +29,11 @@ def _sql(client: SnowflakeClient) -> str:
     return str(client.execute_query.call_args.args[0])  # type: ignore[attr-defined]
 
 
+def _params(client: SnowflakeClient) -> tuple[Any, ...]:
+    bound = client.execute_query.call_args.args[1]  # type: ignore[attr-defined]
+    return tuple(bound)
+
+
 def _read_constant(sql: str, i: int) -> tuple[str, int]:
     """Read the single-quoted Snowflake string constant at ``sql[i]`` the way Snowflake does.
 
@@ -337,3 +342,95 @@ async def test_cortex_extract_answer_error_field_is_error(client: SnowflakeClien
     payload = json.loads(str(excinfo.value))
     assert payload["status"] == "error"
     assert "AI_EXTRACT returned an error: document could not be parsed" in payload["error"]
+
+
+@pytest.mark.asyncio
+async def test_cortex_complete_sends_model_parameters_only_when_set(client: SnowflakeClient) -> None:
+    """temperature and max_tokens are AI_COMPLETE's model_parameters object, only when set.
+
+    https://docs.snowflake.com/en/sql-reference/functions/ai_complete
+    https://docs.snowflake.com/en/sql-reference/functions/ai_complete-single-string
+    """
+    client.execute_query.return_value = {"data": [{"RESPONSE": "ok"}]}  # type: ignore[attr-defined]
+    fn = _tools(client)["cortex_complete"].fn
+
+    res = await fn(prompt="p", model="m")
+    assert res["response"] == "ok"
+    assert _sql(client) == "SELECT AI_COMPLETE('m', 'p') AS response"
+    assert len(client.execute_query.call_args.args) == 1  # type: ignore[attr-defined]
+
+    await fn(prompt="p", model="m", temperature=0.7)
+    sql = _sql(client)
+    assert sql == "SELECT AI_COMPLETE(%s, %s, OBJECT_CONSTRUCT('temperature', %s)) AS response"
+    assert "0.7" not in sql
+    assert "'m'" not in sql and "'p'" not in sql
+    assert _params(client) == ("m", "p", 0.7)
+
+    await fn(prompt="p", model="m", max_tokens=10)
+    sql = _sql(client)
+    assert sql == "SELECT AI_COMPLETE(%s, %s, OBJECT_CONSTRUCT('max_tokens', %s)) AS response"
+    assert "10" not in sql
+    assert _params(client) == ("m", "p", 10)
+
+    await fn(prompt="p", model="m", temperature=0.0, max_tokens=1)
+    sql = _sql(client)
+    assert sql == ("SELECT AI_COMPLETE(%s, %s, OBJECT_CONSTRUCT('temperature', %s, 'max_tokens', %s)) AS response")
+    assert "0.0" not in sql
+    assert _params(client) == ("m", "p", 0.0, 1)
+
+    await fn(prompt="p", model="m", temperature=1)
+    sql = _sql(client)
+    assert "1.0" not in sql
+    assert sql == "SELECT AI_COMPLETE(%s, %s, OBJECT_CONSTRUCT('temperature', %s)) AS response"
+    assert _params(client) == ("m", "p", 1.0)
+
+
+@pytest.mark.asyncio
+async def test_cortex_complete_percent_in_prompt_is_not_inlined_with_params(client: SnowflakeClient) -> None:
+    """A ``%`` in the prompt is bound with model parameters and quoted when none are set.
+
+    The connector's pyformat style interpolates ``command % params``, so a prompt
+    such as ``up 50% this year`` cannot stay inside the SQL once any parameter is bound.
+    """
+    client.execute_query.return_value = {"data": [{"RESPONSE": "ok"}]}  # type: ignore[attr-defined]
+    fn = _tools(client)["cortex_complete"].fn
+    prompt = "up 50% this year"
+
+    await fn(prompt=prompt, model="m", temperature=0.2)
+    sql = _sql(client)
+    assert sql == "SELECT AI_COMPLETE(%s, %s, OBJECT_CONSTRUCT('temperature', %s)) AS response"
+    assert prompt not in sql
+    assert "50%" not in sql
+    assert _params(client) == ("m", prompt, 0.2)
+
+    await fn(prompt=prompt, model="llama3.3-70b")
+    assert _sql(client) == "SELECT AI_COMPLETE('llama3.3-70b', 'up 50% this year') AS response"
+    assert len(client.execute_query.call_args.args) == 1  # type: ignore[attr-defined]
+
+    await fn(prompt="p", model="m")
+    assert _sql(client) == "SELECT AI_COMPLETE('m', 'p') AS response"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"temperature": -0.01},
+        {"temperature": 1.1},
+        {"temperature": True},
+        {"temperature": float("nan")},
+        {"max_tokens": 0},
+        {"max_tokens": -5},
+        {"max_tokens": True},
+    ],
+)
+async def test_cortex_complete_rejects_out_of_range_model_parameters(
+    client: SnowflakeClient, kwargs: dict[str, Any]
+) -> None:
+    """Out-of-range model parameters raise status_error before any SQL runs."""
+    fn = _tools(client)["cortex_complete"].fn
+    with pytest.raises(ToolError) as excinfo:
+        await fn(prompt="p", model="m", **kwargs)
+    payload = json.loads(str(excinfo.value))
+    assert payload["status"] == "error"
+    client.execute_query.assert_not_called()  # type: ignore[attr-defined]
