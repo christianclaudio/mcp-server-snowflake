@@ -51,69 +51,86 @@ def _lineage_target(
     return ".".join(parts), table, resolve_ident(column_name), exact
 
 
-def _object_name_predicate(value_sql: str, exact: str | None, table: str) -> str:
-    """Predicate for an ACCESS_HISTORY ``objectName`` field, values via ``quote_literal``."""
+def _bind_object_name(value_sql: str, exact: str | None, table: str, params: list[Any]) -> str:
+    """Predicate for ``objectName``. The value is a bound parameter, not a SQL literal.
+
+    When database and schema are known the bound value is ``DB.SCHEMA.TABLE``.
+    Otherwise it is the suffix pattern ``.TABLE``. Unquoted identifiers are already
+    uppercased. https://docs.snowflake.com/en/sql-reference/functions/endswith
+    """
     name = f"{value_sql}:objectName::STRING"
     if exact is not None:
-        return f"{name} = {quote_literal(exact)}"
-    # https://docs.snowflake.com/en/sql-reference/functions/endswith
-    return f"ENDSWITH({name}, '.' || {quote_literal(table)})"
+        params.append(exact)
+        return f"{name} = %s"
+    params.append("." + table)
+    return f"ENDSWITH({name}, %s)"
 
 
-def _column_name_predicate(value_sql: str, column: str) -> str:
-    return f"{value_sql}:columnName::STRING = {quote_literal(column)}"
+def _bind_column_name(value_sql: str, column: str, params: list[Any]) -> str:
+    params.append(column)
+    return f"{value_sql}:columnName::STRING = %s"
 
 
-def _accessed_exists(array_sql: str, exact: str | None, table: str, column: str) -> str:
-    obj = _object_name_predicate("obj.value", exact, table)
-    col = _column_name_predicate("col.value", column)
-    return (
-        "EXISTS (SELECT 1 FROM LATERAL FLATTEN(input => "
-        f"{array_sql}) obj, LATERAL FLATTEN(input => obj.value:columns) col "
-        f"WHERE {obj} AND {col})"
-    )
+def _hit_arm(from_clause: str, where: str) -> str:
+    """One ``hits`` arm. Every ``LATERAL FLATTEN`` is in this FROM list, not a subquery."""
+    return f"SELECT ah.QUERY_ID FROM {from_clause} WHERE {where}"
 
 
-def _modified_exists(exact: str | None, table: str, column: str) -> str:
-    """``OBJECTS_MODIFIED`` matches the written column and its source columns.
-
-    Column lineage lives in ``columns[].baseSources`` and ``columns[].directSources``,
-    not only in the column that was written
-    (https://docs.snowflake.com/en/sql-reference/account-usage/access_history).
-    """
-    written = f"{_object_name_predicate('obj.value', exact, table)} AND {_column_name_predicate('col.value', column)}"
-    base = f"{_object_name_predicate('src.value', exact, table)} AND {_column_name_predicate('src.value', column)}"
-    direct = f"{_object_name_predicate('dsrc.value', exact, table)} AND {_column_name_predicate('dsrc.value', column)}"
-    return (
-        "EXISTS (SELECT 1 FROM LATERAL FLATTEN(input => OBJECTS_MODIFIED) obj, "
-        "LATERAL FLATTEN(input => obj.value:columns) col "
-        f"WHERE ({written}) "
-        "OR EXISTS (SELECT 1 FROM LATERAL FLATTEN(input => col.value:baseSources) src "
-        f"WHERE {base}) "
-        "OR EXISTS (SELECT 1 FROM LATERAL FLATTEN(input => col.value:directSources) dsrc "
-        f"WHERE {direct}))"
-    )
-
-
-def _column_lineage_sql(exact: str | None, table: str, column: str, lookback_days: int, max_rows: int) -> str:
+def _column_lineage_sql(
+    exact: str | None, table: str, column: str, lookback_days: int, max_rows: int
+) -> tuple[str, tuple[Any, ...]]:
     """ACCESS_HISTORY rows for one column, deduplicated by QUERY_ID.
 
-    https://docs.snowflake.com/en/sql-reference/account-usage/access_history
+    ``FLATTEN`` is in each CTE arm's FROM list. A subquery that correlates a
+    ``FLATTEN`` is unsupported ("Subqueries with a correlation inside of FLATTEN
+    are currently unsupported",
+    https://docs.snowflake.com/en/user-guide/querying-subqueries).
+
+    Names, the suffix pattern, ``days``, and ``limit`` are bound parameters
+    (connector pyformat ``%s``). ``OBJECTS_MODIFIED`` matches the written column
+    and ``columns[].baseSources`` / ``columns[].directSources``
+    (https://docs.snowflake.com/en/sql-reference/account-usage/access_history).
     https://docs.snowflake.com/en/sql-reference/constructs/qualify
     """
-    accessed = " OR ".join(
-        _accessed_exists(array, exact, table, column) for array in ("BASE_OBJECTS_ACCESSED", "DIRECT_OBJECTS_ACCESSED")
+    params: list[Any] = [lookback_days]
+
+    def written_where() -> str:
+        obj = _bind_object_name("obj.value", exact, table, params)
+        col = _bind_column_name("col.value", column, params)
+        return f"{obj} AND {col}"
+
+    def source_where(alias: str) -> str:
+        return f"{_bind_object_name(alias, exact, table, params)} AND {_bind_column_name(alias, column, params)}"
+
+    columns = "LATERAL FLATTEN(input => obj.value:columns) col"
+    modified = f"ah, LATERAL FLATTEN(input => ah.OBJECTS_MODIFIED) obj, {columns}"
+    hits = " UNION ".join(
+        (
+            _hit_arm(f"ah, LATERAL FLATTEN(input => ah.BASE_OBJECTS_ACCESSED) obj, {columns}", written_where()),
+            _hit_arm(f"ah, LATERAL FLATTEN(input => ah.DIRECT_OBJECTS_ACCESSED) obj, {columns}", written_where()),
+            _hit_arm(modified, written_where()),
+            _hit_arm(f"{modified}, LATERAL FLATTEN(input => col.value:baseSources) src", source_where("src.value")),
+            _hit_arm(f"{modified}, LATERAL FLATTEN(input => col.value:directSources) dsrc", source_where("dsrc.value")),
+        )
     )
-    return (
+    params.append(max_rows)
+    sql = (
+        "WITH ah AS ("
         "SELECT QUERY_ID, QUERY_START_TIME, USER_NAME, DIRECT_OBJECTS_ACCESSED, "
         "BASE_OBJECTS_ACCESSED, OBJECTS_MODIFIED "
         "FROM SNOWFLAKE.ACCOUNT_USAGE.ACCESS_HISTORY "
-        f"WHERE QUERY_START_TIME >= DATEADD('day', -{lookback_days}, CURRENT_TIMESTAMP()) "
-        f"AND ({accessed} OR {_modified_exists(exact, table, column)}) "
+        "WHERE QUERY_START_TIME >= DATEADD('day', -%s, CURRENT_TIMESTAMP())"
+        "), hits AS ("
+        f"{hits}"
+        ") SELECT QUERY_ID, QUERY_START_TIME, USER_NAME, DIRECT_OBJECTS_ACCESSED, "
+        "BASE_OBJECTS_ACCESSED, OBJECTS_MODIFIED "
+        "FROM ah "
+        "WHERE QUERY_ID IN (SELECT QUERY_ID FROM hits) "
         "QUALIFY ROW_NUMBER() OVER (PARTITION BY QUERY_ID ORDER BY QUERY_START_TIME DESC) = 1 "
         "ORDER BY QUERY_START_TIME DESC "
-        f"LIMIT {max_rows}"
+        "LIMIT %s"
     )
+    return sql, tuple(params)
 
 
 def _json_objects(value: object) -> list[dict[Any, Any]]:
@@ -289,8 +306,8 @@ def register_horizon_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             echo_table, table, column, exact = _lineage_target(table_name, column_name, database, schema_name)
             lookback_days = max(1, min(int(days), 365))
             max_rows = max(1, min(int(limit), 50))
-            sql = _column_lineage_sql(exact, table, column, lookback_days, max_rows)
-            res = client.execute_query(sql, max_rows=max_rows)
+            sql, params = _column_lineage_sql(exact, table, column, lookback_days, max_rows)
+            res = client.execute_query(sql, params, max_rows=max_rows)
             return {
                 "status": "success",
                 "table_name": echo_table,

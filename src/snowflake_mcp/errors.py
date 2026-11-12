@@ -158,11 +158,13 @@ SECRET_PATTERNS = [
     ),
     # Whitespace-separated older forms keep a minimum, and an ordinary English word after
     # "password" (``Password policy 'P' does not exist``) is prose, not a secret, so it is skipped.
+    # The word must be the whole token (followed by whitespace or the end), so a value that
+    # merely starts with one, such as ``Policy!2024``, is still masked.
     re.compile(
         r"(?i)(password\s+)(?!\[REDACTED\])"
         r"(?!(?:policy|policies|must|does|cannot|reset|expired|expires|change|changed|required"
         r"|requirements|authentication|incorrect|invalid|length|field|parameter|hash|manager"
-        r"|should|will|would|could|needs|rotation|history|complexity)\b)"
+        r"|should|will|would|could|needs|rotation|history|complexity)(?:\s|$))"
         r"[^\s\"']\S{3,}",
         re.IGNORECASE,
     ),

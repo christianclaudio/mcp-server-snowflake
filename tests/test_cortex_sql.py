@@ -29,6 +29,11 @@ def _sql(client: SnowflakeClient) -> str:
     return str(client.execute_query.call_args.args[0])  # type: ignore[attr-defined]
 
 
+def _params(client: SnowflakeClient) -> tuple[Any, ...]:
+    bound = client.execute_query.call_args.args[1]  # type: ignore[attr-defined]
+    return tuple(bound)
+
+
 def _read_constant(sql: str, i: int) -> tuple[str, int]:
     """Read the single-quoted Snowflake string constant at ``sql[i]`` the way Snowflake does.
 
@@ -352,18 +357,31 @@ async def test_cortex_complete_sends_model_parameters_only_when_set(client: Snow
     res = await fn(prompt="p", model="m")
     assert res["response"] == "ok"
     assert _sql(client) == "SELECT AI_COMPLETE('m', 'p') AS response"
+    assert len(client.execute_query.call_args.args) == 1  # type: ignore[attr-defined]
 
     await fn(prompt="p", model="m", temperature=0.7)
-    assert _sql(client) == "SELECT AI_COMPLETE('m', 'p', {'temperature': 0.7}) AS response"
+    sql = _sql(client)
+    assert sql == "SELECT AI_COMPLETE('m', 'p', OBJECT_CONSTRUCT('temperature', %s)) AS response"
+    assert "0.7" not in sql
+    assert _params(client) == (0.7,)
 
     await fn(prompt="p", model="m", max_tokens=10)
-    assert _sql(client) == "SELECT AI_COMPLETE('m', 'p', {'max_tokens': 10}) AS response"
+    sql = _sql(client)
+    assert sql == "SELECT AI_COMPLETE('m', 'p', OBJECT_CONSTRUCT('max_tokens', %s)) AS response"
+    assert "10" not in sql
+    assert _params(client) == (10,)
 
     await fn(prompt="p", model="m", temperature=0.0, max_tokens=1)
-    assert _sql(client) == "SELECT AI_COMPLETE('m', 'p', {'temperature': 0.0, 'max_tokens': 1}) AS response"
+    sql = _sql(client)
+    assert sql == ("SELECT AI_COMPLETE('m', 'p', OBJECT_CONSTRUCT('temperature', %s, 'max_tokens', %s)) AS response")
+    assert "0.0" not in sql
+    assert _params(client) == (0.0, 1)
 
     await fn(prompt="p", model="m", temperature=1)
-    assert _sql(client) == "SELECT AI_COMPLETE('m', 'p', {'temperature': 1.0}) AS response"
+    sql = _sql(client)
+    assert "1.0" not in sql
+    assert "OBJECT_CONSTRUCT('temperature', %s)" in sql
+    assert _params(client) == (1.0,)
 
 
 @pytest.mark.asyncio

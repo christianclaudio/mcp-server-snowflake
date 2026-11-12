@@ -516,6 +516,9 @@ def test_password_prose_is_not_redacted(message: str) -> None:
         ("password=s3cret!!", "s3cret!!"),
         ("password: letmein99", "letmein99"),
         ("PASSWORD Tr0ub4dor&3", "Tr0ub4dor&3"),
+        ("password Policy!2024", "Policy!2024"),
+        ("password expired!x9", "expired!x9"),
+        ("password reset.now", "reset.now"),
     ],
 )
 def test_password_values_still_redacted(message: str, secret: str) -> None:

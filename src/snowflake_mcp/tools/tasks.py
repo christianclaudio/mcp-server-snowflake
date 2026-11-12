@@ -32,13 +32,16 @@ _TASK_RESUME_TRIGGER = (
 
 
 def _task_resume_needs_trigger(exc: BaseException) -> bool:
-    """True when RESUME failed because the task has no trigger (error 091453).
+    """True when RESUME failed with Snowflake error 091453.
+
+    Match the errno / error-code field only (``91453`` or ``091453``). The message
+    text is not searched, so a different errno that merely mentions 091453 is left
+    unchanged.
 
     https://docs.snowflake.com/en/sql-reference/sql/alter-task
     """
-    if getattr(exc, "errno", None) == _TASK_RESUME_ERRNO:
-        return True
-    return "091453" in str(exc)
+    errno = getattr(exc, "errno", None)
+    return errno == _TASK_RESUME_ERRNO or errno == "091453"
 
 
 def qualify_task_target(
@@ -99,12 +102,11 @@ def register_task_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         name="create_task",
         description=(
             "Create a task. schedule is optional and is omitted from CREATE TASK when unset. "
-            "A task with no SCHEDULE runs only via EXECUTE TASK, or as a child (AFTER), a "
-            "finalizer (FINALIZE), or a triggered task (WHEN, for example "
-            "SYSTEM$STREAM_HAS_DATA). This tool sets only an optional SCHEDULE; it does not "
-            "set AFTER, FINALIZE, or WHEN. Resuming fails unless the task has a SCHEDULE, "
-            "AFTER, FINALIZE, or WHEN trigger. A schedule-less task can always be run once "
-            "with EXECUTE TASK."
+            "EXECUTE TASK runs a standalone or root task once; it does not run a child task. "
+            "A child runs after its predecessors (AFTER), a finalizer runs with FINALIZE, and "
+            "a triggered task uses WHEN (for example SYSTEM$STREAM_HAS_DATA) with no schedule. "
+            "This tool sets only an optional SCHEDULE; it does not set AFTER, FINALIZE, or WHEN. "
+            "Resuming fails unless the task has a SCHEDULE, AFTER, FINALIZE, or WHEN trigger."
         ),
     )
     async def snowflake_create_task(
@@ -118,12 +120,13 @@ def register_task_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Create a task. ``schedule`` is not required.
 
+        EXECUTE TASK runs a standalone or root task once. It does not run a child task.
         A standalone task or the root of a task graph runs automatically only when it
         has a schedule or is a triggered task (``WHEN SYSTEM$STREAM_HAS_DATA(...)``).
-        Otherwise it runs via EXECUTE TASK, or as a child (AFTER) or finalizer
-        (FINALIZE). Resuming fails unless the task has a SCHEDULE, AFTER, FINALIZE, or
-        WHEN trigger. A schedule-less task can always be run once with EXECUTE TASK.
-        This statement sets only the optional SCHEDULE (and warehouse).
+        A child (AFTER) runs after its predecessors, and a finalizer (FINALIZE) runs
+        at the end of the graph. Resuming fails unless the task has a SCHEDULE, AFTER,
+        FINALIZE, or WHEN trigger. This statement sets only the optional SCHEDULE
+        (and warehouse).
 
         https://docs.snowflake.com/en/sql-reference/sql/create-task
         https://docs.snowflake.com/en/sql-reference/sql/alter-task

@@ -74,12 +74,26 @@ async def test_resume_task_maps_091453(client: SnowflakeClient) -> None:
     assert _SECRET not in str(excinfo.value)
     assert "[REDACTED]" in payload["error"]
 
-    client.execute_query.side_effect = RuntimeError(f"091453 password {_SECRET}")  # type: ignore[attr-defined]
+
+@pytest.mark.asyncio
+async def test_resume_task_ignores_091453_text_with_a_different_errno(client: SnowflakeClient) -> None:
+    """A message that mentions 091453 but carries another errno is not remapped.
+
+    https://docs.snowflake.com/en/sql-reference/sql/alter-task
+    """
+    fn = _tools(client)["tasks_resume_task"].fn
+    client.execute_query.side_effect = ProgrammingError(  # type: ignore[attr-defined]
+        f"091453 should have a SCHEDULE password {_SECRET}",
+        errno=2003,
+        sqlstate="42000",
+        send_telemetry=False,
+    )
     with pytest.raises(ToolError) as excinfo:
         await fn(task_name="TSK")
     payload = _error(excinfo)
-    assert "EXECUTE TASK" in payload["error"]
-    assert "SCHEDULE" in payload["error"]
+    assert "091453" in payload["error"]
+    assert "EXECUTE TASK" not in payload["error"]
+    assert "Cannot resume this task" not in payload["error"]
     assert _SECRET not in str(excinfo.value)
     assert "[REDACTED]" in payload["error"]
 

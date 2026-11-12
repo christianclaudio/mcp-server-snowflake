@@ -27,32 +27,35 @@ def _decode_object(value: Any, function: str) -> Any:
     return value
 
 
-def _model_parameters_sql(temperature: object, max_tokens: object) -> str | None:
-    """OBJECT literal for AI_COMPLETE's model_parameters argument, or None when unset.
+def _model_parameters_sql(temperature: object, max_tokens: object) -> tuple[str, tuple[float | int, ...]] | None:
+    """``OBJECT_CONSTRUCT`` of the model_parameters that were set, values bound.
 
-    Only validated numbers are written, so a caller string is never interpolated.
     ``temperature`` is from 0 to 1 inclusive and ``max_tokens`` is a positive integer.
-    With model_parameters and no show_details or response_format, AI_COMPLETE still
-    returns a string.
+    Only keys that were set are included. With model_parameters and no show_details
+    or response_format, AI_COMPLETE still returns a string.
 
     https://docs.snowflake.com/en/sql-reference/functions/ai_complete
     https://docs.snowflake.com/en/sql-reference/functions/ai_complete-single-string
+    https://docs.snowflake.com/en/sql-reference/functions/object_construct
     """
-    parts: list[str] = []
+    pairs: list[str] = []
+    values: list[float | int] = []
     if temperature is not None:
         if isinstance(temperature, bool) or not isinstance(temperature, (int, float)):
             raise status_error("temperature must be a number from 0 to 1 inclusive")
         number = float(temperature)
         if not math.isfinite(number) or number < 0 or number > 1:
             raise status_error("temperature must be a number from 0 to 1 inclusive")
-        parts.append("'temperature': " + json.dumps(number))
+        pairs.append("'temperature', %s")
+        values.append(number)
     if max_tokens is not None:
         if isinstance(max_tokens, bool) or not isinstance(max_tokens, int) or max_tokens < 1:
             raise status_error("max_tokens must be a positive integer")
-        parts.append("'max_tokens': " + str(max_tokens))
-    if not parts:
+        pairs.append("'max_tokens', %s")
+        values.append(max_tokens)
+    if not pairs:
         return None
-    return "{" + ", ".join(parts) + "}"
+    return "OBJECT_CONSTRUCT(" + ", ".join(pairs) + ")", tuple(values)
 
 
 def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
@@ -89,10 +92,12 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             # Drop-in for basic COMPLETE(model, prompt); both return a string.
             # https://docs.snowflake.com/en/user-guide/snowflake-cortex/aisql-migrate-legacy-functions
             sql = f"SELECT AI_COMPLETE({quote_literal(model)}, {quote_literal(prompt)}"
+            params: tuple[float | int, ...] | None = None
             if model_parameters is not None:
-                sql += ", " + model_parameters
+                fragment, params = model_parameters
+                sql += ", " + fragment
             sql += ") AS response"
-            res = client.execute_query(sql)
+            res = client.execute_query(sql, params) if params is not None else client.execute_query(sql)
             data = res.get("data", [])
             # Prefer RESPONSE; only treat an explicit None as SQL NULL (missing key is not NULL).
             # https://docs.snowflake.com/en/user-guide/snowflake-cortex/aisql-migrate-legacy-functions

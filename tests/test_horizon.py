@@ -85,6 +85,79 @@ def _sql(client: SnowflakeClient) -> str:
     return str(client.execute_query.call_args.args[0])  # type: ignore[attr-defined]
 
 
+def _params(client: SnowflakeClient) -> tuple[Any, ...]:
+    bound = client.execute_query.call_args.args[1]  # type: ignore[attr-defined]
+    return tuple(bound)
+
+
+def _lateral_flattens_in_subqueries(sql: str) -> list[str]:
+    """``LATERAL FLATTEN`` occurrences that sit inside a parenthesized subquery.
+
+    ``name AS (SELECT ... FROM t, LATERAL FLATTEN ...)`` is a CTE body, so the
+    flatten is in that CTE's FROM list. ``(SELECT ... LATERAL FLATTEN ...)``
+    anywhere else is a subquery (``IN``, ``EXISTS``, or a derived table).
+    """
+    found: list[str] = []
+    stack: list[str] = []
+    i = 0
+    n = len(sql)
+    upper = sql.upper()
+
+    def word_before(pos: int) -> str:
+        j = pos
+        while j > 0 and sql[j - 1].isspace():
+            j -= 1
+        end = j
+        while j > 0 and (sql[j - 1].isalnum() or sql[j - 1] == "_"):
+            j -= 1
+        return sql[j:end].upper()
+
+    def word_after(pos: int) -> str:
+        j = pos
+        while j < n and sql[j].isspace():
+            j += 1
+        end = j
+        while end < n and (sql[end].isalnum() or sql[end] == "_"):
+            end += 1
+        return sql[j:end].upper()
+
+    while i < n:
+        if sql[i] == "'":
+            i += 1
+            while i < n:
+                if sql[i] == "'":
+                    if i + 1 < n and sql[i + 1] == "'":
+                        i += 2
+                        continue
+                    i += 1
+                    break
+                i += 1
+            continue
+        if sql[i] == "(":
+            nxt = word_after(i + 1)
+            prev = word_before(i)
+            if nxt in {"SELECT", "WITH"} and prev == "AS":
+                stack.append("cte")
+            elif nxt in {"SELECT", "WITH"}:
+                stack.append("subquery")
+            else:
+                stack.append("other")
+            i += 1
+            continue
+        if sql[i] == ")":
+            if stack:
+                stack.pop()
+            i += 1
+            continue
+        if upper.startswith("LATERAL FLATTEN", i):
+            if "subquery" in stack:
+                found.append(sql[i : i + len("LATERAL FLATTEN")])
+            i += len("LATERAL FLATTEN")
+            continue
+        i += 1
+    return found
+
+
 @pytest.mark.asyncio
 async def test_column_lineage_filters_table_and_column(mock_client: SnowflakeClient) -> None:
     """ACCESS_HISTORY is filtered on objectName and columnName, then deduplicated by QUERY_ID.
@@ -175,50 +248,65 @@ async def test_column_lineage_filters_table_and_column(mock_client: SnowflakeCli
         "q-direct-src",
     ]
     sql = _sql(mock_client)
-    assert "LATERAL FLATTEN(input => BASE_OBJECTS_ACCESSED)" in sql
-    assert "LATERAL FLATTEN(input => DIRECT_OBJECTS_ACCESSED)" in sql
-    assert "LATERAL FLATTEN(input => OBJECTS_MODIFIED)" in sql
+    params = _params(mock_client)
+    assert "LATERAL FLATTEN(input => ah.BASE_OBJECTS_ACCESSED)" in sql
+    assert "LATERAL FLATTEN(input => ah.DIRECT_OBJECTS_ACCESSED)" in sql
+    assert "LATERAL FLATTEN(input => ah.OBJECTS_MODIFIED)" in sql
     assert "LATERAL FLATTEN(input => col.value:baseSources)" in sql
     assert "LATERAL FLATTEN(input => col.value:directSources)" in sql
-    assert "obj.value:objectName::STRING = 'DB.SCH.ORDERS'" in sql
-    assert "src.value:objectName::STRING = 'DB.SCH.ORDERS'" in sql
-    assert "dsrc.value:objectName::STRING = 'DB.SCH.ORDERS'" in sql
-    assert "col.value:columnName::STRING = 'EMAIL'" in sql
-    assert "src.value:columnName::STRING = 'EMAIL'" in sql
-    assert "dsrc.value:columnName::STRING = 'EMAIL'" in sql
-    assert "DATEADD('day', -14, CURRENT_TIMESTAMP())" in sql
+    assert "QUERY_ID IN (SELECT QUERY_ID FROM hits)" in sql
+    assert "EXISTS (SELECT 1 FROM LATERAL FLATTEN" not in sql
+    assert _lateral_flattens_in_subqueries(sql) == []
+    assert "obj.value:objectName::STRING = %s" in sql
+    assert "src.value:objectName::STRING = %s" in sql
+    assert "dsrc.value:objectName::STRING = %s" in sql
+    assert "col.value:columnName::STRING = %s" in sql
+    assert "DATEADD('day', -%s, CURRENT_TIMESTAMP())" in sql
+    assert sql.endswith("LIMIT %s")
     assert "QUALIFY ROW_NUMBER() OVER (PARTITION BY QUERY_ID ORDER BY QUERY_START_TIME DESC) = 1" in sql
-    assert sql.endswith("LIMIT 5")
+    for name in ("DB.SCH.ORDERS", "EMAIL", "14", "5"):
+        assert name not in sql
+    assert params[0] == 14
+    assert params[-1] == 5
+    assert params[1:11:2] == ("DB.SCH.ORDERS",) * 5
+    assert params[2:11:2] == ("EMAIL",) * 5
 
     # Unquoted identifiers are uppercased; a quoted name keeps its case, including a dot.
     await fn("db.sch.orders", "email")
-    assert "obj.value:objectName::STRING = 'DB.SCH.ORDERS'" in _sql(mock_client)
+    assert "DB.SCH.ORDERS" not in _sql(mock_client)
+    assert _params(mock_client)[1] == "DB.SCH.ORDERS"
     await fn('"MyDb"."MySch"."Orders"', '"Amount"')
     sql = _sql(mock_client)
-    assert "obj.value:objectName::STRING = 'MyDb.MySch.Orders'" in sql
-    assert "col.value:columnName::STRING = 'Amount'" in sql
+    assert "MyDb.MySch.Orders" not in sql
+    assert "Amount" not in sql
+    assert _params(mock_client)[1:3] == ("MyDb.MySch.Orders", "Amount")
     await fn('"my.db".s."Orders"', '"O\'Brien"')
     sql = _sql(mock_client)
-    assert "obj.value:objectName::STRING = 'my.db.S.Orders'" in sql
-    assert "col.value:columnName::STRING = 'O''Brien'" in sql
+    assert "my.db.S.Orders" not in sql
+    assert "O'Brien" not in sql
+    assert "O''Brien" not in sql
+    assert _params(mock_client)[1:3] == ("my.db.S.Orders", "O'Brien")
 
     # A name's database wins over the argument. An empty schema is PUBLIC.
     await fn("OTHER.SCH.T", "C", database="NOPE")
-    assert "obj.value:objectName::STRING = 'OTHER.SCH.T'" in _sql(mock_client)
+    assert _params(mock_client)[1] == "OTHER.SCH.T"
+    assert "NOPE" not in _sql(mock_client)
     await fn("DB..ORDERS", "EMAIL")
-    assert "obj.value:objectName::STRING = 'DB.PUBLIC.ORDERS'" in _sql(mock_client)
+    assert _params(mock_client)[1] == "DB.PUBLIC.ORDERS"
+    assert "DB.PUBLIC.ORDERS" not in _sql(mock_client)
 
-    # days and limit stay clamped.
+    # days and limit stay clamped, and stay out of the SQL text.
     await fn("DB.SCH.T", "C", days=0, limit=0)
-    sql = _sql(mock_client)
-    assert "DATEADD('day', -1, CURRENT_TIMESTAMP())" in sql
-    assert sql.endswith("LIMIT 1")
+    assert _params(mock_client)[0] == 1
+    assert _params(mock_client)[-1] == 1
+    assert "-1" not in _sql(mock_client)
     await fn("DB.SCH.T", "C", days=999, limit=80)
-    sql = _sql(mock_client)
-    assert "DATEADD('day', -365, CURRENT_TIMESTAMP())" in sql
-    assert sql.endswith("LIMIT 50")
+    assert _params(mock_client)[0] == 365
+    assert _params(mock_client)[-1] == 50
+    assert "365" not in _sql(mock_client)
+    assert "50" not in _sql(mock_client)
 
-    # Without both database and schema, match a '.' || TABLE suffix.
+    # Without both database and schema, bind the '.' || TABLE suffix pattern.
     mock_client.execute_query.return_value = {  # type: ignore[attr-defined]
         "data": [
             {
@@ -242,24 +330,51 @@ async def test_column_lineage_filters_table_and_column(mock_client: SnowflakeCli
     res = await fn("orders", "amount")
     assert [row["QUERY_ID"] for row in res["access_history_records"]] == ["keep"]
     sql = _sql(mock_client)
-    assert "ENDSWITH(obj.value:objectName::STRING, '.' || 'ORDERS')" in sql
-    assert "obj.value:objectName::STRING = 'ORDERS'" not in sql
+    assert "ENDSWITH(obj.value:objectName::STRING, %s)" in sql
+    assert "ORDERS" not in sql
+    assert "AMOUNT" not in sql
+    assert _params(mock_client)[1:3] == (".ORDERS", "AMOUNT")
     await fn("orders", "amount", database="db")
-    assert "ENDSWITH(obj.value:objectName::STRING, '.' || 'ORDERS')" in _sql(mock_client)
+    assert _params(mock_client)[1] == ".ORDERS"
     await fn("orders", "amount", schema_name="sch")
-    assert "ENDSWITH(obj.value:objectName::STRING, '.' || 'ORDERS')" in _sql(mock_client)
+    assert _params(mock_client)[1] == ".ORDERS"
     await fn("sch.orders", "amount")
-    assert "ENDSWITH(obj.value:objectName::STRING, '.' || 'ORDERS')" in _sql(mock_client)
+    assert _params(mock_client)[1] == ".ORDERS"
     await fn("sch.orders", "amount", database="db")
-    assert "obj.value:objectName::STRING = 'DB.SCH.ORDERS'" in _sql(mock_client)
+    assert "DB.SCH.ORDERS" not in _sql(mock_client)
+    assert _params(mock_client)[1] == "DB.SCH.ORDERS"
 
     res = await fn('"Orders"', '"Amount"')
     assert [row["QUERY_ID"] for row in res["access_history_records"]] == ["keep-quoted"]
-    assert "ENDSWITH(obj.value:objectName::STRING, '.' || 'Orders')" in _sql(mock_client)
+    assert "Orders" not in _sql(mock_client)
+    assert _params(mock_client)[1:3] == (".Orders", "Amount")
 
     mock_client.execute_query.return_value = {"data": None}  # type: ignore[attr-defined]
     res = await fn("ORDERS", "AMOUNT")
     assert res["access_history_records"] == []
+
+
+@pytest.mark.asyncio
+async def test_column_lineage_flatten_is_outside_subqueries(mock_client: SnowflakeClient) -> None:
+    """Every LATERAL FLATTEN is in a CTE FROM list, not a parenthesized subquery.
+
+    Snowflake rejects a correlated FLATTEN inside a subquery
+    (https://docs.snowflake.com/en/user-guide/querying-subqueries).
+    """
+    mock_client.execute_query.return_value = {"data": []}  # type: ignore[attr-defined]
+    mcp = create_server(client=mock_client)
+    await mcp._tool_manager._tools["horizon_get_column_lineage"].fn("ORDERS", "EMAIL", database="DB", schema_name="SCH")
+    sql = _sql(mock_client)
+    assert "EXISTS (SELECT 1 FROM LATERAL FLATTEN" not in sql
+    assert "QUERY_ID IN (SELECT QUERY_ID FROM hits)" in sql
+    assert _lateral_flattens_in_subqueries(sql) == []
+    nested = (
+        "SELECT 1 FROM ah WHERE QUERY_ID IN "
+        "(SELECT QUERY_ID FROM ah, LATERAL FLATTEN(input => ah.BASE_OBJECTS_ACCESSED) obj)"
+    )
+    assert _lateral_flattens_in_subqueries(nested) == ["LATERAL FLATTEN"]
+    cte = "WITH hits AS (SELECT ah.QUERY_ID FROM ah, LATERAL FLATTEN(input => ah.BASE_OBJECTS_ACCESSED) obj)"
+    assert _lateral_flattens_in_subqueries(cte) == []
 
 
 @pytest.mark.asyncio
