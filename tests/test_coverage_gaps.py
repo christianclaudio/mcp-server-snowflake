@@ -16,7 +16,13 @@ from fastmcp.exceptions import ToolError
 
 from snowflake_mcp.cli import main, run_init_wizard
 from snowflake_mcp.config import SnowflakeConfig
-from snowflake_mcp.connection import SnowflakeClient, is_sql_read_only, quote_ident, quote_literal
+from snowflake_mcp.connection import (
+    SnowflakeClient,
+    finite_or_none,
+    is_sql_read_only,
+    quote_ident,
+    quote_literal,
+)
 from snowflake_mcp.errors import SafetyViolationError
 from snowflake_mcp.server import create_server
 from snowflake_mcp.tools.compute_services import qualify_compute_target
@@ -56,6 +62,96 @@ def test_execute_query_normalizes_special_values() -> None:
     assert row["N"] == 1.5
     assert row["I"] == 2
     assert row["B"] == "0102"
+
+
+def test_finite_or_none_maps_non_finite_floats_and_decimals() -> None:
+    """NaN, inf, -inf, and non-finite Decimals become None. Finite values stay."""
+    assert finite_or_none(float("nan")) is None
+    assert finite_or_none(float("inf")) is None
+    assert finite_or_none(float("-inf")) is None
+    assert finite_or_none(Decimal("Infinity")) is None
+    assert finite_or_none(Decimal("-Infinity")) is None
+    assert finite_or_none(Decimal("NaN")) is None
+    assert finite_or_none(Decimal("1.5")) == 1.5
+    assert finite_or_none(Decimal("2")) == 2
+    assert finite_or_none(0.0) == 0.0
+    assert finite_or_none(True) is True
+    assert finite_or_none("ok") == "ok"
+
+    class _DuckDecimal:
+        def __str__(self) -> str:
+            return "4"
+
+        def as_tuple(self) -> tuple[object, ...]:
+            return ()
+
+        def __float__(self) -> float:
+            return 4.0
+
+        def __int__(self) -> int:
+            return 4
+
+    assert finite_or_none(_DuckDecimal()) == 4
+
+
+def test_execute_query_maps_non_finite_numbers_to_none() -> None:
+    client = SnowflakeClient(config=SnowflakeConfig(account="acc", user="usr"))
+    cursor = MagicMock()
+    cursor.sfqid = "qid"
+    cursor.rowcount = 1
+    cursor.description = [("SCORE",), ("HI",), ("LO",), ("DINF",), ("DNAN",), ("LABEL",)]
+    cursor.fetchmany.return_value = [
+        {
+            "SCORE": float("nan"),
+            "HI": float("inf"),
+            "LO": float("-inf"),
+            "DINF": Decimal("Infinity"),
+            "DNAN": Decimal("NaN"),
+            "LABEL": "kept",
+        }
+    ]
+    conn = MagicMock()
+    conn.cursor.return_value = cursor
+    client.get_connection = MagicMock(return_value=conn)  # type: ignore[method-assign]
+    row = client.execute_query("SELECT 1")["data"][0]
+    assert row == {
+        "SCORE": None,
+        "HI": None,
+        "LO": None,
+        "DINF": None,
+        "DNAN": None,
+        "LABEL": "kept",
+    }
+
+
+@pytest.mark.asyncio
+async def test_query_tool_returns_nulls_for_non_finite_values() -> None:
+    """An in-memory SELECT with NaN and infinities is a successful result of nulls."""
+    client = SnowflakeClient(config=SnowflakeConfig(account="acc", user="usr"))
+    cursor = MagicMock()
+    cursor.sfqid = "qid"
+    cursor.rowcount = 1
+    cursor.description = [("SCORE",), ("HI",), ("LO",), ("DINF",), ("DNAN",)]
+    cursor.fetchmany.return_value = [
+        {
+            "SCORE": float("nan"),
+            "HI": float("inf"),
+            "LO": float("-inf"),
+            "DINF": Decimal("Infinity"),
+            "DNAN": Decimal("NaN"),
+        }
+    ]
+    conn = MagicMock()
+    conn.cursor.return_value = cursor
+    client.get_connection = MagicMock(return_value=conn)  # type: ignore[method-assign]
+
+    async with Client(create_server(client=client)) as mcp_client:
+        result = await mcp_client.call_tool("queries_query", {"query": "SELECT 1"}, raise_on_error=False)
+
+    assert result.is_error is False
+    payload = json.loads(result.content[0].text)
+    assert payload["status"] == "success"
+    assert payload["data"] == [{"SCORE": None, "HI": None, "LO": None, "DINF": None, "DNAN": None}]
 
 
 def test_switch_connection(monkeypatch: pytest.MonkeyPatch) -> None:

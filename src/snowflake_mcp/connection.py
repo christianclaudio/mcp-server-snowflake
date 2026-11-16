@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 import re
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Annotated, Any
 
 import snowflake.connector
@@ -29,6 +31,32 @@ from snowflake_mcp.errors import (
 logger = logging.getLogger("snowflake_mcp")
 
 _IDENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_$.]*$")
+
+
+def _is_decimal_like(value: Any) -> bool:
+    """True for ``Decimal`` and for values the row normalizer already treated as one."""
+    return isinstance(value, Decimal) or hasattr(value, "as_tuple") or type(value).__name__ == "Decimal"
+
+
+def finite_or_none(value: Any) -> Any:
+    """Return ``value``, or None when it cannot be a finite JSON number.
+
+    Floats that are NaN, Infinity, or -Infinity become None. A Decimal whose
+    ``float()`` is non-finite does too. A finite Decimal keeps the historical
+    conversion: ``float`` when its text contains a decimal point, otherwise
+    ``int``. Every other value is returned unchanged.
+
+    FastMCP rejects non-finite numbers in tool results
+    (https://github.com/PrefectHQ/fastmcp/pull/5665).
+    """
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if _is_decimal_like(value):
+        as_float = float(value)
+        if not math.isfinite(as_float):
+            return None
+        return as_float if "." in str(value) else int(value)
+    return value
 
 
 def split_ident(name: str) -> list[str]:
@@ -830,19 +858,18 @@ class SnowflakeClient:
             description = cursor.description or []
             columns = [col[0] for col in description]
 
-            # Normalize data types (e.g. Decimal, datetime, UUID) for JSON-RPC safety
+            # Normalize data types (e.g. Decimal, datetime, UUID) for JSON-RPC safety.
+            # Non-finite floats and Decimals become None so FastMCP can serialize the row.
             normalized_rows: list[dict[str, Any]] = []
             for row in rows:
                 clean_row: dict[str, Any] = {}
                 for k, v in row.items():
                     if hasattr(v, "isoformat"):
                         clean_row[k] = v.isoformat()
-                    elif hasattr(v, "as_tuple") or v.__class__.__name__ == "Decimal":
-                        clean_row[k] = float(v) if "." in str(v) else int(v)
                     elif isinstance(v, (bytes, bytearray)):
                         clean_row[k] = v.hex()
                     else:
-                        clean_row[k] = v
+                        clean_row[k] = finite_or_none(v)
                 normalized_rows.append(clean_row)
 
             return {
