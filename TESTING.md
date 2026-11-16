@@ -18,8 +18,11 @@ pytest tests/test_config.py
 pytest tests/test_tools.py
 pytest tests/test_coverage_full.py
 
-# Optional: Run on-demand live tests against a trial account
-pytest -m e2e tests/test_e2e_live.py
+# Optional: live tests against a trial account.
+# Skipped unless SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER, and one auth method are set
+# (SNOWFLAKE_PASSWORD, SNOWFLAKE_PRIVATE_KEY_PATH, SNOWFLAKE_PRIVATE_KEY_RAW,
+# SNOWFLAKE_TOKEN, or SNOWFLAKE_AUTHENTICATOR). The skip reason lists names only.
+pytest -m live tests/test_live.py
 ```
 
 ---
@@ -58,7 +61,7 @@ npx -y @modelcontextprotocol/inspector snowflake-mcp -c trial
 
 ## Live e2e expect policy
 
-`tests/test_e2e_live.py` is the live harness (`pytest -m e2e tests/test_e2e_live.py`). `TOOL_FIXTURES` maps every tool name to `(arguments, expect)`. `dispatch_tool_call` scores the call from that `expect` value. The offline catalog test (`test_fixture_catalog_matches_server_tools`) requires every registered tool to appear in `TOOL_FIXTURES` (or `EXPLICIT_TOOL_SKIPS`) and requires each `expect` to be one of the four buckets below.
+`tests/test_live.py` is the live harness (`pytest -m live tests/test_live.py`). The marker is `live`. Collection skips the test unless `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, and one auth method are set; the skip reason names the missing variables and does not print their values. `TOOL_FIXTURES` maps every tool name to `(arguments, expect)`. `dispatch_tool_call` scores the call from that `expect` value. The offline catalog test (`test_fixture_catalog_matches_server_tools`) requires every registered tool to appear in `TOOL_FIXTURES` (or `EXPLICIT_TOOL_SKIPS`) and requires each `expect` to be one of the four buckets below.
 
 The live test sets `SNOWFLAKE_MCP_READONLY=1` before it calls tools. Marker checks are case-insensitive substrings.
 
@@ -142,4 +145,4 @@ Fixtures that submit a query and so need a warehouse (`DESCRIBE` and `SHOW` need
 
 Update the harness in the same pull request. Change `_SAFE_REJECTION_MARKERS`, `_TOOL_REJECTION_MARKERS`, `_CONFIRM_MARKERS`, or the fixture `expect` so the table matches the product behavior you reproduced, and update this section when a bucket or marker list changes.
 
-Take the evidence from the `TOOL_FIXTURES` table in `tests/test_e2e_live.py`. Reclassifying a tool in chat, including moving a soft-empty tool from `success` to `rejected`, needs that table (and a code change that shows the tool now rejects) in the same PR.
+Take the evidence from the `TOOL_FIXTURES` table in `tests/test_live.py`. Reclassifying a tool in chat, including moving a soft-empty tool from `success` to `rejected`, needs that table (and a code change that shows the tool now rejects) in the same PR.

@@ -1144,7 +1144,7 @@ async def test_fixture_catalog_matches_server_tools(mock_snowflake_client: Snowf
     )
 
 
-@pytest.mark.e2e
+@pytest.mark.live
 @pytest.mark.asyncio
 async def test_all_discovered_tools_live(monkeypatch: pytest.MonkeyPatch) -> None:
     """Dynamically discover and exercise registered tools against live endpoints."""
