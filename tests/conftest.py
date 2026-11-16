@@ -3,6 +3,7 @@
 HTTP auth is read from the environment when a server is built, so a token or opt-in
 exported in the developer's shell would change what every test builds. Each test starts
 with both auth variables cleared and the lazily built module-level server dropped.
+Profile and discovery flags are cleared too, so a shell setting cannot change the catalog.
 
 Live items keep the caller's Snowflake home so a real ``connections.toml`` is visible.
 They still skip, via ``pytest_collection_modifyitems``, unless account, user, and one
@@ -11,6 +12,7 @@ auth method are set. The skip reason lists those names and never a value.
 
 from __future__ import annotations
 
+import importlib.util
 import os
 from collections.abc import Iterator
 
@@ -31,6 +33,38 @@ LIVE_AUTH_ENV = (
     "SNOWFLAKE_TOKEN",
     "SNOWFLAKE_AUTHENTICATOR",
 )
+
+# Catalog selection. Cleared for every test so a developer shell cannot change it.
+_CATALOG_ENV_NAMES = (
+    "SNOWFLAKE_MCP_PROFILE",
+    "SNOWFLAKE_MCP_ENABLE_TOOL_SEARCH",
+    "SNOWFLAKE_MCP_TOOL_SEARCH_BACKEND",
+    "SNOWFLAKE_MCP_ENABLE_CODE_MODE",
+)
+
+
+def code_mode_ci_guard_error(environ: dict[str, str] | None = None) -> str | None:
+    """Return an error when CI runs without the Code Mode sandbox, else None.
+
+    Code Mode tests skip locally when ``pydantic_monty`` is missing. In CI (``CI``
+    set, as on GitHub Actions) that would hide a missing extra, so the session aborts.
+    """
+    env = os.environ if environ is None else environ
+    if not env.get("CI"):
+        return None
+    if importlib.util.find_spec("pydantic_monty") is not None:
+        return None
+    return (
+        "CI is set but pydantic_monty is not installed: install the code-mode extra "
+        "(uv sync --locked --extra dev --extra code-mode) so Code Mode tests run, not skip."
+    )
+
+
+def pytest_sessionstart(session: pytest.Session) -> None:
+    """Abort a CI session that would silently skip the Code Mode tests."""
+    error = code_mode_ci_guard_error()
+    if error is not None:
+        pytest.exit(error, returncode=3)
 
 
 def live_skip_reason(environ: dict[str, str] | None = None) -> str | None:
@@ -73,6 +107,8 @@ def _clear_http_auth_env(
 ) -> Iterator[None]:
     monkeypatch.delenv(AUTH_TOKEN_ENV, raising=False)
     monkeypatch.delenv(ALLOW_UNAUTHENTICATED_BIND_ENV, raising=False)
+    for name in _CATALOG_ENV_NAMES:
+        monkeypatch.delenv(name, raising=False)
     monkeypatch.setattr(server_mod, "_default_mcp", None)
     # A live item keeps the real Snowflake home. Offline tests must not read it.
     if request.node.get_closest_marker("live") is not None:

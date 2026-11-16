@@ -162,7 +162,25 @@ def main() -> None:
         "--enable-tool-search",
         action="store_true",
         default=os.environ.get("SNOWFLAKE_MCP_ENABLE_TOOL_SEARCH", "").strip().lower() in {"1", "true", "yes"},
-        help="Opt in to RegexSearchTransform (search_tools + call_tool) instead of the flat tools/list.",
+        help=(
+            "Opt in to tool search (search_tools + call_tool) instead of the flat tools/list. "
+            "Attaches on every profile."
+        ),
+    )
+    parser.add_argument(
+        "--tool-search-backend",
+        choices=["regex", "bm25"],
+        default=os.environ.get("SNOWFLAKE_MCP_TOOL_SEARCH_BACKEND", "regex").strip().lower() or "regex",
+        help="Tool search backend used with --enable-tool-search (default: regex).",
+    )
+    parser.add_argument(
+        "--enable-code-mode",
+        action="store_true",
+        default=os.environ.get("SNOWFLAKE_MCP_ENABLE_CODE_MODE", "").strip().lower() in {"1", "true", "yes"},
+        help=(
+            "Opt in to Code Mode (search, get_schema, execute) on the full profile only. "
+            "Mutually exclusive with tool search. Requires the code-mode extra."
+        ),
     )
     parser.add_argument(
         "--stateless",
@@ -210,6 +228,8 @@ def main() -> None:
         config=config,
         profile=args.profile,
         enable_tool_search=args.enable_tool_search,
+        enable_code_mode=args.enable_code_mode,
+        tool_search_backend=args.tool_search_backend,
     )
 
     if args.transport != "streamable-http":

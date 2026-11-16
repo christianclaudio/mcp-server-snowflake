@@ -72,7 +72,9 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install
-        run: uv sync --locked --extra dev --python ${{ matrix.python-version }}
+        # The code-mode extra is installed explicitly so Code Mode tests run
+        # instead of skipping when CI is set.
+        run: uv sync --locked --extra dev --extra code-mode --python ${{ matrix.python-version }}
       - name: Unit and mocked tests
         run: uv run pytest --cov=src/snowflake_mcp --cov-report=term-missing -q
 

@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import importlib.util
 import logging
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, Literal
 
 from fastmcp import FastMCP
 from fastmcp.tools import FunctionTool, Tool
@@ -21,6 +22,14 @@ from snowflake_mcp.middleware import (
     ParentAuditMiddleware,
     ReadOnlyGateMiddleware,
     record_mutating_tools,
+)
+from snowflake_mcp.profiles import (
+    CODE_MODE_READ_ONLY_TOOLS,
+    PROFILES,
+    TOOL_SEARCH_READ_ONLY_TOOLS,
+    ReadOnlyAnnotations,
+    ReadOnlyToolFilter,
+    get_profile,
 )
 from snowflake_mcp.tools.alerts import register_alert_tools
 from snowflake_mcp.tools.compute_services import register_compute_service_tools
@@ -134,10 +143,12 @@ _DOMAIN_REGISTRARS: tuple[tuple[str, Any], ...] = (
 
 DOMAIN_NAMES: tuple[str, ...] = tuple(name for name, _register in _DOMAIN_REGISTRARS)
 
-# ``full`` mounts every domain. ``readonly`` mounts every domain and then hides
-# mutating tools. A domain name mounts only that domain. The default flat
-# catalog is ``full`` (140 tools) with tool search off.
-VALID_PROFILES: frozenset[str] = frozenset({"full", "readonly", *DOMAIN_NAMES})
+# ``full`` mounts every domain. ``readonly`` mounts every domain, keeps tools
+# annotated readOnlyHint=True, and sets the connector read-only gate. A domain
+# name mounts only that domain. The default catalog is ``full`` (140 tools).
+VALID_PROFILES: frozenset[str] = frozenset(PROFILES)
+
+ToolSearchBackend = Literal["regex", "bm25"]
 
 if not hasattr(FunctionTool, "input_schema"):
     FunctionTool.input_schema = property(lambda self: self.parameters)  # type: ignore[attr-defined]
@@ -279,19 +290,58 @@ def _streamable_http_app(
     )
 
 
-def _profile_from_env(profile: str | None) -> str:
-    raw = profile if profile is not None else os.environ.get("SNOWFLAKE_MCP_PROFILE", "full")
-    active = raw.strip().lower()
-    if active not in VALID_PROFILES:
-        valid = ", ".join(sorted(VALID_PROFILES))
-        raise ValueError(f"Unknown SNOWFLAKE_MCP_PROFILE {raw!r}. Valid profiles: {valid}.")
-    return active
+def _env_flag(explicit: bool | None, name: str) -> bool:
+    """Return an explicit flag, or the truthy env value ``1`` / ``true`` / ``yes``."""
+    if explicit is not None:
+        return explicit
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes"}
 
 
-def _tool_search_from_env(enable_tool_search: bool | None) -> bool:
-    if enable_tool_search is not None:
-        return enable_tool_search
-    return os.environ.get("SNOWFLAKE_MCP_ENABLE_TOOL_SEARCH", "").strip().lower() in {"1", "true", "yes"}
+def _tool_search_backend(backend: str | None) -> ToolSearchBackend:
+    """Normalize ``regex`` (default) or ``bm25``. A blank value stays ``regex``."""
+    raw = backend if backend is not None else os.environ.get("SNOWFLAKE_MCP_TOOL_SEARCH_BACKEND", "regex")
+    normalized = raw.strip().lower() or "regex"
+    if normalized == "regex":
+        return "regex"
+    if normalized == "bm25":
+        return "bm25"
+    raise ValueError(f"Unknown SNOWFLAKE_MCP_TOOL_SEARCH_BACKEND {raw!r}. Valid backends: regex, bm25.")
+
+
+def _code_mode_sandbox_available() -> bool:
+    """True when the Code Mode sandbox (``pydantic_monty``) is importable."""
+    return importlib.util.find_spec("pydantic_monty") is not None
+
+
+def _attach_tool_search(root: FastMCP, backend: ToolSearchBackend) -> None:
+    """Attach regex (default) or BM25 tool search, and mark ``search_tools`` read-only."""
+    from fastmcp.server.transforms.search import BM25SearchTransform, RegexSearchTransform
+
+    if backend == "bm25":
+        root.add_transform(BM25SearchTransform())
+    else:
+        root.add_transform(RegexSearchTransform())
+    root.add_transform(ReadOnlyAnnotations(TOOL_SEARCH_READ_ONLY_TOOLS))
+
+
+def _attach_code_mode(root: FastMCP) -> bool:
+    """Attach Code Mode when its sandbox is installed.
+
+    Returns False, after a warning, when ``pydantic_monty`` is missing. Install
+    ``mcp-server-snowflake[code-mode]`` to provide it.
+    """
+    if not _code_mode_sandbox_available():
+        logger.warning(
+            "Code Mode requested but pydantic-monty (the Code Mode sandbox) is not installed; "
+            "skipping attach. Install the code-mode extra (mcp-server-snowflake[code-mode]) "
+            "or omit --enable-code-mode."
+        )
+        return False
+    from fastmcp.experimental.transforms.code_mode import CodeMode
+
+    root.add_transform(CodeMode())
+    root.add_transform(ReadOnlyAnnotations(CODE_MODE_READ_ONLY_TOOLS))
+    return True
 
 
 def create_server(
@@ -299,18 +349,26 @@ def create_server(
     client: SnowflakeClient | None = None,
     profile: str | None = None,
     enable_tool_search: bool | None = None,
+    enable_code_mode: bool | None = None,
+    tool_search_backend: str | None = None,
 ) -> FastMCP:
     """Create and configure the complete FastMCP server for Snowflake.
 
     The default profile ``full`` exposes one flat ``tools/list`` of all 140 tools.
-    ``RegexSearchTransform`` is opt-in via ``enable_tool_search`` or
-    ``SNOWFLAKE_MCP_ENABLE_TOOL_SEARCH``.
+    Tool search is opt-in (``enable_tool_search`` or ``SNOWFLAKE_MCP_ENABLE_TOOL_SEARCH``)
+    and attaches on every profile. Code Mode is opt-in, full-profile only, and
+    mutually exclusive with tool search.
     """
     snow_client = client or SnowflakeClient(config=config or SnowflakeConfig.from_env_or_config())
-    active_profile = _profile_from_env(profile)
-    use_tool_search = _tool_search_from_env(enable_tool_search)
+    raw_profile = profile if profile is not None else os.environ.get("SNOWFLAKE_MCP_PROFILE", "full")
+    active = get_profile(raw_profile)
+    use_tool_search = _env_flag(enable_tool_search, "SNOWFLAKE_MCP_ENABLE_TOOL_SEARCH")
+    use_code_mode = _env_flag(enable_code_mode, "SNOWFLAKE_MCP_ENABLE_CODE_MODE")
+    search_backend = _tool_search_backend(tool_search_backend)
+    if use_tool_search and use_code_mode:
+        raise ValueError("Tool Search and Code Mode are mutually exclusive; enable only one discovery mode.")
     # The profile and SNOWFLAKE_MCP_READONLY share one flag. The gate reads it.
-    if active_profile == "readonly":
+    if active.readonly:
         snow_client.config.read_only = True
 
     @asynccontextmanager
@@ -353,7 +411,7 @@ def create_server(
 
     # Domain namespaces are the wire prefix (queries_query, not snowflake_query).
     for namespace, register in _DOMAIN_REGISTRARS:
-        if active_profile not in ("full", "readonly", namespace):
+        if namespace not in active.domains:
             continue
         domain = FastMCP(namespace, version=__version__)
         register(domain, snow_client)
@@ -364,18 +422,28 @@ def create_server(
     mcp._tool_manager = tool_mgr  # type: ignore[attr-defined]
     record_mutating_tools(tool_mgr._tools, DOMAIN_NAMES)
 
-    if active_profile == "readonly":
+    if active.readonly:
         for name, component in list(tool_mgr._tools.items()):
             annotations = getattr(component, "annotations", None)
             if not (annotations and annotations.read_only_hint):
                 read_only_gate.conceal(name)
-                tool_mgr.remove_tool(name)
+        mcp.add_transform(ReadOnlyToolFilter())
 
-    # Opt-in. The default catalog stays the flat 140-tool tools/list.
+    # Tool search stays on every profile. Some hosts only surface search tools,
+    # so a domain or readonly catalog still needs the search transform.
     if use_tool_search:
-        from fastmcp.server.transforms.search import RegexSearchTransform
+        _attach_tool_search(mcp, search_backend)
 
-        mcp.add_transform(RegexSearchTransform())
+    # Code Mode is full-profile only and mutually exclusive with tool search.
+    if use_code_mode:
+        if active.name != "full":
+            logger.warning(
+                "Code Mode requested with profile=%r; attach is allowed only on profile='full'. "
+                "Keeping the profile catalog.",
+                active.name,
+            )
+        else:
+            _attach_code_mode(mcp)
 
     # Compatibility bridges
     mcp.streamable_http_app = _streamable_http_app.__get__(mcp, FastMCP)  # type: ignore[attr-defined]
