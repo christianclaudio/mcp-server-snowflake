@@ -428,3 +428,5 @@ def test_cli_profile_and_tool_search(monkeypatch: pytest.MonkeyPatch) -> None:
     main()
     assert created["profile"] == "queries"
     assert created["enable_tool_search"] is True
+    assert created["enable_code_mode"] is False
+    assert created["tool_search_backend"] == "regex"

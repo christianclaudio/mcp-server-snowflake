@@ -146,8 +146,19 @@ snowflake-mcp --profile readonly
 # `--profile readonly` hides mutating tools, sets the read-only flag, and pins USE SECONDARY ROLES NONE on each session.
 # Set DEFAULT_SECONDARY_ROLES = () on that user, or use a dedicated user that holds only the read-only role.
 
-# Opt in to regex tool search instead of the flat 140-tool tools/list
+# Opt in to tool search instead of the flat 140-tool tools/list.
+# Search attaches on every profile, including a single domain and readonly,
+# because some hosts only surface search_tools and call_tool.
 snowflake-mcp --enable-tool-search
+snowflake-mcp --enable-tool-search --tool-search-backend bm25
+# SNOWFLAKE_MCP_ENABLE_TOOL_SEARCH=1
+# SNOWFLAKE_MCP_TOOL_SEARCH_BACKEND=regex   # or bm25
+
+# Opt in to Code Mode on the full profile only. Mutually exclusive with tool search.
+# Install the extra (mcp-server-snowflake[code-mode]) first. Without the sandbox
+# package the server logs a warning and keeps the flat catalog.
+snowflake-mcp --enable-code-mode
+# SNOWFLAKE_MCP_ENABLE_CODE_MODE=1
 
 # Build a local image (the published image is ghcr.io/christianclaudio/mcp-server-snowflake)
 docker build -t mcp-server-snowflake .
