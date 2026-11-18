@@ -12,7 +12,6 @@ A ``DROP ... IF EXISTS`` of a missing object succeeds in Snowflake, so the drop 
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock
 
@@ -316,8 +315,6 @@ async def test_hinted_arguments_are_exactly_the_parsed_ones(monkeypatch: pytest.
             parsed = {k for k, v in args.items() if isinstance(v, str) and v in seen}
             if parsed != hinted:
                 mismatches[tool.name] = (sorted(hinted), sorted(parsed))
-    if mismatches:
-        Path("/tmp/hint_mismatches.txt").write_text(repr(mismatches), encoding="utf-8")
     assert mismatches == {}
     assert hinted_total > 0
 
