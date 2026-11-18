@@ -272,6 +272,21 @@ def _arguments(schema: dict[str, Any]) -> dict[str, Any]:
             args[key] = _VALID.get(key, f"P_{key}")
         elif "boolean" in types:
             args[key] = key == "confirm"
+        elif "array" in types:
+            if key == "privileges":
+                args[key] = ["SELECT"]
+            elif key == "accounts":
+                args[key] = ["org.acct"]
+            elif key == "columns":
+                args[key] = ["ID NUMBER"]
+            elif key == "attributes":
+                args[key] = ["TITLE"]
+            elif key == "api_allowed_prefixes":
+                args[key] = ["https://example.com"]
+            else:
+                args[key] = ["a"]
+        elif "object" in types:
+            args[key] = {"prompt": "hi"} if key == "request" else {"COMMENT": "note"}
     return args
 
 
@@ -299,7 +314,7 @@ async def test_hinted_arguments_are_exactly_the_parsed_ones(monkeypatch: pytest.
             await client.call_tool(tool.name, args, raise_on_error=False)
             parsed = {k for k, v in args.items() if isinstance(v, str) and v in seen}
             if parsed != hinted:
-                mismatches[tool.name] = (hinted, parsed)
+                mismatches[tool.name] = (sorted(hinted), sorted(parsed))
     assert mismatches == {}
     assert hinted_total > 0
 
@@ -310,15 +325,29 @@ async def test_hinted_arguments_are_exactly_the_parsed_ones(monkeypatch: pytest.
 
 _DROP_TOOLS = {
     "alerts_drop_alert": "alert_name",
+    "compute_services_drop_service": "service_name",
     "databases_drop_database": "name",
+    "governance_drop_account": "account_name",
+    "governance_drop_database_role": "database_role",
     "governance_drop_role": "role_name",
+    "governance_drop_user": "user_name",
     "pipes_drop_pipe": "pipe_name",
+    "programmability_drop_artifact_repository": "repository_name",
+    "programmability_drop_function": "function_signature",
+    "programmability_drop_sequence": "sequence_name",
     "schemas_drop_schema": "name",
     "stages_drop_stage": "stage_name",
     "streams_drop_stream": "stream_name",
     "tables_drop_table": "table_name",
+    "tables_drop_view": "view_name",
     "tasks_drop_task": "task_name",
     "warehouses_drop_warehouse": "warehouse_name",
+}
+# Documented DROP statements with no IF EXISTS clause.
+_DROP_WITHOUT_IF_EXISTS = {
+    "compute_services_drop_notebook",
+    "cortex_drop_search_service",
+    "governance_drop_managed_account",
 }
 
 
@@ -355,4 +384,4 @@ async def test_drop_tools_are_exactly_the_if_exists_ones() -> None:
     sf = SnowflakeClient(config=SnowflakeConfig(account="acc", user="usr"))
     async with Client(create_server(client=sf)) as client:
         drops = {t.name for t in await client.list_tools() if "_drop_" in t.name}
-    assert drops == set(_DROP_TOOLS)
+    assert drops == set(_DROP_TOOLS) | _DROP_WITHOUT_IF_EXISTS

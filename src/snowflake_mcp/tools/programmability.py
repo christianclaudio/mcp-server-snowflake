@@ -77,6 +77,9 @@ def validate_and_quote_routine_signature(
 
 def register_programmability_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     """Register stored procedures, UDFs, secrets, sequences, and integrations tools."""
+    from snowflake_mcp.tools.programmability_gap import register_programmability_gap_tools
+
+    register_programmability_gap_tools(mcp, client)
 
     @mcp.tool(
         name="list_procedures",

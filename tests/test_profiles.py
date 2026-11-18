@@ -14,26 +14,26 @@ from snowflake_mcp.connection import SnowflakeClient
 from snowflake_mcp.profiles import ALL_DOMAINS, PROFILES, get_profile, is_read_only_tool
 from snowflake_mcp.server import DOMAIN_NAMES, create_server
 
-# Client-visible counts. ``readonly`` is the readOnlyHint subset of ``full`` (88).
+# Client-visible counts. ``readonly`` is the readOnlyHint subset of ``full`` (127).
 EXPECTED_DOMAIN_COUNTS = {
     "queries": 9,
-    "databases": 7,
+    "databases": 14,
     "schemas": 6,
-    "tables": 10,
+    "tables": 13,
     "warehouses": 8,
-    "stages": 6,
-    "tasks": 7,
+    "stages": 7,
+    "tasks": 10,
     "streams": 5,
-    "dynamic_tables": 9,
+    "dynamic_tables": 13,
     "pipes": 5,
     "alerts": 6,
-    "governance": 12,
+    "governance": 36,
     "network": 6,
-    "compute_services": 8,
-    "tags": 4,
+    "compute_services": 33,
+    "tags": 6,
     "horizon": 6,
-    "programmability": 10,
-    "cortex": 8,
+    "programmability": 27,
+    "cortex": 27,
     "recipes": 8,
 }
 
@@ -55,7 +55,7 @@ def test_profile_names_are_full_readonly_and_every_domain() -> None:
     assert get_profile("  Queries ").name == "queries"
     assert get_profile("readonly").readonly is True
     assert get_profile("full").domains == ALL_DOMAINS
-    assert sum(EXPECTED_DOMAIN_COUNTS.values()) == 140
+    assert sum(EXPECTED_DOMAIN_COUNTS.values()) == 245
 
 
 def test_unknown_profile_raises() -> None:
@@ -75,11 +75,11 @@ def test_is_read_only_tool_fails_closed_without_annotations() -> None:
 
 @pytest.mark.asyncio
 async def test_profile_catalogs_keep_every_tool() -> None:
-    """full is 140 tools. Each domain profile is that domain. readonly is the read-only subset."""
+    """full is 245 tools. Each domain profile is that domain. readonly is the read-only subset."""
     full = create_server(client=_client(), profile="full")
     full_names = {tool.name for tool in await full.list_tools()}
     assert full_names == set(full._tool_manager._tools)
-    assert len(full_names) == 140
+    assert len(full_names) == 245
     assert "search" not in full_names
     assert "cortex_search" in full_names
 
@@ -95,7 +95,7 @@ async def test_profile_catalogs_keep_every_tool() -> None:
         name for name, tool in full._tool_manager._tools.items() if tool.annotations and tool.annotations.read_only_hint
     }
     assert readonly_names == annotated
-    assert len(readonly_names) == 88
+    assert len(readonly_names) == 127
     assert await readonly.get_tool("queries_query") is not None
     assert await readonly.get_tool("queries_execute_dml") is None
     assert await readonly.get_tool("not_a_tool") is None
@@ -190,7 +190,7 @@ async def test_code_mode_skips_when_the_sandbox_is_missing(
     assert {tool.name for tool in await server.list_tools()} == set(
         create_server(client=_client())._tool_manager._tools
     )
-    assert len(await server.list_tools()) == 140
+    assert len(await server.list_tools()) == 245
     assert any("pydantic-monty" in record.message for record in caplog.records)
     assert any("mcp-server-snowflake[code-mode]" in record.message for record in caplog.records)
 

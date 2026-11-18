@@ -233,6 +233,318 @@ TOOL_FIXTURES: dict[str, tuple[dict[str, Any], str]] = {
     "warehouses_resize_warehouse": ({"warehouse_name": "E2E_MCP_MISSING_OBJECT", "size": "XL"}, "confirm"),
     "warehouses_resume_warehouse": ({"warehouse_name": "E2E_MCP_MISSING_OBJECT"}, "confirm"),
     "warehouses_suspend_warehouse": ({"warehouse_name": "E2E_MCP_MISSING_OBJECT"}, "confirm"),
+    "compute_services_abort_streamlit_live_version": (
+        {"streamlit_name": "E2E_MCP_MISSING_OBJECT", "confirm": False},
+        "confirm",
+    ),
+    "compute_services_add_notebook_live_version": (
+        {
+            "notebook_name": "E2E_MCP_MISSING_OBJECT",
+            "database": "E2E_MCP_MISSING_OBJECT",
+            "schema_name": "E2E_MCP_MISSING_OBJECT",
+        },
+        "confirm",
+    ),
+    "compute_services_add_streamlit_live_version": ({"streamlit_name": "E2E_MCP_MISSING_OBJECT"}, "confirm"),
+    "compute_services_alter_service": ({"service_name": "E2E_MCP_MISSING_OBJECT"}, "confirm"),
+    "compute_services_commit_notebook_version": (
+        {
+            "notebook_name": "E2E_MCP_MISSING_OBJECT",
+            "database": "E2E_MCP_MISSING_OBJECT",
+            "schema_name": "E2E_MCP_MISSING_OBJECT",
+        },
+        "confirm",
+    ),
+    "compute_services_commit_streamlit_version": ({"streamlit_name": "E2E_MCP_MISSING_OBJECT"}, "confirm"),
+    "compute_services_create_notebook": ({"notebook_name": "E2E_MCP_MISSING_OBJECT"}, "confirm"),
+    "compute_services_create_notebook_project": (
+        {"project_name": "E2E_MCP_MISSING_OBJECT", "source": "snow://workspace/demo"},
+        "confirm",
+    ),
+    "compute_services_create_service": (
+        {
+            "service_name": "E2E_MCP_MISSING_OBJECT",
+            "compute_pool": "E2E_MCP_MISSING_OBJECT",
+            "stage": "E2E_MCP_MISSING_OBJECT",
+            "specification_file": "E2E_MCP_MISSING_OBJECT",
+        },
+        "confirm",
+    ),
+    "compute_services_describe_notebook": ({"notebook_name": "E2E_MCP_MISSING_OBJECT"}, "rejected"),
+    "compute_services_describe_service": ({"service_name": "E2E_MCP_MISSING_OBJECT"}, "rejected"),
+    "compute_services_drop_notebook": ({"notebook_name": "E2E_MCP_MISSING_OBJECT", "confirm": False}, "confirm"),
+    "compute_services_drop_service": ({"service_name": "E2E_MCP_MISSING_OBJECT", "confirm": False}, "confirm"),
+    "compute_services_execute_job_service": (
+        {
+            "compute_pool": "E2E_MCP_MISSING_OBJECT",
+            "service_name": "E2E_MCP_MISSING_OBJECT",
+            "stage": "E2E_MCP_MISSING_OBJECT",
+            "specification_file": "E2E_MCP_MISSING_OBJECT",
+            "confirm": False,
+        },
+        "confirm",
+    ),
+    "compute_services_execute_notebook": ({"notebook_name": "E2E_MCP_MISSING_OBJECT", "confirm": False}, "confirm"),
+    "compute_services_execute_notebook_project": (
+        {
+            "project_name": "E2E_MCP_MISSING_OBJECT",
+            "main_file": "E2E_MCP_MISSING_OBJECT",
+            "compute_pool": "E2E_MCP_MISSING_OBJECT",
+            "query_warehouse": "E2E_MCP_MISSING_OBJECT",
+            "runtime": "E2E_MCP_MISSING_OBJECT",
+            "confirm": False,
+        },
+        "confirm",
+    ),
+    "compute_services_get_service_logs": (
+        {
+            "service_name": "E2E_MCP_MISSING_OBJECT",
+            "instance_id": "E2E_MCP_MISSING_OBJECT",
+            "container_name": "E2E_MCP_MISSING_OBJECT",
+        },
+        "success",
+    ),
+    "compute_services_list_images": ({"repository_name": "E2E_MCP_MISSING_OBJECT"}, "success"),
+    "compute_services_list_notebook_projects": ({}, "success"),
+    "compute_services_list_notebooks": ({}, "success"),
+    "compute_services_list_service_endpoints": ({"service_name": "E2E_MCP_MISSING_OBJECT"}, "success"),
+    "compute_services_pull_streamlit_from_git": ({"streamlit_name": "E2E_MCP_MISSING_OBJECT"}, "confirm"),
+    "compute_services_push_streamlit_to_git": ({"streamlit_name": "E2E_MCP_MISSING_OBJECT"}, "confirm"),
+    "compute_services_resume_service": ({"service_name": "E2E_MCP_MISSING_OBJECT"}, "confirm"),
+    "compute_services_suspend_service": ({"service_name": "E2E_MCP_MISSING_OBJECT"}, "confirm"),
+    "cortex_chat_completion": ({"request": {"prompt": "e2e"}}, "confirm"),
+    "cortex_create_search_service": (
+        {
+            "service_name": "E2E_MCP_MISSING_OBJECT",
+            "search_column": "E2E_MCP_MISSING_OBJECT",
+            "attributes": ["TITLE"],
+            "warehouse": "E2E_MCP_MISSING_OBJECT",
+            "target_lag": "1 hour",
+            "query": "SELECT 1",
+        },
+        "confirm",
+    ),
+    "cortex_describe_search_service": ({"service_name": "E2E_MCP_MISSING_OBJECT"}, "rejected"),
+    "cortex_drop_search_service": ({"service_name": "E2E_MCP_MISSING_OBJECT", "confirm": False}, "confirm"),
+    "cortex_generate_response": ({"request": {"prompt": "e2e"}}, "confirm"),
+    "cortex_generate_semantic_model": ({"request": {"prompt": "e2e"}}, "cortex"),
+    "cortex_get_semantic_model_optimization": ({"optimization_name": "E2E_MCP_MISSING_OBJECT"}, "cortex"),
+    "cortex_list_agents": ({}, "success"),
+    "cortex_list_models": ({}, "cortex"),
+    "cortex_list_search_services": ({}, "success"),
+    "cortex_list_semantic_model_optimizations": ({"request": {"prompt": "e2e"}}, "cortex"),
+    "cortex_message_completion": ({"request": {"prompt": "e2e"}}, "confirm"),
+    "cortex_preselect_semantic_model_tables": ({"request": {"prompt": "e2e"}}, "cortex"),
+    "cortex_resume_search_service": ({"service_name": "E2E_MCP_MISSING_OBJECT"}, "confirm"),
+    "cortex_run_agent": ({"agent_name": "E2E_MCP_MISSING_OBJECT", "request": {"prompt": "e2e"}}, "confirm"),
+    "cortex_suggest_search": ({"service_name": "E2E_MCP_MISSING_OBJECT", "query": "SELECT 1"}, "cortex"),
+    "cortex_suggest_semantic_model_metrics": ({"request": {"prompt": "e2e"}}, "cortex"),
+    "cortex_suggest_verified_queries": ({"request": {"prompt": "e2e"}}, "cortex"),
+    "cortex_suspend_search_service": ({"service_name": "E2E_MCP_MISSING_OBJECT"}, "confirm"),
+    "databases_disable_database_failover": ({"database_name": "E2E_MCP_MISSING_OBJECT", "confirm": False}, "confirm"),
+    "databases_disable_database_replication": (
+        {"database_name": "E2E_MCP_MISSING_OBJECT", "confirm": False},
+        "confirm",
+    ),
+    "databases_enable_database_failover": (
+        {"database_name": "E2E_MCP_MISSING_OBJECT", "accounts": ["org.acct"], "confirm": False},
+        "confirm",
+    ),
+    "databases_enable_database_replication": (
+        {"database_name": "E2E_MCP_MISSING_OBJECT", "accounts": ["org.acct"], "confirm": False},
+        "confirm",
+    ),
+    "databases_list_replication_databases": ({}, "success"),
+    "databases_promote_database": ({"database_name": "E2E_MCP_MISSING_OBJECT", "confirm": False}, "confirm"),
+    "databases_refresh_database": ({"database_name": "E2E_MCP_MISSING_OBJECT"}, "confirm"),
+    "dynamic_tables_convert_iceberg_table_to_managed": ({"table_name": "E2E_MCP_MISSING_OBJECT"}, "confirm"),
+    "dynamic_tables_create_iceberg_table": (
+        {
+            "table_name": "E2E_MCP_MISSING_OBJECT",
+            "columns": ["ID NUMBER"],
+            "external_volume": "E2E_MCP_MISSING_OBJECT",
+            "base_location": "E2E_MCP_MISSING_OBJECT",
+        },
+        "confirm",
+    ),
+    "dynamic_tables_create_iceberg_table_from_catalog": (
+        {"table_name": "E2E_MCP_MISSING_OBJECT", "catalog": "E2E_MCP_MISSING_OBJECT", "catalog_kind": "GLUE"},
+        "confirm",
+    ),
+    "dynamic_tables_refresh_iceberg_table": ({"table_name": "E2E_MCP_MISSING_OBJECT"}, "confirm"),
+    "governance_alter_user": ({"user_name": "E2E_MCP_MISSING_OBJECT"}, "confirm"),
+    "governance_create_account": (
+        {
+            "account_name": "E2E_MCP_MISSING_OBJECT",
+            "admin_name": "E2E_MCP_MISSING_OBJECT",
+            "admin_password": "e2e-dummy-password",
+            "email": "e2e@example.com",
+            "edition": "ENTERPRISE",
+            "confirm": False,
+        },
+        "confirm",
+    ),
+    "governance_create_database_role": ({"database_role": "E2E_MCP_MISSING_OBJECT"}, "confirm"),
+    "governance_create_managed_account": (
+        {
+            "account_name": "E2E_MCP_MISSING_OBJECT",
+            "admin_name": "E2E_MCP_MISSING_OBJECT",
+            "admin_password": "e2e-dummy-password",
+            "confirm": False,
+        },
+        "confirm",
+    ),
+    "governance_drop_account": ({"account_name": "E2E_MCP_MISSING_OBJECT", "confirm": False}, "confirm"),
+    "governance_drop_database_role": ({"database_role": "E2E_MCP_MISSING_OBJECT", "confirm": False}, "confirm"),
+    "governance_drop_managed_account": ({"account_name": "E2E_MCP_MISSING_OBJECT", "confirm": False}, "confirm"),
+    "governance_drop_user": ({"user_name": "E2E_MCP_MISSING_OBJECT", "confirm": False}, "confirm"),
+    "governance_grant_database_role": (
+        {
+            "database_role": "E2E_MCP_MISSING_OBJECT",
+            "grantee_kind": "ROLE",
+            "grantee": "E2E_MCP_MISSING_OBJECT",
+            "confirm": False,
+        },
+        "confirm",
+    ),
+    "governance_grant_future_privileges": (
+        {
+            "privileges": ["SELECT"],
+            "object_type": "TABLE",
+            "scope_kind": "SCHEMA",
+            "scope_name": "E2E_MCP_MISSING_OBJECT",
+            "grantee_kind": "ROLE",
+            "grantee": "E2E_MCP_MISSING_OBJECT",
+            "confirm": False,
+        },
+        "confirm",
+    ),
+    "governance_grant_privileges": (
+        {
+            "privileges": ["SELECT"],
+            "object_type": "TABLE",
+            "grantee_kind": "ROLE",
+            "grantee": "E2E_MCP_MISSING_OBJECT",
+            "confirm": False,
+        },
+        "confirm",
+    ),
+    "governance_grant_role_to_user": (
+        {"role_name": "E2E_MCP_MISSING_OBJECT", "user_name": "E2E_MCP_MISSING_OBJECT", "confirm": False},
+        "confirm",
+    ),
+    "governance_list_accounts": ({}, "success"),
+    "governance_list_database_roles": ({}, "success"),
+    "governance_list_future_grants": ({}, "success"),
+    "governance_list_grants_of_role": ({"role_name": "E2E_MCP_MISSING_OBJECT"}, "success"),
+    "governance_list_grants_on_object": ({"object_type": "TABLE"}, "success"),
+    "governance_list_grants_to_database_role": ({"database_role": "E2E_MCP_MISSING_OBJECT"}, "success"),
+    "governance_list_managed_accounts": ({}, "success"),
+    "governance_revoke_database_role": (
+        {
+            "database_role": "E2E_MCP_MISSING_OBJECT",
+            "grantee_kind": "ROLE",
+            "grantee": "E2E_MCP_MISSING_OBJECT",
+            "confirm": False,
+        },
+        "confirm",
+    ),
+    "governance_revoke_future_privileges": (
+        {
+            "privileges": ["SELECT"],
+            "object_type": "TABLE",
+            "scope_kind": "SCHEMA",
+            "scope_name": "E2E_MCP_MISSING_OBJECT",
+            "grantee_kind": "ROLE",
+            "grantee": "E2E_MCP_MISSING_OBJECT",
+            "confirm": False,
+        },
+        "confirm",
+    ),
+    "governance_revoke_privileges": (
+        {
+            "privileges": ["SELECT"],
+            "object_type": "TABLE",
+            "grantee_kind": "ROLE",
+            "grantee": "E2E_MCP_MISSING_OBJECT",
+            "confirm": False,
+        },
+        "confirm",
+    ),
+    "governance_revoke_role_from_user": (
+        {"role_name": "E2E_MCP_MISSING_OBJECT", "user_name": "E2E_MCP_MISSING_OBJECT", "confirm": False},
+        "confirm",
+    ),
+    "governance_undrop_account": ({"account_name": "E2E_MCP_MISSING_OBJECT"}, "confirm"),
+    "programmability_cancel_code_bundle_execution": (
+        {"execution_id": "E2E_MCP_MISSING_OBJECT", "confirm": False},
+        "confirm",
+    ),
+    "programmability_create_api_integration": (
+        {
+            "integration_name": "E2E_MCP_MISSING_OBJECT",
+            "api_provider": "aws_api_gateway",
+            "api_allowed_prefixes": ["https://example.com"],
+            "enabled": True,
+            "confirm": False,
+        },
+        "confirm",
+    ),
+    "programmability_create_artifact_repository": (
+        {"repository_name": "E2E_MCP_MISSING_OBJECT", "repository_type": "PYPI"},
+        "confirm",
+    ),
+    "programmability_create_code_bundle": (
+        {"bundle_name": "E2E_MCP_MISSING_OBJECT", "source": "snow://workspace/demo"},
+        "confirm",
+    ),
+    "programmability_create_function": (
+        {"function_name": "E2E_MCP_MISSING_OBJECT", "arguments": "x NUMBER", "returns": "NUMBER", "body": "SELECT 1"},
+        "confirm",
+    ),
+    "programmability_create_sequence": ({"sequence_name": "E2E_MCP_MISSING_OBJECT"}, "confirm"),
+    "programmability_describe_api_integration": ({"integration_name": "E2E_MCP_MISSING_OBJECT"}, "rejected"),
+    "programmability_describe_artifact_repository": ({"repository_name": "E2E_MCP_MISSING_OBJECT"}, "rejected"),
+    "programmability_drop_artifact_repository": (
+        {"repository_name": "E2E_MCP_MISSING_OBJECT", "confirm": False},
+        "confirm",
+    ),
+    "programmability_drop_function": ({"function_signature": "E2E_MCP_MISSING_OBJECT", "confirm": False}, "confirm"),
+    "programmability_drop_sequence": ({"sequence_name": "E2E_MCP_MISSING_OBJECT", "confirm": False}, "confirm"),
+    "programmability_execute_code_bundle": (
+        {"bundle_name": "E2E_MCP_MISSING_OBJECT", "entrypoint": "E2E_MCP_MISSING_OBJECT", "confirm": False},
+        "confirm",
+    ),
+    "programmability_get_code_bundle_execution": ({"execution_id": "E2E_MCP_MISSING_OBJECT"}, "success"),
+    "programmability_invoke_function": ({"function_signature": "E2E_MCP_MISSING_OBJECT"}, "success"),
+    "programmability_list_artifact_repositories": ({}, "success"),
+    "programmability_list_code_bundle_executions": ({}, "success"),
+    "programmability_list_code_bundles": ({}, "success"),
+    "stages_get_presigned_url": (
+        {"stage_name": "E2E_MCP_MISSING_OBJECT", "relative_path": "E2E_MCP_MISSING_OBJECT"},
+        "success",
+    ),
+    "tables_create_view": ({"view_name": "E2E_MCP_MISSING_OBJECT", "query": "SELECT 1"}, "confirm"),
+    "tables_describe_view": ({"view_name": "E2E_MCP_MISSING_OBJECT"}, "rejected"),
+    "tables_drop_view": ({"view_name": "E2E_MCP_MISSING_OBJECT", "confirm": False}, "confirm"),
+    "tags_list_tag_assignments": (
+        {
+            "tag_database": "E2E_MCP_MISSING_OBJECT",
+            "tag_schema": "E2E_MCP_MISSING_OBJECT",
+            "tag_name": "E2E_MCP_MISSING_OBJECT",
+        },
+        "success",
+    ),
+    "tags_unset_object_tag": (
+        {"object_name": "E2E_MCP_MISSING_OBJECT", "tag_name": "E2E_MCP_MISSING_OBJECT"},
+        "confirm",
+    ),
+    "tasks_list_complete_task_graphs": ({}, "success"),
+    "tasks_list_current_task_graphs": ({}, "success"),
+    "tasks_list_task_dependents": (
+        {"task_name": "E2E_MCP_MISSING_OBJECT", "database": "E2E_MCP_MISSING_OBJECT"},
+        "success",
+    ),
 }
 
 # Tools left out of the live catalog. Each value is a non-empty skip reason.
@@ -256,6 +568,13 @@ _CONFIRM_MARKERS = ("requires_confirmation", "denied in read-only", "read-only")
 _ACCOUNT_USAGE_TOOLS = frozenset({"horizon_get_object_lineage", "horizon_get_column_lineage"})
 _ACCOUNT_USAGE_DENIED_MARKERS = ("schema 'snowflake.account_usage' does not exist or not authorized",)
 _CORTEX_UNAVAILABLE_MARKERS = ("unknown function", "cortex not enabled", "not available")
+# REST-backed tools refuse password and other authenticators before any request is sent
+# (snowflake_mcp.rest.SnowflakeRestClient.headers). Key-pair, PAT and OAuth runs still call them.
+REST_AUTH_SKIP_REASON = (
+    "REST tools need key-pair, PAT or OAuth-token authentication; this run is configured for another "
+    "authentication method."
+)
+_REST_AUTH_MARKERS = ("snowflake rest tools need key-pair, pat or oauth-token authentication",)
 
 
 def _contains_any(text: str, markers: tuple[str, ...]) -> bool:
@@ -310,6 +629,12 @@ _NAMESPACED: dict[str, tuple[str, str]] = {
     "recipes_inspect_table_with_sample": ("table_name", _NS_FORM_DOTTED),
     "recipes_profile_table": ("table_name", _NS_FORM_DOTTED),
     "pipes_get_pipe_status": ("pipe_name", _NS_FORM_DOTTED),
+}
+# Database-scoped list probes. With no current database these tools refuse to run, so the
+# discovered database is passed as this argument; with no namespace they skip like _NAMESPACED.
+_DATABASE_SCOPED: dict[str, str] = {
+    "governance_list_database_roles": "database",
+    "governance_list_future_grants": "database",
 }
 _NAMESPACE_CANDIDATES = 10
 NO_NAMESPACE_REASON = (
@@ -428,6 +753,9 @@ def namespaced_fixtures(namespace: tuple[str, str]) -> dict[str, tuple[dict[str,
             rewritten["database"] = database
             rewritten["schema_name"] = schema
         fixtures[tool_name] = (rewritten, expect)
+    for tool_name, argument in _DATABASE_SCOPED.items():
+        arguments, expect = fixtures[tool_name]
+        fixtures[tool_name] = ({**arguments, argument: database}, expect)
     return fixtures
 
 
@@ -508,7 +836,7 @@ async def dispatch_tool_call(
             return ("SKIP", False, reason)
         return ("FAIL", True, f"No fixture for {tool_name}")
 
-    if namespace is None and tool_name in _NAMESPACED:
+    if namespace is None and (tool_name in _NAMESPACED or tool_name in _DATABASE_SCOPED):
         return ("SKIP", False, NO_NAMESPACE_REASON)
 
     arguments, expect = fixtures[tool_name]
@@ -537,6 +865,8 @@ async def dispatch_tool_call(
         message = str(exc)
         if no_warehouse(message):
             return ("SKIP", True, NO_WAREHOUSE_REASON)
+        if expect != "confirm" and _contains_any(message, _REST_AUTH_MARKERS):
+            return ("SKIP", True, REST_AUTH_SKIP_REASON)
         if expect == "success" and _account_usage_denied(tool_name, message):
             return ("PASS", True, None)
         if expect == "cortex" and _contains_any(message, _CORTEX_UNAVAILABLE_MARKERS):
@@ -554,6 +884,8 @@ async def dispatch_tool_call(
     body = res.content[0].text if res.content else ""
     if (res.is_error or _is_partial_body(body)) and no_warehouse(body):
         return ("SKIP", True, NO_WAREHOUSE_REASON)
+    if res.is_error and expect != "confirm" and _contains_any(body, _REST_AUTH_MARKERS):
+        return ("SKIP", True, REST_AUTH_SKIP_REASON)
     if expect == "confirm":
         if _contains_any(body, _CONFIRM_MARKERS):
             return ("PASS", bool(res.is_error), None)
@@ -1133,7 +1465,7 @@ async def test_fixture_catalog_matches_server_tools(mock_snowflake_client: Snowf
             assert arguments["confirm"] is False
         if expect == "cortex":
             assert CORTEX_SKIP_REASON.strip()
-    assert counts == {"success": 44, "rejected": 36, "confirm": 52, "cortex": 8}
+    assert counts == {"success": 69, "rejected": 42, "confirm": 118, "cortex": 16}
     assert TOOL_FIXTURES["queries_query"] == ({"query": "SELECT 1"}, "success")
     # A tag name with no match is the not-found error, not an empty success.
     assert TOOL_FIXTURES["tags_describe_tag"] == ({"tag_name": "E2E_MCP_MISSING_OBJECT"}, "rejected")
@@ -1193,3 +1525,29 @@ async def test_all_discovered_tools_live(monkeypatch: pytest.MonkeyPatch) -> Non
 
     failed = [r for r in results if r["status"] == "FAIL"]
     assert not failed, f"E2E live tool verification failed for: {failed}"
+
+
+_REST_AUTH_TEXT = "Snowflake REST tools need key-pair, PAT or OAuth-token authentication; use one."
+
+
+@pytest.mark.asyncio
+async def test_rest_tools_skip_without_rest_auth() -> None:
+    srv = AsyncMock()
+    srv.call_tool.side_effect = ToolError(_REST_AUTH_TEXT)
+    assert await dispatch_tool_call(srv, "cortex_list_agents", False) == ("SKIP", True, REST_AUTH_SKIP_REASON)
+    srv.call_tool.side_effect = None
+    srv.call_tool.return_value = CallToolResult(content=[TextContent(type="text", text=_REST_AUTH_TEXT)], is_error=True)
+    assert await dispatch_tool_call(srv, "cortex_list_agents", False) == ("SKIP", True, REST_AUTH_SKIP_REASON)
+    # A confirm probe must still hit its gate, so the marker never skips it.
+    status, _is_error, _message = await dispatch_tool_call(srv, "databases_drop_database", True)
+    assert status == "FAIL"
+
+
+@pytest.mark.asyncio
+async def test_database_scoped_probes_get_the_discovered_database() -> None:
+    fixtures = namespaced_fixtures(("DBX", "SCHX"))
+    for tool_name, argument in _DATABASE_SCOPED.items():
+        assert fixtures[tool_name][0][argument] == "DBX"
+        assert argument not in TOOL_FIXTURES[tool_name][0]
+        result = await dispatch_tool_call(AsyncMock(), tool_name, False, namespace=None)
+        assert result == ("SKIP", False, NO_NAMESPACE_REASON), tool_name

@@ -9,7 +9,7 @@
 [![CodeRabbit Reviews](https://img.shields.io/coderabbit/prs/github/christianclaudio/mcp-server-snowflake?labelColor=171717&color=FF570A&label=CodeRabbit+Reviews)](https://coderabbit.ai)
 
 > **Supercharge AI Agents with Native Snowflake Data Cloud & Cortex AI Superpowers!** ⚡  
-> An enterprise-grade Model Context Protocol (MCP) server providing **140 tools** across 19 domain modules, dynamic profile switching, zero-config connection resolution, safe SQL execution, virtual warehouse management, object inspection, Horizon data lineage, and Cortex AI integrations straight to your favorite AI assistant.
+> An enterprise-grade Model Context Protocol (MCP) server providing **245 tools** across 19 domain modules, dynamic profile switching, zero-config connection resolution, safe SQL execution, virtual warehouse management, object inspection, Horizon data lineage, and Cortex AI integrations straight to your favorite AI assistant.
 
 ---
 
@@ -32,7 +32,7 @@ flowchart TD
     subgraph Server["snowflake-mcp (FastMCP 4)"]
         CLI["CLI & Arg Parser (Allowed Hosts & DNS Rebinding Protection)"]
         Auth["Multi-Auth & Profile Resolver (~/.snowflake/connections.toml / Key-Pair / PAT / SSO)"]
-        Registry["Tool Registry (140 Tools across 19 Modules)"]
+        Registry["Tool Registry (245 Tools across 19 Modules)"]
         Safety["Safety Gates (confirm=True, Read-Only Guard, Row Limits)"]
     end
 
@@ -146,7 +146,7 @@ snowflake-mcp --profile readonly
 # `--profile readonly` hides mutating tools, sets the read-only flag, and pins USE SECONDARY ROLES NONE on each session.
 # Set DEFAULT_SECONDARY_ROLES = () on that user, or use a dedicated user that holds only the read-only role.
 
-# Opt in to tool search instead of the flat 140-tool tools/list.
+# Opt in to tool search instead of the flat 245-tool tools/list.
 # Search attaches on every profile, including a single domain and readonly,
 # because some hosts only surface search_tools and call_tool.
 snowflake-mcp --enable-tool-search
@@ -167,28 +167,28 @@ docker run -i --rm mcp-server-snowflake
 
 ---
 
-## 🛠️ Complete Tool Suite (140 Enterprise Tools)
+## 🛠️ Complete Tool Suite (245 Enterprise Tools)
 
 | Domain Suite | Count | Key Tools |
 |---|---|---|
 | **1. SQL Queries & Transactions** | 9 | `queries_query`, `queries_execute_dml`, `queries_cancel_query`, `queries_get_query_history`, `queries_get_query_plan`, `queries_get_query_operator_stats`, `queries_begin_transaction`, `queries_commit_transaction`, `queries_rollback_transaction` |
-| **2. Databases & Clones** | 7 | `databases_list_databases`, `databases_describe_database`, `databases_create_database`, `databases_drop_database`, `databases_clone_database`, `databases_undrop_database`, `databases_get_database_ddl` |
+| **2. Databases & Clones** | 14 | `databases_list_databases`, `databases_describe_database`, `databases_create_database`, `databases_drop_database`, `databases_clone_database`, `databases_undrop_database`, `databases_get_database_ddl`, `databases_list_replication_databases`, `databases_enable_database_replication`, `databases_disable_database_replication`, `databases_enable_database_failover`, `databases_disable_database_failover`, `databases_refresh_database`, `databases_promote_database` |
 | **3. Schemas & Clones** | 6 | `schemas_list_schemas`, `schemas_describe_schema`, `schemas_create_schema`, `schemas_drop_schema`, `schemas_clone_schema`, `schemas_undrop_schema` |
-| **4. Tables, Views & Partitions** | 10 | `tables_list_tables`, `tables_list_views`, `tables_describe_table`, `tables_get_table_ddl`, `tables_sample_table`, `tables_create_table`, `tables_drop_table`, `tables_undrop_table`, `tables_truncate_table`, `tables_clone_table` |
+| **4. Tables, Views & Partitions** | 13 | `tables_list_tables`, `tables_list_views`, `tables_describe_table`, `tables_get_table_ddl`, `tables_sample_table`, `tables_create_table`, `tables_drop_table`, `tables_undrop_table`, `tables_truncate_table`, `tables_clone_table`, `tables_create_view`, `tables_describe_view`, `tables_drop_view` |
 | **5. Virtual Warehouses & Scaling** | 8 | `warehouses_list_warehouses`, `warehouses_describe_warehouse`, `warehouses_create_warehouse`, `warehouses_drop_warehouse`, `warehouses_resume_warehouse`, `warehouses_suspend_warehouse`, `warehouses_resize_warehouse`, `warehouses_get_warehouse_load_history` |
-| **6. Stages & File Operations** | 6 | `stages_list_stages`, `stages_describe_stage`, `stages_create_stage`, `stages_drop_stage`, `stages_list_stage_files`, `stages_remove_stage_file` |
-| **7. Tasks & DAG Pipelines** | 7 | `tasks_list_tasks`, `tasks_describe_task`, `tasks_create_task`, `tasks_drop_task`, `tasks_resume_task`, `tasks_suspend_task`, `tasks_execute_task` |
+| **6. Stages & File Operations** | 7 | `stages_list_stages`, `stages_describe_stage`, `stages_create_stage`, `stages_drop_stage`, `stages_list_stage_files`, `stages_remove_stage_file`, `stages_get_presigned_url` |
+| **7. Tasks & DAG Pipelines** | 10 | `tasks_list_tasks`, `tasks_describe_task`, `tasks_create_task`, `tasks_drop_task`, `tasks_resume_task`, `tasks_suspend_task`, `tasks_execute_task`, `tasks_list_task_dependents`, `tasks_list_current_task_graphs`, `tasks_list_complete_task_graphs` |
 | **8. Streams & Change Data Capture** | 5 | `streams_list_streams`, `streams_describe_stream`, `streams_create_stream`, `streams_drop_stream`, `streams_read_stream_changes` |
-| **9. Dynamic & Iceberg Tables** | 9 | `dynamic_tables_list_dynamic_tables`, `dynamic_tables_describe_dynamic_table`, `dynamic_tables_refresh_dynamic_table`, `dynamic_tables_resume_dynamic_table`, `dynamic_tables_suspend_dynamic_table`, `dynamic_tables_list_iceberg_tables`, `dynamic_tables_describe_iceberg_table`, `dynamic_tables_list_external_volumes`, `dynamic_tables_list_catalog_integrations` |
+| **9. Dynamic & Iceberg Tables** | 13 | `dynamic_tables_list_dynamic_tables`, `dynamic_tables_describe_dynamic_table`, `dynamic_tables_refresh_dynamic_table`, `dynamic_tables_resume_dynamic_table`, `dynamic_tables_suspend_dynamic_table`, `dynamic_tables_list_iceberg_tables`, `dynamic_tables_describe_iceberg_table`, `dynamic_tables_list_external_volumes`, `dynamic_tables_list_catalog_integrations`, `dynamic_tables_create_iceberg_table`, `dynamic_tables_create_iceberg_table_from_catalog`, `dynamic_tables_refresh_iceberg_table`, `dynamic_tables_convert_iceberg_table_to_managed` |
 | **10. Snowpipe & Ingestion** | 5 | `pipes_list_pipes`, `pipes_describe_pipe`, `pipes_create_pipe`, `pipes_drop_pipe`, `pipes_get_pipe_status` |
 | **11. Alerts & Notifications** | 6 | `alerts_list_alerts`, `alerts_describe_alert`, `alerts_create_alert`, `alerts_drop_alert`, `alerts_resume_alert`, `alerts_suspend_alert` |
-| **12. Governance, RBAC & Users** | 12 | `governance_get_current_context`, `governance_list_connections`, `governance_use_connection`, `governance_list_roles`, `governance_describe_role`, `governance_create_role`, `governance_drop_role`, `governance_list_users`, `governance_describe_user`, `governance_create_user`, `governance_list_grants_to_role`, `governance_list_grants_to_user` |
+| **12. Governance, RBAC & Users** | 36 | `governance_get_current_context`, `governance_list_connections`, `governance_use_connection`, `governance_list_roles`, `governance_describe_role`, `governance_create_role`, `governance_drop_role`, `governance_list_users`, `governance_describe_user`, `governance_create_user`, `governance_list_grants_to_role`, `governance_list_grants_to_user`, `governance_grant_privileges`, `governance_revoke_privileges`, `governance_grant_future_privileges`, `governance_revoke_future_privileges`, `governance_list_future_grants`, `governance_list_grants_to_database_role`, `governance_list_grants_of_role`, `governance_list_grants_on_object`, `governance_list_database_roles`, `governance_create_database_role`, `governance_drop_database_role`, `governance_grant_database_role`, `governance_revoke_database_role`, `governance_grant_role_to_user`, `governance_revoke_role_from_user`, `governance_alter_user`, `governance_drop_user`, `governance_list_accounts`, `governance_create_account`, `governance_drop_account`, `governance_undrop_account`, `governance_list_managed_accounts`, `governance_create_managed_account`, `governance_drop_managed_account` |
 | **13. Network & Password Policies** | 6 | `network_list_network_policies`, `network_describe_network_policy`, `network_list_network_rules`, `network_describe_network_rule`, `network_list_password_policies`, `network_describe_password_policy` |
-| **14. SPCS Compute Pools & Streamlit** | 8 | `compute_services_list_streamlits`, `compute_services_describe_streamlit`, `compute_services_list_compute_pools`, `compute_services_describe_compute_pool`, `compute_services_resume_compute_pool`, `compute_services_suspend_compute_pool`, `compute_services_list_services`, `compute_services_list_image_repositories` |
-| **15. Object Tags & Classifications** | 4 | `tags_list_tags`, `tags_describe_tag`, `tags_get_object_tag_references`, `tags_set_object_tag` |
+| **14. SPCS, Notebooks & Streamlit** | 33 | `compute_services_list_streamlits`, `compute_services_describe_streamlit`, `compute_services_list_compute_pools`, `compute_services_describe_compute_pool`, `compute_services_resume_compute_pool`, `compute_services_suspend_compute_pool`, `compute_services_list_services`, `compute_services_list_image_repositories`, `compute_services_describe_service`, `compute_services_create_service`, `compute_services_alter_service`, `compute_services_suspend_service`, `compute_services_resume_service`, `compute_services_drop_service`, `compute_services_execute_job_service`, `compute_services_list_service_endpoints`, `compute_services_get_service_logs`, `compute_services_list_images`, `compute_services_add_streamlit_live_version`, `compute_services_commit_streamlit_version`, `compute_services_abort_streamlit_live_version`, `compute_services_pull_streamlit_from_git`, `compute_services_push_streamlit_to_git`, `compute_services_list_notebooks`, `compute_services_describe_notebook`, `compute_services_create_notebook`, `compute_services_execute_notebook`, `compute_services_drop_notebook`, `compute_services_add_notebook_live_version`, `compute_services_commit_notebook_version`, `compute_services_list_notebook_projects`, `compute_services_create_notebook_project`, `compute_services_execute_notebook_project` |
+| **15. Object Tags & Classifications** | 6 | `tags_list_tags`, `tags_describe_tag`, `tags_get_object_tag_references`, `tags_set_object_tag`, `tags_unset_object_tag`, `tags_list_tag_assignments` |
 | **16. Horizon Lineage & Governance** | 6 | `horizon_get_object_lineage`, `horizon_get_column_lineage`, `horizon_list_masking_policies`, `horizon_describe_masking_policy`, `horizon_list_row_access_policies`, `horizon_describe_row_access_policy` |
-| **17. Programmability, UDFs & Secrets** | 10 | `programmability_list_procedures`, `programmability_describe_procedure`, `programmability_list_functions`, `programmability_describe_function`, `programmability_list_secrets`, `programmability_describe_secret`, `programmability_list_sequences`, `programmability_list_integrations`, `programmability_list_event_tables`, `programmability_list_notification_integrations` |
-| **18. Cortex AI & NLP Extensions** | 8 | `cortex_complete`, `cortex_summarize`, `cortex_sentiment`, `cortex_extract_answer`, `cortex_translate`, `cortex_search`, `cortex_embed_text_768`, `cortex_analyst_query` |
+| **17. Programmability, UDFs & Secrets** | 27 | `programmability_list_procedures`, `programmability_describe_procedure`, `programmability_list_functions`, `programmability_describe_function`, `programmability_list_secrets`, `programmability_describe_secret`, `programmability_list_sequences`, `programmability_list_integrations`, `programmability_list_event_tables`, `programmability_list_notification_integrations`, `programmability_list_code_bundles`, `programmability_create_code_bundle`, `programmability_execute_code_bundle`, `programmability_list_code_bundle_executions`, `programmability_get_code_bundle_execution`, `programmability_cancel_code_bundle_execution`, `programmability_list_artifact_repositories`, `programmability_describe_artifact_repository`, `programmability_create_artifact_repository`, `programmability_drop_artifact_repository`, `programmability_create_sequence`, `programmability_drop_sequence`, `programmability_create_function`, `programmability_invoke_function`, `programmability_drop_function`, `programmability_create_api_integration`, `programmability_describe_api_integration` |
+| **18. Cortex AI & NLP Extensions** | 27 | `cortex_complete`, `cortex_summarize`, `cortex_sentiment`, `cortex_extract_answer`, `cortex_translate`, `cortex_search`, `cortex_embed_text_768`, `cortex_analyst_query`, `cortex_run_agent`, `cortex_list_agents`, `cortex_list_search_services`, `cortex_describe_search_service`, `cortex_create_search_service`, `cortex_suspend_search_service`, `cortex_resume_search_service`, `cortex_drop_search_service`, `cortex_suggest_search`, `cortex_list_models`, `cortex_chat_completion`, `cortex_message_completion`, `cortex_generate_response`, `cortex_suggest_verified_queries`, `cortex_generate_semantic_model`, `cortex_preselect_semantic_model_tables`, `cortex_suggest_semantic_model_metrics`, `cortex_list_semantic_model_optimizations`, `cortex_get_semantic_model_optimization` |
 | **19. Composite Agent Workflows** | 8 | `recipes_health_check`, `recipes_inspect_table_with_sample`, `recipes_profile_table`, `recipes_warehouse_scale_and_execute`, `recipes_clone_table_recipe`, `recipes_export_query_to_stage`, `recipes_account_usage_summary`, `recipes_discover_schema_lineage` |
 
 ---
@@ -343,7 +343,7 @@ uv run mypy src/
 # 3. Unit and mocked test suite
 uv run pytest
 
-# 4. Tool contract verification (builds the server; 140 tools)
+# 4. Tool contract verification (builds the server; 245 tools)
 uv run python scripts/check_tool_contract.py
 
 # 5. MCP protocol conformance suite (Spec 2026-07-28)

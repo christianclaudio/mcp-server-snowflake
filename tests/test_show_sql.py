@@ -23,6 +23,8 @@ from snowflake_mcp.server import create_server
 # (tool, SHOW object keyword) for every tool that scopes a SHOW by database and schema.
 SCHEMA_SCOPED = [
     ("alerts_list_alerts", "ALERTS"),
+    ("compute_services_list_notebooks", "NOTEBOOKS"),
+    ("cortex_list_agents", "AGENTS"),
     ("compute_services_list_image_repositories", "IMAGE REPOSITORIES"),
     ("compute_services_list_services", "SERVICES"),
     ("compute_services_list_streamlits", "STREAMLITS"),
@@ -33,6 +35,7 @@ SCHEMA_SCOPED = [
     ("network_list_network_rules", "NETWORK RULES"),
     ("network_list_password_policies", "PASSWORD POLICIES"),
     ("pipes_list_pipes", "PIPES"),
+    ("programmability_list_artifact_repositories", "ARTIFACT REPOSITORIES"),
     ("programmability_list_event_tables", "EVENT TABLES"),
     ("programmability_list_functions", "USER FUNCTIONS"),
     ("programmability_list_procedures", "PROCEDURES"),

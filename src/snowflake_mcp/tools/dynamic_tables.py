@@ -30,6 +30,9 @@ def qualify_dynamic_table_target(
 
 
 def register_dynamic_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
+    from snowflake_mcp.tools.domain_gap import register_dynamic_gap_tools
+
+    register_dynamic_gap_tools(mcp, client)
     """Register Dynamic Tables and Iceberg Table tools."""
 
     @mcp.tool(
