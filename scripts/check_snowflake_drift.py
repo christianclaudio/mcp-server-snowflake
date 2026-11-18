@@ -156,7 +156,7 @@ def parse_operations(file_name: str, text: str) -> list[tuple[str, str, str]]:
         raise FetchError(f"YAML parse error in {file_name}: {exc}") from exc
     if not isinstance(document, dict):
         raise FetchError(f"YAML parse error in {file_name}: document is not a mapping")
-    paths = document.get("paths") or {}
+    paths = document.get("paths", {})
     if not isinstance(paths, dict):
         raise FetchError(f"YAML parse error in {file_name}: paths is not a mapping")
     stem = Path(file_name).name.removesuffix(".yaml")

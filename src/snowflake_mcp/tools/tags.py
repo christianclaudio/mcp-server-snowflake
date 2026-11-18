@@ -26,6 +26,7 @@ from snowflake_mcp.connection import (
     with_quoted_names,
 )
 from snowflake_mcp.errors import SafetyViolationError, status_error
+from snowflake_mcp.tools.gap_common import require_confirm
 
 
 def _qualified(name: str) -> str:
@@ -86,9 +87,16 @@ _SIGNATURE_TAG_KINDS = frozenset({"FUNCTION", "PROCEDURE", "USER DEFINED FUNCTIO
 
 
 def _tag_kind(domain: str) -> str:
-    """SQL object kind. User-defined functions are ``FUNCTION``."""
+    """SQL object kind. User-defined functions are ``FUNCTION``.
+
+    Integrations take tags through ``ALTER INTEGRATION``: "Use an ALTER INTEGRATION command
+    to set a tag on the integration."
+    https://docs.snowflake.com/en/user-guide/object-tagging/introduction
+    """
     if domain == "USER DEFINED FUNCTION":
         return "FUNCTION"
+    if domain.endswith(" INTEGRATION"):
+        return "INTEGRATION"
     return domain
 
 
@@ -294,12 +302,16 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="unset_object_tag",
-        description="Remove a tag from a Snowflake object. https://docs.snowflake.com/en/sql-reference/sql/alter-tag",
+        description=(
+            "Remove a tag from a Snowflake object. Requires confirmation. "
+            "https://docs.snowflake.com/en/sql-reference/sql/alter-tag"
+        ),
     )
     async def snowflake_unset_object_tag(
         object_name: Identifier,
         tag_name: Identifier,
         object_domain: str = "TABLE",
+        confirm: bool = False,
     ) -> dict[str, Any]:
         """``ALTER <kind> <object> UNSET TAG <tag>``.
 
@@ -308,6 +320,7 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         """
         if client.config.read_only:
             raise SafetyViolationError("Denied in read-only mode.")
+        require_confirm(confirm, f"To remove tag '{tag_name}' from '{object_name}', set confirm=True.")
         domain_upper = object_domain.strip().upper()
         if domain_upper not in _TAGGABLE:
             raise status_error(f"Invalid object_domain '{object_domain}'. Allowed: {', '.join(sorted(_TAGGABLE))}")

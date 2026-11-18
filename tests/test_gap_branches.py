@@ -216,23 +216,25 @@ async def test_validation_and_alternate_sql_branches() -> None:
     await tools["governance_list_future_grants"].fn(database_role="DB.ROLE", include_hierarchy=True)
     await tools["governance_list_grants_to_database_role"].fn("DB.ROLE", include_hierarchy=True)
     await boom("governance_create_database_role", "boolean", database_role="DB.ROLE", if_not_exists="no")  # type: ignore[arg-type]
-    await boom("governance_alter_user", "exactly one", user_name="U")
-    await tools["governance_alter_user"].fn("U", rename_to="V")
-    await tools["governance_alter_user"].fn("U", unset_properties=["DISABLED"])
+    await boom("governance_alter_user", "exactly one", user_name="U", confirm=True)
+    await tools["governance_alter_user"].fn("U", rename_to="V", confirm=True)
+    await tools["governance_alter_user"].fn("U", unset_properties=["DISABLED"], confirm=True)
     await tools["governance_alter_user"].fn(
-        "U", set_properties={"TYPE": "PERSON", "DAYS_TO_EXPIRY": 3, "DEFAULT_ROLE": "R", "EMAIL": "a@b.c"}
+        "U", set_properties={"TYPE": "PERSON", "DAYS_TO_EXPIRY": 3, "DEFAULT_ROLE": "R", "EMAIL": "a@b.c"}, confirm=True
     )
-    await boom("governance_alter_user", "cannot be set", user_name="U", set_properties={"PASSWORD": "x"})
-    await boom("governance_alter_user", "cannot be set", user_name="U", unset_properties=["PASSWORD"])
-    await boom("governance_alter_user", "keys must be strings", user_name="U", set_properties={1: "x"})  # type: ignore[dict-item]
-    await boom("governance_alter_user", "at least one", user_name="U", set_properties={})
-    await boom("governance_alter_user", "not an allowed", user_name="U", set_properties={"NOPE": "x"})
-    await boom("governance_alter_user", "boolean", user_name="U", set_properties={"DISABLED": "yes"})
-    await boom("governance_alter_user", "TYPE must", user_name="U", set_properties={"TYPE": "NOPE"})
-    await boom("governance_alter_user", "must be a string", user_name="U", set_properties={"DEFAULT_ROLE": 1})
-    await boom("governance_alter_user", "must be a string", user_name="U", set_properties={"EMAIL": 1})
-    await boom("governance_alter_user", "at least one", user_name="U", unset_properties=[])
-    await boom("governance_alter_user", "not an allowed", user_name="U", unset_properties=["NOPE"])
+    await boom("governance_alter_user", "cannot be set", user_name="U", confirm=True, set_properties={"PASSWORD": "x"})
+    await boom("governance_alter_user", "cannot be set", user_name="U", confirm=True, unset_properties=["PASSWORD"])
+    await boom("governance_alter_user", "keys must be strings", user_name="U", confirm=True, set_properties={1: "x"})  # type: ignore[dict-item]
+    await boom("governance_alter_user", "at least one", user_name="U", confirm=True, set_properties={})
+    await boom("governance_alter_user", "not an allowed", user_name="U", confirm=True, set_properties={"NOPE": "x"})
+    await boom("governance_alter_user", "boolean", user_name="U", confirm=True, set_properties={"DISABLED": "yes"})
+    await boom("governance_alter_user", "TYPE must", user_name="U", confirm=True, set_properties={"TYPE": "NOPE"})
+    await boom(
+        "governance_alter_user", "must be a string", user_name="U", confirm=True, set_properties={"DEFAULT_ROLE": 1}
+    )
+    await boom("governance_alter_user", "must be a string", user_name="U", confirm=True, set_properties={"EMAIL": 1})
+    await boom("governance_alter_user", "at least one", user_name="U", confirm=True, unset_properties=[])
+    await boom("governance_alter_user", "not an allowed", user_name="U", confirm=True, unset_properties=["NOPE"])
     await tools["governance_list_accounts"].fn(history=True, pattern="A%")
     await boom(
         "governance_create_account",
@@ -263,7 +265,7 @@ async def test_validation_and_alternate_sql_branches() -> None:
         target_lag="1 hour",
         query="SELECT 1",
     )
-    await tools["cortex_suspend_search_service"].fn("S", target="INDEXING")
+    await tools["cortex_suspend_search_service"].fn("S", target="INDEXING", confirm=True)
     await boom(
         "cortex_suggest_search", "integer", service_name="S", query="q", database="DB", schema_name="SCH", limit="no"
     )  # type: ignore[arg-type]
@@ -281,12 +283,13 @@ async def test_validation_and_alternate_sql_branches() -> None:
         "compute_services_alter_service",
         "not both",
         service_name="S",
+        confirm=True,
         set_properties={"COMMENT": "c"},
         stage="ST",
         specification_file="f.yaml",
     )
-    await tools["compute_services_alter_service"].fn("S", stage="ST", specification_file="f.yaml")
-    await boom("compute_services_alter_service", "Pass set_properties", service_name="S")
+    await tools["compute_services_alter_service"].fn("S", stage="ST", specification_file="f.yaml", confirm=True)
+    await boom("compute_services_alter_service", "Pass set_properties", service_name="S", confirm=True)
     await boom(
         "compute_services_get_service_logs",
         "positive",
@@ -306,16 +309,33 @@ async def test_validation_and_alternate_sql_branches() -> None:
         "compute_services_alter_service",
         "keys must be strings",
         service_name="S",
+        confirm=True,
         set_properties={1: "x"},
     )  # type: ignore[dict-item]
-    await boom("compute_services_alter_service", "at least one", service_name="S", set_properties={})
-    await boom("compute_services_alter_service", "not an allowed", service_name="S", set_properties={"NOPE": 1})
-    await boom("compute_services_alter_service", "boolean", service_name="S", set_properties={"AUTO_RESUME": "yes"})
-    await tools["compute_services_alter_service"].fn(
-        "S", set_properties={"AUTO_RESUME": False, "QUERY_WAREHOUSE": "WH", "MIN_INSTANCES": 1}
+    await boom("compute_services_alter_service", "at least one", service_name="S", confirm=True, set_properties={})
+    await boom(
+        "compute_services_alter_service", "not an allowed", service_name="S", confirm=True, set_properties={"NOPE": 1}
     )
-    await boom("compute_services_alter_service", "string", service_name="S", set_properties={"QUERY_WAREHOUSE": 1})
-    await boom("compute_services_alter_service", "string", service_name="S", set_properties={"COMMENT": 1})
+    await boom(
+        "compute_services_alter_service",
+        "boolean",
+        service_name="S",
+        confirm=True,
+        set_properties={"AUTO_RESUME": "yes"},
+    )
+    await tools["compute_services_alter_service"].fn(
+        "S", set_properties={"AUTO_RESUME": False, "QUERY_WAREHOUSE": "WH", "MIN_INSTANCES": 1}, confirm=True
+    )
+    await boom(
+        "compute_services_alter_service",
+        "string",
+        service_name="S",
+        confirm=True,
+        set_properties={"QUERY_WAREHOUSE": 1},
+    )
+    await boom(
+        "compute_services_alter_service", "string", service_name="S", confirm=True, set_properties={"COMMENT": 1}
+    )
 
     await boom(
         "dynamic_tables_create_iceberg_table",
@@ -404,6 +424,7 @@ async def test_validation_and_alternate_sql_branches() -> None:
         "programmability_create_function",
         "data type",
         function_name="F",
+        confirm=True,
         arguments="x NUMBER",
         returns="not a type",
         body="1",
@@ -412,6 +433,7 @@ async def test_validation_and_alternate_sql_branches() -> None:
         "programmability_create_function",
         "handler",
         function_name="F",
+        confirm=True,
         arguments="x NUMBER",
         returns="NUMBER",
         body="1",
@@ -430,13 +452,14 @@ async def test_validation_and_alternate_sql_branches() -> None:
         "programmability_create_function",
         "name TYPE",
         function_name="F",
+        confirm=True,
         arguments="NUMBER",
         returns="NUMBER",
         body="1",
     )
-    await tools["programmability_create_function"].fn("F", "", "NUMBER", "1")
+    await tools["programmability_create_function"].fn("F", "", "NUMBER", "1", confirm=True)
     await tools["programmability_create_function"].fn(
-        "F", "x NUMBER(10, 2), y VARCHAR", "NUMBER", "1 $fn$ 1", or_replace=True
+        "F", "x NUMBER(10, 2), y VARCHAR", "NUMBER", "1 $$ 1", or_replace=True, confirm=True
     )
 
     await tools["tags_set_object_tag"].fn("FN()", "TAG", "v", object_domain="FUNCTION")

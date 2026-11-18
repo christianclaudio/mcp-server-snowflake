@@ -128,6 +128,10 @@ _DESTRUCTIVE_NAMES = {
     "disable_database_replication",
     "disable_database_failover",
     "promote_database",
+    "create_view",
+    "create_function",
+    "alter_user",
+    "alter_service",
 }
 
 _IDEMPOTENT_NAMES = {

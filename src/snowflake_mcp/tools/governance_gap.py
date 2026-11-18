@@ -59,6 +59,24 @@ _PRIVILEGES = frozenset(
         "ATTACH POLICY",
         "AUDIT",
         "BIND SERVICE ENDPOINT",
+        "CREATE ACCOUNT",
+        "CREATE APPLICATION",
+        "CREATE APPLICATION PACKAGE",
+        "CREATE COMPUTE POOL",
+        "CREATE DATABASE",
+        "CREATE EXTERNAL VOLUME",
+        "CREATE FAILOVER GROUP",
+        "CREATE INTEGRATION",
+        "CREATE LISTING",
+        "CREATE NETWORK POLICY",
+        "CREATE ORGANIZATION LISTING",
+        "CREATE ORGANIZATION PROFILE",
+        "CREATE PREVIEW APPLICATION",
+        "CREATE REPLICATION GROUP",
+        "CREATE ROLE",
+        "CREATE SHARE",
+        "CREATE USER",
+        "CREATE WAREHOUSE",
         "CREATE SCHEMA",
         "CREATE DATABASE ROLE",
         "DELETE",
@@ -199,6 +217,7 @@ _FUTURE_PLURAL = {
     "SCHEMA": "SCHEMAS",
 }
 _ON_OBJECT_TYPES = _ACCOUNT_TYPES | _SCHEMA_TYPES | {"ACCOUNT"}
+_ROUTINE_TYPES = frozenset({"FUNCTION", "PROCEDURE"})
 _EDITIONS = frozenset({"STANDARD", "ENTERPRISE", "BUSINESS_CRITICAL"})
 _USER_STRINGS = frozenset(
     {"LOGIN_NAME", "DISPLAY_NAME", "FIRST_NAME", "MIDDLE_NAME", "LAST_NAME", "EMAIL", "COMMENT", "DEFAULT_NAMESPACE"}
@@ -234,7 +253,18 @@ def _grantee(kind: str, name: str) -> str:
     raise status_error("grantee_kind must be ROLE, DATABASE ROLE, or USER.")
 
 
+def _plain_name(object_type: str, object_name: str | None) -> str | None:
+    """The object name to pre-parse, or ``None`` for a routine signature parsed later."""
+    return None if " ".join(object_type.split()).upper() in _ROUTINE_TYPES else object_name
+
+
 def _object_clause(object_type: str, object_name: str | None) -> str:
+    """``<type> <name>``. A function or procedure keeps its argument types outside the quotes.
+
+    "When granting privileges on an individual UDF or stored procedure, you must specify the
+    data types of the arguments, if any" as ``<name> ( [ <arg_data_type> [ , ... ] ] )``.
+    https://docs.snowflake.com/en/sql-reference/sql/grant-privilege
+    """
     kind = " ".join(object_type.split()).upper()
     if kind == "ACCOUNT":
         return "ACCOUNT"
@@ -244,6 +274,10 @@ def _object_clause(object_type: str, object_name: str | None) -> str:
         raise status_error("object_name is required for this object_type.")
     if kind in _ACCOUNT_TYPES:
         target = quote_ident(object_name)
+    elif kind in _ROUTINE_TYPES:
+        from snowflake_mcp.tools.programmability import validate_and_quote_routine_signature
+
+        target = validate_and_quote_routine_signature(object_name)
     else:
         target = qualify_ident(object_name)
     return f"{kind} {target}"
@@ -271,7 +305,7 @@ def register_governance_gap_tools(mcp: FastMCP, client: SnowflakeClient) -> None
         https://docs.snowflake.com/en/sql-reference/sql/grant-privilege
         """
         deny_write(client)
-        touch_idents(grantee, object_name)
+        touch_idents(grantee, _plain_name(object_type, object_name))
         require_confirm(confirm, "To grant privileges, set confirm=True.")
         if not isinstance(with_grant_option, bool):
             raise status_error("with_grant_option must be a boolean.")
@@ -303,7 +337,7 @@ def register_governance_gap_tools(mcp: FastMCP, client: SnowflakeClient) -> None
         https://docs.snowflake.com/en/sql-reference/sql/revoke-privilege
         """
         deny_write(client)
-        touch_idents(grantee, object_name)
+        touch_idents(grantee, _plain_name(object_type, object_name))
         require_confirm(confirm, "Destructive: To revoke privileges, set confirm=True.")
         if not isinstance(grant_option_for, bool):
             raise status_error("grant_option_for must be a boolean.")
@@ -615,7 +649,7 @@ def register_governance_gap_tools(mcp: FastMCP, client: SnowflakeClient) -> None
     @mcp.tool(
         name="alter_user",
         description=(
-            "Alter a user: SET, UNSET, or RENAME TO. Password and RSA key properties are rejected. "
+            "Alter a user: SET, UNSET, or RENAME TO. Password and RSA key properties are rejected. Requires confirmation. "
             "https://docs.snowflake.com/en/sql-reference/sql/alter-user"
         ),
     )
@@ -624,12 +658,15 @@ def register_governance_gap_tools(mcp: FastMCP, client: SnowflakeClient) -> None
         rename_to: str | None = None,
         set_properties: dict[str, Any] | None = None,
         unset_properties: list[str] | None = None,
+        confirm: bool = False,
     ) -> dict[str, Any]:
         """``ALTER USER`` ``SET``, ``UNSET``, or ``RENAME TO`` for non-secret properties.
 
+        ``SET DISABLED = TRUE`` locks the user out and aborts the user's running queries.
         https://docs.snowflake.com/en/sql-reference/sql/alter-user
         """
         deny_write(client)
+        require_confirm(confirm, f"Destructive: To alter user '{user_name}', set confirm=True.")
         touch_idents(user_name)
         actions = [rename_to, set_properties, unset_properties]
         if sum(value is not None for value in actions) != 1:

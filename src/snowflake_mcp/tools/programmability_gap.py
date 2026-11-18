@@ -34,6 +34,9 @@ from snowflake_mcp.tools.programmability import validate_and_quote_routine_signa
 
 _TYPE = re.compile(r"^[A-Z0-9_]+(\s*\(\s*\d+(\s*,\s*\d+)?\s*\))?$", re.IGNORECASE)
 _LANGUAGES = frozenset({"SQL", "JAVASCRIPT", "PYTHON", "JAVA", "SCALA"})
+# ``external_mcp`` is not offered: both documented forms need API_USER_AUTHENTICATION,
+# which this tool does not build.
+# https://docs.snowflake.com/en/sql-reference/sql/create-api-integration
 _PROVIDERS = frozenset(
     {
         "aws_api_gateway",
@@ -44,8 +47,10 @@ _PROVIDERS = frozenset(
         "google_api_gateway",
         "git_https_api",
         "artifact_repository_api",
-        "external_mcp",
     }
+)
+_AWS_PROVIDERS = frozenset(
+    {"aws_api_gateway", "aws_private_api_gateway", "aws_gov_api_gateway", "aws_gov_private_api_gateway"}
 )
 _REPO_TYPES = frozenset({"APPLICATION", "PYPI"})
 _BUNDLE_DOCS = "https://docs.snowflake.com/en/sql-reference/sql/create-code-bundle"
@@ -55,11 +60,24 @@ def _name(name: str, database: str | None, schema_name: str | None, client: Snow
     return qualify_ident(name, database or client.config.database, schema_name or client.config.schema_name)
 
 
-def _dollar(body: str) -> str:
-    tag = "fn"
-    while f"${tag}$" in body:
-        tag += "x"
-    return f"${tag}${body}${tag}$"
+def _body_literal(body: str) -> str:
+    """The function body as a Snowflake string constant.
+
+    Snowflake delimits a dollar-quoted constant with ``$$`` only, and the body cannot
+    contain ``$$``; a body that does is written as a single-quoted constant instead.
+    https://docs.snowflake.com/en/sql-reference/data-types-text#dollar-quoted-string-constants
+    """
+    if "$$" in body:
+        return quote_literal(body)
+    return f"$${body}$$"
+
+
+def _routine_name(signature: str) -> str:
+    """The quoted routine name from ``validate_and_quote_routine_signature`` output.
+
+    That helper refuses ``(`` in the name, so the first ``(`` opens the argument types.
+    """
+    return signature[: signature.index("(")]
 
 
 def _args(arguments: str) -> str:
@@ -277,29 +295,39 @@ def register_programmability_gap_tools(mcp: FastMCP, client: SnowflakeClient) ->
 
     @mcp.tool(
         name="create_artifact_repository",
-        description="Create an artifact repository. https://docs.snowflake.com/en/sql-reference/sql/create-artifact-repository",
+        description=(
+            "Create an artifact repository. A PYPI repository needs api_integration. "
+            "https://docs.snowflake.com/en/sql-reference/sql/create-artifact-repository"
+        ),
     )
     async def snowflake_create_artifact_repository(
         repository_name: Identifier,
         repository_type: str,
+        api_integration: OptionalIdentifier = None,
         database: OptionalIdentifier = None,
         schema_name: OptionalIdentifier = None,
         if_not_exists: bool = True,
     ) -> dict[str, Any]:
-        """``CREATE ARTIFACT REPOSITORY ... TYPE = { APPLICATION | PYPI }``.
+        """``CREATE ARTIFACT REPOSITORY ... TYPE = { APPLICATION | PYPI } [ API_INTEGRATION = ... ]``.
 
+        ``API_INTEGRATION`` is "Required when ``TYPE = PYPI``. Not used when ``TYPE = APPLICATION``."
         https://docs.snowflake.com/en/sql-reference/sql/create-artifact-repository
         """
         deny_write(client)
-        touch_idents(repository_name, database, schema_name)
+        touch_idents(repository_name, database, schema_name, api_integration)
         if not isinstance(if_not_exists, bool):
             raise status_error("if_not_exists must be a boolean.")
         kind = repository_type.strip().upper()
         if kind not in _REPO_TYPES:
             raise status_error("repository_type must be APPLICATION or PYPI.")
+        if kind == "PYPI" and not api_integration:
+            raise status_error("api_integration is required for a PYPI repository.")
+        if kind == "APPLICATION" and api_integration:
+            raise status_error("api_integration is not used for an APPLICATION repository.")
         target = _name(repository_name, database, schema_name, client)
         exists = "IF NOT EXISTS " if if_not_exists else ""
-        res = run_sql(client, f"CREATE ARTIFACT REPOSITORY {exists}{target} TYPE = {kind}")
+        integration = f" API_INTEGRATION = {quote_ident(api_integration)}" if api_integration else ""
+        res = run_sql(client, f"CREATE ARTIFACT REPOSITORY {exists}{target} TYPE = {kind}{integration}")
         return {"status": "success", "repository": target, "result": res.get("data")}
 
     @mcp.tool(
@@ -373,7 +401,10 @@ def register_programmability_gap_tools(mcp: FastMCP, client: SnowflakeClient) ->
 
     @mcp.tool(
         name="create_function",
-        description="Create a function. https://docs.snowflake.com/en/sql-reference/sql/create-function",
+        description=(
+            "Create a function. Requires confirmation, since or_replace replaces an existing function. "
+            "https://docs.snowflake.com/en/sql-reference/sql/create-function"
+        ),
     )
     async def snowflake_create_function(
         function_name: Identifier,
@@ -386,12 +417,16 @@ def register_programmability_gap_tools(mcp: FastMCP, client: SnowflakeClient) ->
         database: OptionalIdentifier = None,
         schema_name: OptionalIdentifier = None,
         or_replace: bool = False,
+        confirm: bool = False,
     ) -> dict[str, Any]:
         """Create a function. SQL follows the SQL-handler form; other languages add ``LANGUAGE``.
 
+        ``OR REPLACE`` replaces an existing function, so the tool is annotated destructive
+        and every call needs ``confirm=True``.
         https://docs.snowflake.com/en/sql-reference/sql/create-function
         """
         deny_write(client)
+        require_confirm(confirm, f"Destructive: To create or replace function '{function_name}', set confirm=True.")
         touch_idents(function_name, database, schema_name)
         if not isinstance(or_replace, bool):
             raise status_error("or_replace must be a boolean.")
@@ -410,7 +445,7 @@ def register_programmability_gap_tools(mcp: FastMCP, client: SnowflakeClient) ->
         sql = (
             f"CREATE {replace}FUNCTION {target}({_args(arguments)}) "
             f"RETURNS {returns.strip().upper()}{language_sql}{runtime_sql}{handler_sql} "
-            f"AS {_dollar(body)}"
+            f"AS {_body_literal(body)}"
         )
         res = run_sql(client, sql)
         return {"status": "success", "function": target, "result": res.get("data")}
@@ -440,7 +475,7 @@ def register_programmability_gap_tools(mcp: FastMCP, client: SnowflakeClient) ->
             schema_name=schema_name or client.config.schema_name,
         )
         # The signature helper keeps argument types for DROP. A call uses the name only.
-        name = target[: target.rfind("(")] if "(" in target else target
+        name = _routine_name(target)
         if arguments is None:
             inner = ""
         else:
@@ -485,11 +520,18 @@ def register_programmability_gap_tools(mcp: FastMCP, client: SnowflakeClient) ->
         api_provider: str,
         api_allowed_prefixes: list[str],
         enabled: bool,
+        api_aws_role_arn: str | None = None,
+        azure_tenant_id: str | None = None,
+        azure_ad_application_id: str | None = None,
+        google_audience: str | None = None,
         confirm: bool = False,
     ) -> dict[str, Any]:
         """``CREATE API INTEGRATION ... API_PROVIDER = ... API_ALLOWED_PREFIXES = ... ENABLED = ...``.
 
-        API keys are not accepted by this tool.
+        API keys are not accepted by this tool. The provider settings the syntax requires are:
+        ``API_AWS_ROLE_ARN`` for the Amazon API Gateway providers, ``AZURE_TENANT_ID`` and
+        ``AZURE_AD_APPLICATION_ID`` for ``azure_api_management``, and ``GOOGLE_AUDIENCE`` for
+        ``google_api_gateway``. A setting another provider does not use is refused.
         https://docs.snowflake.com/en/sql-reference/sql/create-api-integration
         """
         deny_write(client)
@@ -503,11 +545,14 @@ def register_programmability_gap_tools(mcp: FastMCP, client: SnowflakeClient) ->
         prefixes = as_str_list(api_allowed_prefixes, "api_allowed_prefixes")
         if not prefixes:
             raise status_error("api_allowed_prefixes must name at least one prefix.")
+        provider_sql = _provider_settings(
+            provider, api_aws_role_arn, azure_tenant_id, azure_ad_application_id, google_audience
+        )
         prefix_sql = ", ".join(quote_literal(item) for item in prefixes)
         flag = "TRUE" if enabled else "FALSE"
         sql = (
             f"CREATE API INTEGRATION {quote_ident(integration_name)} "
-            f"API_PROVIDER = {provider} "
+            f"API_PROVIDER = {provider} {provider_sql}"
             f"API_ALLOWED_PREFIXES = ({prefix_sql}) "
             f"ENABLED = {flag}"
         )
@@ -526,3 +571,31 @@ def register_programmability_gap_tools(mcp: FastMCP, client: SnowflakeClient) ->
         target = quote_ident(integration_name)
         res = run_sql(client, f"DESCRIBE API INTEGRATION {target}")
         return {"status": "success", "integration": target, "details": res.get("data", [])}
+
+
+def _provider_settings(
+    provider: str,
+    aws_role_arn: str | None,
+    azure_tenant_id: str | None,
+    azure_application_id: str | None,
+    google_audience: str | None,
+) -> str:
+    """The provider-specific clauses, each followed by a space, or an empty string.
+
+    https://docs.snowflake.com/en/sql-reference/sql/create-api-integration
+    """
+    settings = {
+        "API_AWS_ROLE_ARN": (aws_role_arn, provider in _AWS_PROVIDERS),
+        "AZURE_TENANT_ID": (azure_tenant_id, provider == "azure_api_management"),
+        "AZURE_AD_APPLICATION_ID": (azure_application_id, provider == "azure_api_management"),
+        "GOOGLE_AUDIENCE": (google_audience, provider == "google_api_gateway"),
+    }
+    clauses: list[str] = []
+    for key, (value, required) in settings.items():
+        if required and not value:
+            raise status_error(f"{key} is required for API_PROVIDER = {provider}.")
+        if not required and value:
+            raise status_error(f"{key} is not used for API_PROVIDER = {provider}.")
+        if value:
+            clauses.append(f"{key} = {quote_literal(value)} ")
+    return "".join(clauses)

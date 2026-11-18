@@ -77,6 +77,10 @@ async def test_all_tools_success_and_error_branches(
             hint_str = str(hint)
             if p_name == "set_properties":
                 args_kwargs[p_name] = {"COMMENT": "note"}
+            elif p_name == "api_integration":
+                args_kwargs[p_name] = "PYPI_INTEGRATION"
+            elif p_name == "api_aws_role_arn":
+                args_kwargs[p_name] = "arn:aws:iam::123456789012:role/demo"
             elif param.default is not inspect.Parameter.empty:
                 # Use default or set confirm=True for destructive tools
                 args_kwargs[p_name] = True if "confirm" in p_name else param.default

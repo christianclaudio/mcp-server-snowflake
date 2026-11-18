@@ -58,6 +58,8 @@ def _kwargs(fn: Any, **overrides: Any) -> dict[str, Any]:
         "catalog_table_name": "cat_table",
         "repository_type": "PYPI",
         "api_provider": "aws_api_gateway",
+        "api_aws_role_arn": "arn:aws:iam::123456789012:role/demo",
+        "api_integration": "PYPI_INTEGRATION",
         "returns": "NUMBER",
         "body": "SELECT 1",
         "database": "DB",
@@ -100,7 +102,7 @@ async def test_quoted_sql_for_mixed_case_names() -> None:
     await tools["governance_list_grants_to_user"].fn('"Ada"', include_hierarchy=True)
     assert _sql(client) == 'SHOW GRANTS TO USER "Ada" INCLUDE HIERARCHY'
     await tools["tables_create_view"].fn(
-        '"v"', "SELECT 1", database="db", schema_name="sch", secure=True, or_replace=True
+        '"v"', "SELECT 1", database="db", schema_name="sch", secure=True, or_replace=True, confirm=True
     )
     assert _sql(client) == 'CREATE OR REPLACE SECURE VIEW "DB"."SCH"."v" AS SELECT 1'
     await tools["stages_get_presigned_url"].fn("stage", "a/b", expiration_seconds=60, database="db", schema_name="sch")
@@ -112,7 +114,7 @@ async def test_caller_sql_and_secret_masking() -> None:
     client = _client()
     tools = _tools(client)
     with pytest.raises(ToolError, match="read-only SQL"):
-        await tools["tables_create_view"].fn("V", "DELETE FROM t")
+        await tools["tables_create_view"].fn("V", "DELETE FROM t", confirm=True)
     with pytest.raises(ToolError, match="read-only SQL"):
         await tools["cortex_create_search_service"].fn("S", "COL", ["A"], "WH", "1 hour", "INSERT INTO t VALUES (1)")
     secret = "dummy-admin-password"
@@ -201,6 +203,6 @@ async def test_sql_failure_is_a_tool_error() -> None:
     client.execute_query.side_effect = RuntimeError("boom")  # type: ignore[attr-defined]
     tools = _tools(client)
     with pytest.raises(ToolError):
-        await tools["databases_refresh_database"].fn("DB")
+        await tools["databases_refresh_database"].fn("DB", confirm=True)
     with pytest.raises(ToolError, match="boolean"):
         await tools["governance_list_future_grants"].fn(database="DB", include_hierarchy="no")  # type: ignore[arg-type]

@@ -83,7 +83,7 @@ These four tools use `expect: success`. Each returns an empty success for a miss
 - `horizon_get_object_lineage` (`OBJECT_DEPENDENCIES` succeeds; empty upstream/downstream when the named object is absent)
 - `horizon_get_column_lineage` (`ACCESS_HISTORY` query succeeds and filters on the supplied table and column, so a missing name yields an empty record list; the view lags up to 3 hours and requires Enterprise Edition)
 
-Most other missing-object describe tools stay `rejected`. `tags_describe_tag` is `rejected` too: a tag name with no match fails with the not-found error (`does not exist or not authorized`).
+Most other missing-object describe tools stay `rejected`. `tags_describe_tag` is `rejected` too: a tag name with no match fails with the not-found error (`does not exist or not authorized`). The missing-object describe probes for `compute_services_describe_service`, `compute_services_describe_notebook`, `cortex_describe_search_service`, `programmability_describe_api_integration`, `programmability_describe_artifact_repository` and `tables_describe_view` run `DESCRIBE`, which fails with that not-found error, so they are `rejected` as well.
 
 ### Lineage without the ACCOUNT_USAGE grant (`_ACCOUNT_USAGE_TOOLS`)
 
@@ -132,12 +132,15 @@ Discovery is read-only, through the server's own tools. `databases_list_database
 
 `_NAMESPACED` lists the 24 qualified fixtures. Each is `rejected` unless it is a soft-empty success tool in `_EMPTY_SUCCESS_TOOLS`, which keeps `success`. Sixteen send a dotted name (`schemas_describe_schema` sends `<database>.<schema>`, the rest `<database>.<schema>.<object>`). Eight keep the bare name and pass `database` and `schema_name` instead: `programmability_describe_procedure`, `programmability_describe_function`, `programmability_describe_secret`, `pipes_describe_pipe`, `alerts_describe_alert`, `horizon_describe_masking_policy`, `horizon_describe_row_access_policy` and `tags_describe_tag` (`SHOW TAGS` is then scoped `IN SCHEMA <database>.<schema>`). `TOOL_FIXTURES` itself is not changed.
 
+`_DATABASE_SCOPED` lists two database-scoped list probes, `governance_list_database_roles` and `governance_list_future_grants`. With no current database they refuse to run, so the harness passes the discovered database as their `database` argument.
+
 The run prints three lines: the discovered database and schema (or `none`), the current role on its own line, and the warehouse state with whether a warehouse is configured. The account identifier and user are never printed.
 
-Two skips, each with its reason:
+Three skips, each with its reason:
 
-- **No namespace:** when no readable database and schema is found, the 24 qualified fixtures skip before the call: `No readable database and schema for the current role among the first 10 databases (kind STANDARD) and their schemas, so the fully qualified probe could not be built.`
+- **No namespace:** when no readable database and schema is found, the 24 qualified fixtures and the 2 database-scoped probes skip before the call: `No readable database and schema for the current role among the first 10 databases (kind STANDARD) and their schemas, so the fully qualified probe could not be built.`
 - **No warehouse:** the state comes once from `governance_get_current_context` (`WAREHOUSE` in its `context` row): present, NULL, or unknown when the call fails or the row or key is missing. A `success`, `rejected` or `cortex` fixture skips only when the state is NULL, no warehouse is configured (`SNOWFLAKE_WAREHOUSE` or `connections.toml`), and the error text (exception, `isError` body, or a non-error body whose `status` is `partial`) matches `no active warehouse selected` without `fallback failed`. Reason: `No current warehouse: CURRENT_WAREHOUSE() is NULL and none is configured (SNOWFLAKE_WAREHOUSE or connections.toml); a query cannot be submitted without one.` If the context call itself fails with that error, raised or as an `isError` body, and no warehouse is configured, the state is NULL; a context error joined with `fallback failed` leaves it unknown. A configured warehouse, an unknown state, a joined `fallback failed` error or a `confirm` fixture never skips; those fail as before.
+- **No REST authentication:** REST-backed tools refuse password and other authenticators before any request is sent. A `success`, `rejected` or `cortex` fixture whose exception or `isError` body says `Snowflake REST tools need key-pair, PAT or OAuth-token authentication` skips with: `REST tools need key-pair, PAT or OAuth-token authentication; this run is configured for another authentication method.` A `confirm` fixture never skips on it.
 
 Fixtures that submit a query and so need a warehouse (`DESCRIBE` and `SHOW` need none): `governance_get_current_context`, `recipes_health_check`, `queries_query`, `queries_get_query_history`, `queries_get_query_plan`, `queries_get_query_operator_stats`, `recipes_account_usage_summary`, `horizon_get_object_lineage`, `horizon_get_column_lineage`, `warehouses_get_warehouse_load_history`, `databases_get_database_ddl`, `tables_get_table_ddl`, `tables_sample_table`, `streams_read_stream_changes`, `recipes_inspect_table_with_sample`, `recipes_profile_table`, `pipes_get_pipe_status`, `tags_get_object_tag_references`, and the eight `cortex` fixtures.
 

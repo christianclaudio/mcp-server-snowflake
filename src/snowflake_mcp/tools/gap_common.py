@@ -85,11 +85,19 @@ def scrub_value(value: Any, secret: str | None) -> Any:
 
 
 def run_secret_sql(client: SnowflakeClient, sql: str, secret: str | None) -> dict[str, Any]:
-    """Execute ``sql`` and keep ``secret`` out of the result and the error text."""
+    """Execute ``sql`` and keep ``secret`` out of the result and the error text.
+
+    The SQL holds the secret escaped as ``quote_literal`` writes it, so a connector error
+    that echoes the statement is scrubbed of that escaped form too.
+    """
     try:
         result = client.execute_query(sql)
     except Exception as exc:
-        failure = status_error(scrub_text(str(exc), secret))
+        text = str(exc)
+        if secret:
+            # Escaped form first: the raw secret can be a prefix of it.
+            text = scrub_text(text, secret.replace("\\", "\\\\").replace("'", "''"))
+        failure = status_error(scrub_text(text, secret))
     else:
         return cast(dict[str, Any], scrub_value(result, secret))
     raise failure from None

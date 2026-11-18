@@ -33,7 +33,11 @@ from snowflake_mcp.tools.gap_common import (
 )
 
 _TARGET_LAG = re.compile(r"^[1-9][0-9]* (second|minute|hour|day)s?$", re.IGNORECASE)
-_AGENT_VERSION = re.compile(r"^[A-Za-z0-9_.-]+$")
+# A committed version is ``VERSION$N`` (for example ``!VERSION$2``).
+# https://docs.snowflake.com/en/sql-reference/functions/data_agent_run-snowflake-cortex
+_AGENT_VERSION = re.compile(r"^(?:[A-Za-z0-9_.-]+|VERSION\$[0-9]+)$")
+# The Messages endpoint lists ``anthropic-version: 2023-06-01`` as a required header.
+_MESSAGES_HEADERS = {"anthropic-version": "2023-06-01"}
 _SEARCH_DOCS = "https://docs.snowflake.com/en/sql-reference/sql/create-cortex-search"
 _REST_DOCS = "https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-rest-api"
 _ANALYST_SPEC = "https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-analyst/rest-api"
@@ -80,7 +84,7 @@ def register_cortex_gap_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         deny_write(client)
         body = as_object(request, "request")
         if version is not None and not _AGENT_VERSION.fullmatch(version):
-            raise status_error("version may contain only letters, digits, '_', '.' and '-'.")
+            raise status_error("version may contain only letters, digits, '_', '.' and '-', or be VERSION$<n>.")
         if create_thread_if_not_present is not None and not isinstance(create_thread_if_not_present, bool):
             raise status_error("create_thread_if_not_present must be a boolean.")
         try:
@@ -219,11 +223,15 @@ def register_cortex_gap_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="suspend_search_service",
-        description="Suspend a Cortex Search service. https://docs.snowflake.com/en/sql-reference/sql/alter-cortex-search",
+        description=(
+            "Suspend a Cortex Search service. Requires confirmation. "
+            "https://docs.snowflake.com/en/sql-reference/sql/alter-cortex-search"
+        ),
     )
     async def snowflake_suspend_search_service(
         service_name: Identifier,
         target: str | None = None,
+        confirm: bool = False,
         database: OptionalIdentifier = None,
         schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
@@ -231,15 +239,19 @@ def register_cortex_gap_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
         https://docs.snowflake.com/en/sql-reference/sql/alter-cortex-search
         """
-        return await _alter_search(client, service_name, "SUSPEND", target, database, schema_name)
+        return await _alter_search(client, service_name, "SUSPEND", target, database, schema_name, confirm)
 
     @mcp.tool(
         name="resume_search_service",
-        description="Resume a Cortex Search service. https://docs.snowflake.com/en/sql-reference/sql/alter-cortex-search",
+        description=(
+            "Resume a Cortex Search service. Requires confirmation. "
+            "https://docs.snowflake.com/en/sql-reference/sql/alter-cortex-search"
+        ),
     )
     async def snowflake_resume_search_service(
         service_name: Identifier,
         target: str | None = None,
+        confirm: bool = False,
         database: OptionalIdentifier = None,
         schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
@@ -247,7 +259,7 @@ def register_cortex_gap_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
         https://docs.snowflake.com/en/sql-reference/sql/alter-cortex-search
         """
-        return await _alter_search(client, service_name, "RESUME", target, database, schema_name)
+        return await _alter_search(client, service_name, "RESUME", target, database, schema_name, confirm)
 
     @mcp.tool(
         name="drop_search_service",
@@ -351,11 +363,14 @@ def register_cortex_gap_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     async def snowflake_message_completion(request: dict[str, Any]) -> dict[str, Any]:
         """``POST /api/v2/cortex/v1/messages``.
 
+        Sends the ``anthropic-version: 2023-06-01`` header the endpoint requires.
         https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-rest-api
         """
         deny_write(client)
         body = as_object(request, "request")
-        result = _rest(client, "POST", "/api/v2/cortex/v1/messages", json_body=body)
+        result = _rest(
+            client, "POST", "/api/v2/cortex/v1/messages", json_body=body, extra_headers=dict(_MESSAGES_HEADERS)
+        )
         return {"status": "success", "message": result.get("data")}
 
     @mcp.tool(
@@ -445,8 +460,10 @@ async def _alter_search(
     target: str | None,
     database: str | None,
     schema_name: str | None,
+    confirm: bool,
 ) -> dict[str, Any]:
     deny_write(client)
+    require_confirm(confirm, f"To {action.lower()} Cortex Search service '{service_name}', set confirm=True.")
     touch_idents(service_name, database, schema_name)
     scope = None
     if target is not None:

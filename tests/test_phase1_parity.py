@@ -51,6 +51,12 @@ def _kwargs(fn: Any, *, confirm: bool) -> dict[str, Any]:
             kwargs[name] = "ROLE"
         elif name == "scope_kind":
             kwargs[name] = "SCHEMA"
+        elif name == "set_properties":
+            kwargs[name] = {"COMMENT": "note"}
+        elif name == "arguments" and param.annotation in {str, "str"}:
+            kwargs[name] = "x NUMBER"
+        elif name == "returns":
+            kwargs[name] = "NUMBER"
         elif param.annotation in {int, "int"}:
             kwargs[name] = 1
         elif param.default is not inspect.Parameter.empty:

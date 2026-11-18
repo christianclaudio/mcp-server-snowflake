@@ -99,13 +99,17 @@ def register_compute_gap_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="alter_service",
-        description="Alter a service SET properties or replace its specification. https://docs.snowflake.com/en/sql-reference/sql/alter-service",
+        description=(
+            "Alter a service SET properties or replace its specification. Requires confirmation. "
+            "https://docs.snowflake.com/en/sql-reference/sql/alter-service"
+        ),
     )
     async def snowflake_alter_service(
         service_name: Identifier,
         set_properties: dict[str, Any] | None = None,
         stage: OptionalIdentifier = None,
         specification_file: str | None = None,
+        confirm: bool = False,
         database: OptionalIdentifier = None,
         schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
@@ -115,6 +119,7 @@ def register_compute_gap_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         https://docs.snowflake.com/en/sql-reference/sql/alter-service
         """
         deny_write(client)
+        require_confirm(confirm, f"Destructive: To alter service '{service_name}', set confirm=True.")
         touch_idents(service_name, database, schema_name, stage)
         target = _target(service_name, database, schema_name, client)
         if set_properties is not None and (stage is not None or specification_file is not None):
@@ -131,10 +136,11 @@ def register_compute_gap_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="suspend_service",
-        description="Suspend a service. https://docs.snowflake.com/en/sql-reference/sql/alter-service",
+        description="Suspend a service. Requires confirmation. https://docs.snowflake.com/en/sql-reference/sql/alter-service",
     )
     async def snowflake_suspend_service(
         service_name: Identifier,
+        confirm: bool = False,
         database: OptionalIdentifier = None,
         schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
@@ -143,16 +149,18 @@ def register_compute_gap_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         https://docs.snowflake.com/en/sql-reference/sql/alter-service
         """
         deny_write(client)
+        require_confirm(confirm, f"To suspend service '{service_name}', set confirm=True.")
         target = _target(service_name, database, schema_name, client)
         res = run_sql(client, f"ALTER SERVICE {target} SUSPEND")
         return {"status": "success", "service": target, "result": res.get("data")}
 
     @mcp.tool(
         name="resume_service",
-        description="Resume a service. https://docs.snowflake.com/en/sql-reference/sql/alter-service",
+        description="Resume a service. Requires confirmation. https://docs.snowflake.com/en/sql-reference/sql/alter-service",
     )
     async def snowflake_resume_service(
         service_name: Identifier,
+        confirm: bool = False,
         database: OptionalIdentifier = None,
         schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
@@ -161,6 +169,7 @@ def register_compute_gap_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         https://docs.snowflake.com/en/sql-reference/sql/alter-service
         """
         deny_write(client)
+        require_confirm(confirm, f"To resume service '{service_name}', set confirm=True.")
         target = _target(service_name, database, schema_name, client)
         res = run_sql(client, f"ALTER SERVICE {target} RESUME")
         return {"status": "success", "service": target, "result": res.get("data")}
@@ -246,10 +255,12 @@ def register_compute_gap_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """``SELECT SYSTEM$GET_SERVICE_LOGS(service, instance_id, container [, num_lines])``.
 
+        The service name is a string argument, as in the documented examples, so the
+        quoted qualified name is passed as a string literal.
         https://docs.snowflake.com/en/sql-reference/functions/system_get_service_logs
         """
         target = _target(service_name, database, schema_name, client)
-        args = f"{target}, {quote_literal(instance_id)}, {quote_literal(container_name)}"
+        args = f"{quote_literal(target)}, {quote_literal(instance_id)}, {quote_literal(container_name)}"
         if num_lines is not None:
             count = as_int(num_lines, "num_lines")
             if count < 1:
@@ -277,10 +288,14 @@ def register_compute_gap_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="add_streamlit_live_version",
-        description="Add a Streamlit live version from the last commit. https://docs.snowflake.com/en/sql-reference/sql/alter-streamlit",
+        description=(
+            "Add a Streamlit live version from the last commit. Requires confirmation. "
+            "https://docs.snowflake.com/en/sql-reference/sql/alter-streamlit"
+        ),
     )
     async def snowflake_add_streamlit_live_version(
         streamlit_name: Identifier,
+        confirm: bool = False,
         database: OptionalIdentifier = None,
         schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
@@ -289,16 +304,21 @@ def register_compute_gap_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         https://docs.snowflake.com/en/sql-reference/sql/alter-streamlit
         """
         deny_write(client)
+        require_confirm(confirm, f"To add a live version to Streamlit '{streamlit_name}', set confirm=True.")
         target = _target(streamlit_name, database, schema_name, client)
         res = run_sql(client, f"ALTER STREAMLIT {target} ADD LIVE VERSION FROM LAST")
         return {"status": "success", "streamlit": target, "result": res.get("data")}
 
     @mcp.tool(
         name="commit_streamlit_version",
-        description="Commit a Streamlit live version. https://docs.snowflake.com/en/sql-reference/sql/alter-streamlit",
+        description=(
+            "Commit a Streamlit live version. Requires confirmation. "
+            "https://docs.snowflake.com/en/sql-reference/sql/alter-streamlit"
+        ),
     )
     async def snowflake_commit_streamlit_version(
         streamlit_name: Identifier,
+        confirm: bool = False,
         database: OptionalIdentifier = None,
         schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
@@ -307,6 +327,7 @@ def register_compute_gap_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         https://docs.snowflake.com/en/sql-reference/sql/alter-streamlit
         """
         deny_write(client)
+        require_confirm(confirm, f"To commit Streamlit '{streamlit_name}', set confirm=True.")
         target = _target(streamlit_name, database, schema_name, client)
         res = run_sql(client, f"ALTER STREAMLIT {target} COMMIT")
         return {"status": "success", "streamlit": target, "result": res.get("data")}
@@ -333,10 +354,14 @@ def register_compute_gap_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="pull_streamlit_from_git",
-        description="Pull a Streamlit app from Git. https://docs.snowflake.com/en/sql-reference/sql/alter-streamlit",
+        description=(
+            "Pull a Streamlit app from Git. Requires confirmation. "
+            "https://docs.snowflake.com/en/sql-reference/sql/alter-streamlit"
+        ),
     )
     async def snowflake_pull_streamlit_from_git(
         streamlit_name: Identifier,
+        confirm: bool = False,
         database: OptionalIdentifier = None,
         schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
@@ -345,17 +370,22 @@ def register_compute_gap_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         https://docs.snowflake.com/en/sql-reference/sql/alter-streamlit
         """
         deny_write(client)
+        require_confirm(confirm, f"To pull Streamlit '{streamlit_name}' from Git, set confirm=True.")
         target = _target(streamlit_name, database, schema_name, client)
         res = run_sql(client, f"ALTER STREAMLIT {target} PULL")
         return {"status": "success", "streamlit": target, "result": res.get("data")}
 
     @mcp.tool(
         name="push_streamlit_to_git",
-        description="Push a Streamlit app to Git. https://docs.snowflake.com/en/sql-reference/sql/alter-streamlit",
+        description=(
+            "Push a Streamlit app to Git. Requires confirmation. "
+            "https://docs.snowflake.com/en/sql-reference/sql/alter-streamlit"
+        ),
     )
     async def snowflake_push_streamlit_to_git(
         streamlit_name: Identifier,
         git_branch_uri: str | None = None,
+        confirm: bool = False,
         database: OptionalIdentifier = None,
         schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
@@ -365,6 +395,7 @@ def register_compute_gap_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         https://docs.snowflake.com/en/sql-reference/sql/alter-streamlit
         """
         deny_write(client)
+        require_confirm(confirm, f"To push Streamlit '{streamlit_name}' to Git, set confirm=True.")
         target = _target(streamlit_name, database, schema_name, client)
         sql = f"ALTER STREAMLIT {target} PUSH"
         if git_branch_uri:
@@ -487,7 +518,7 @@ def register_compute_gap_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     @mcp.tool(
         name="add_notebook_live_version",
         description=(
-            "Add a notebook live version. ALTER NOTEBOOK has no SQL form for this. "
+            "Add a notebook live version. ALTER NOTEBOOK has no SQL form for this. Requires confirmation. "
             "https://docs.snowflake.com/en/user-guide/ui-snowsight/notebooks"
         ),
     )
@@ -497,12 +528,14 @@ def register_compute_gap_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         schema_name: str,
         from_last: bool | None = None,
         comment: str | None = None,
+        confirm: bool = False,
     ) -> dict[str, Any]:
         """``POST .../notebooks/{name}:add-live-version``.
 
         Query parameters ``fromLast`` and ``comment`` match the notebook specification.
         """
         deny_write(client)
+        require_confirm(confirm, f"To add a live version to notebook '{notebook_name}', set confirm=True.")
         if from_last is not None and not isinstance(from_last, bool):
             raise status_error("from_last must be a boolean.")
         path = (
@@ -519,7 +552,10 @@ def register_compute_gap_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="commit_notebook_version",
-        description="Commit a notebook version over the REST API. https://docs.snowflake.com/en/user-guide/ui-snowsight/notebooks",
+        description=(
+            "Commit a notebook version over the REST API. Requires confirmation. "
+            "https://docs.snowflake.com/en/user-guide/ui-snowsight/notebooks"
+        ),
     )
     async def snowflake_commit_notebook_version(
         notebook_name: str,
@@ -527,12 +563,14 @@ def register_compute_gap_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         schema_name: str,
         version: str | None = None,
         comment: str | None = None,
+        confirm: bool = False,
     ) -> dict[str, Any]:
         """``POST .../notebooks/{name}:commit``.
 
         Query parameters ``version`` and ``comment`` match the notebook specification.
         """
         deny_write(client)
+        require_confirm(confirm, f"To commit notebook '{notebook_name}', set confirm=True.")
         path = (
             f"/api/v2/databases/{quote_path(database)}/schemas/{quote_path(schema_name)}"
             f"/notebooks/{quote_path(notebook_name)}:commit"

@@ -45,7 +45,10 @@ def register_table_gap_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="create_view",
-        description="Create a view. The AS query must be read-only SQL. https://docs.snowflake.com/en/sql-reference/sql/create-view",
+        description=(
+            "Create a view. The AS query must be read-only SQL. Requires confirmation, since or_replace "
+            "replaces an existing view. https://docs.snowflake.com/en/sql-reference/sql/create-view"
+        ),
     )
     async def snowflake_create_view(
         view_name: Identifier,
@@ -54,12 +57,16 @@ def register_table_gap_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         schema_name: OptionalIdentifier = None,
         or_replace: bool = False,
         secure: bool = False,
+        confirm: bool = False,
     ) -> dict[str, Any]:
         """``CREATE [ OR REPLACE ] [ SECURE ] VIEW <name> AS <select>``.
 
+        ``OR REPLACE`` drops and recreates an existing view, so the tool is annotated
+        destructive and every call needs ``confirm=True``.
         https://docs.snowflake.com/en/sql-reference/sql/create-view
         """
         deny_write(client)
+        require_confirm(confirm, f"Destructive: To create or replace view '{view_name}', set confirm=True.")
         if not isinstance(or_replace, bool) or not isinstance(secure, bool):
             raise status_error("or_replace and secure must be booleans.")
         enforce_caller_read_only_sql(query, tool="tables_create_view")
@@ -206,11 +213,15 @@ def register_dynamic_gap_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="refresh_iceberg_table",
-        description="Refresh an Iceberg table. https://docs.snowflake.com/en/sql-reference/sql/alter-iceberg-table-refresh",
+        description=(
+            "Refresh an Iceberg table. Requires confirmation. "
+            "https://docs.snowflake.com/en/sql-reference/sql/alter-iceberg-table-refresh"
+        ),
     )
     async def snowflake_refresh_iceberg_table(
         table_name: Identifier,
         metadata_file_path: str | None = None,
+        confirm: bool = False,
         database: OptionalIdentifier = None,
         schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
@@ -219,6 +230,7 @@ def register_dynamic_gap_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         https://docs.snowflake.com/en/sql-reference/sql/alter-iceberg-table-refresh
         """
         deny_write(client)
+        require_confirm(confirm, f"To refresh Iceberg table '{table_name}', set confirm=True.")
         target = _qualified(table_name, database, schema_name, client)
         sql = f"ALTER ICEBERG TABLE {target} REFRESH"
         if metadata_file_path:
@@ -229,13 +241,14 @@ def register_dynamic_gap_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     @mcp.tool(
         name="convert_iceberg_table_to_managed",
         description=(
-            "Convert an Iceberg table to Snowflake-managed. "
+            "Convert an Iceberg table to Snowflake-managed. Requires confirmation. "
             "https://docs.snowflake.com/en/sql-reference/sql/alter-iceberg-table-convert-to-managed"
         ),
     )
     async def snowflake_convert_iceberg_table_to_managed(
         table_name: Identifier,
         base_location: str | None = None,
+        confirm: bool = False,
         database: OptionalIdentifier = None,
         schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
@@ -244,6 +257,7 @@ def register_dynamic_gap_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         https://docs.snowflake.com/en/sql-reference/sql/alter-iceberg-table-convert-to-managed
         """
         deny_write(client)
+        require_confirm(confirm, f"To convert Iceberg table '{table_name}' to managed, set confirm=True.")
         target = _qualified(table_name, database, schema_name, client)
         sql = f"ALTER ICEBERG TABLE {target} CONVERT TO MANAGED"
         if base_location:
@@ -370,14 +384,17 @@ def register_database_gap_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="refresh_database",
-        description="Refresh a secondary database. https://docs.snowflake.com/en/sql-reference/sql/alter-database",
+        description=(
+            "Refresh a secondary database. Requires confirmation. https://docs.snowflake.com/en/sql-reference/sql/alter-database"
+        ),
     )
-    async def snowflake_refresh_database(database_name: Identifier) -> dict[str, Any]:
+    async def snowflake_refresh_database(database_name: Identifier, confirm: bool = False) -> dict[str, Any]:
         """``ALTER DATABASE <name> REFRESH``.
 
         https://docs.snowflake.com/en/sql-reference/sql/alter-database
         """
         deny_write(client)
+        require_confirm(confirm, f"To refresh database '{database_name}', set confirm=True.")
         res = run_sql(client, f"ALTER DATABASE {quote_ident(database_name)} REFRESH")
         return {"status": "success", "result": res.get("data")}
 
@@ -506,14 +523,38 @@ def register_stage_gap_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         return {"status": "success", "url": res.get("data", [])}
 
 
+def _split_column(item: str) -> tuple[str, str] | None:
+    """``(name, type)`` from ``name TYPE``. A double-quoted name may contain spaces.
+
+    Inside double quotes, ``""`` is a literal quote.
+    https://docs.snowflake.com/en/sql-reference/identifiers-syntax
+    """
+    text = item.strip()
+    if not text.startswith('"'):
+        pieces = text.split(None, 1)
+        return (pieces[0], pieces[1]) if len(pieces) == 2 else None
+    index = 1
+    while index < len(text):
+        if text[index] == '"':
+            if text.startswith('""', index):
+                index += 2
+                continue
+            break
+        index += 1
+    name, rest = text[: index + 1], text[index + 1 :]
+    if index >= len(text) or not rest[:1].isspace():
+        return None
+    return (name, rest)
+
+
 def _iceberg_columns(columns: object) -> str:
     items = as_str_list(columns, "columns")
     if not items:
         raise status_error("columns must name at least one column.")
     rendered: list[str] = []
     for item in items:
-        pieces = item.split(None, 1)
-        if len(pieces) != 2 or not _COL_TYPE.fullmatch(pieces[1].strip()):
+        pieces = _split_column(item)
+        if pieces is None or not _COL_TYPE.fullmatch(pieces[1].strip()):
             raise status_error(f"Column {item!r} must be 'name TYPE'.")
         rendered.append(f"{quote_ident(pieces[0])} {pieces[1].strip().upper()}")
     return ", ".join(rendered)

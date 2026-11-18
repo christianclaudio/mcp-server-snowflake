@@ -19,7 +19,7 @@ import json
 import time
 from collections.abc import Callable
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 import httpx
 from cryptography.hazmat.primitives import hashes, serialization
@@ -144,12 +144,21 @@ class SnowflakeRestClient:
         return "none"
 
     def base_url(self) -> str:
-        """REST origin. A configured host override replaces the account host."""
+        """REST origin. A configured host override replaces the account host.
+
+        The SQL connector receives ``host`` together with ``port``, so a host with no
+        explicit port gets the configured port unless it is the HTTPS default, 443.
+        """
         host = (self.config.host or "").strip()
         if host:
             if "://" not in host:
                 host = "https://" + host
-            return host.rstrip("/")
+            host = host.rstrip("/")
+            parts = urlsplit(host)
+            port = self.config.port
+            if parts.port is None and port is not None and port != 443:
+                host = f"{parts.scheme}://{parts.netloc}:{port}{parts.path}"
+            return host
         account = self.config.account.strip()
         if not account:
             raise status_error("Snowflake REST tools need an account identifier.")
@@ -179,7 +188,10 @@ class SnowflakeRestClient:
     def headers(self) -> dict[str, str]:
         """Authorization headers for the configured REST auth kind.
 
+        A configured role is sent as ``X-Snowflake-Role``. With no role, Snowflake uses
+        the user's default role.
         https://docs.snowflake.com/en/developer-guide/snowflake-rest-api/authentication
+        https://docs.snowflake.com/en/developer-guide/snowflake-rest-api/setting-context
         """
         kind = self.auth_kind()
         if kind == "unsupported":
@@ -196,12 +208,16 @@ class SnowflakeRestClient:
         else:
             token = self.config.token or ""
             token_type = _OAUTH_TOKEN_TYPE
-        return {
+        headers = {
             "Authorization": f"Bearer {token}",
             "X-Snowflake-Authorization-Token-Type": token_type,
             "Accept": "application/json",
             "User-Agent": "mcp-server-snowflake",
         }
+        role = (self.config.role or "").strip()
+        if role:
+            headers["X-Snowflake-Role"] = role
+        return headers
 
     def _bearer(self) -> str:
         """The secret placed in Authorization, used only to scrub error text."""
@@ -222,9 +238,16 @@ class SnowflakeRestClient:
         *,
         json_body: dict[str, Any] | None = None,
         query: dict[str, Any] | None = None,
+        extra_headers: dict[str, str] | None = None,
     ) -> dict[str, Any]:
-        """Send one REST call. Failures are tool errors and never include the bearer token."""
+        """Send one REST call. Failures are tool errors and never include the bearer token.
+
+        ``extra_headers`` adds endpoint-specific headers, such as the ``anthropic-version``
+        header the Cortex Messages endpoint requires.
+        """
         headers = self.headers()
+        if extra_headers:
+            headers.update(extra_headers)
         url = self.base_url() + path
         params = {key: value for key, value in (query or {}).items() if value is not None}
         try:
