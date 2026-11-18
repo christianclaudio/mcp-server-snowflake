@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
 from fastmcp.exceptions import DisabledError, NotFoundError, ValidationError
@@ -170,18 +170,33 @@ class ReadOnlyGateMiddleware(Middleware):
 
     ``conceal`` records tools the active profile removed. Those names stay in
     ``MUTATING_TOOLS`` but must surface as unknown tools, not as a read-only denial.
+
+    ``config`` is the startup config, so a startup restriction stays in force.
+    ``active_config`` returns the config of the active connection, so a switch to a
+    read-only profile also turns the gate on.
     """
 
-    def __init__(self, config: SnowflakeConfig) -> None:
+    def __init__(
+        self,
+        config: SnowflakeConfig,
+        active_config: Callable[[], SnowflakeConfig] | None = None,
+    ) -> None:
         self._config = config
+        self._active_config = active_config
         self._concealed: set[str] = set()
 
     def conceal(self, name: str) -> None:
         """Remember a tool this profile removed from the catalog."""
         self._concealed.add(name)
 
+    def enabled(self) -> bool:
+        """True while the startup config or the active connection is read-only."""
+        if read_only_enabled(self._config):
+            return True
+        return self._active_config is not None and read_only_enabled(self._active_config())
+
     def _read_only_enabled(self) -> bool:
-        return read_only_enabled(self._config)
+        return self.enabled()
 
     async def on_message(
         self,

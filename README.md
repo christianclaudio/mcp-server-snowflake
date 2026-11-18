@@ -63,7 +63,7 @@ flowchart TD
 
 > [!WARNING]
 > **Safety Guardrails**  
-> - **Read-Only Safety Mode:** Set `SNOWFLAKE_MCP_READONLY=1`, pass `--readonly`, or pass `--profile readonly` to block mutating tools. The profile sets the same read-only flag the gate reads. On each new session, read-only mode runs `USE SECONDARY ROLES NONE` before any tool SQL and closes the connection if that pin fails. Write mode does not run that statement. Objects readable only through a secondary role's grants are not visible under `--readonly` until the read-only primary role is granted `SELECT` on them directly. Set `DEFAULT_SECONDARY_ROLES = ()` on the read-only user, or use a dedicated user that holds only that role. Prefer a programmatic access token with `ROLE_RESTRICTION` set to the read-only role so Snowflake evaluates privileges under that role ([programmatic access tokens](https://docs.snowflake.com/en/user-guide/programmatic-access-tokens)). `ROLE_RESTRICTION` does not replace the session pin. See FAQ / Troubleshooting.  
+> - **Read-Only Safety Mode:** Set `SNOWFLAKE_MCP_READONLY=1`, pass `--readonly`, or pass `--profile readonly` to block mutating tools. Every read-only path, including a `governance_use_connection` switch to a profile with `read_only = true`, hides mutating tools and refuses a mutating tool if it is called. On the default flat catalog (every domain, no tool search or Code Mode), `tools/list` then lists the 127 read-only tools. A single-domain profile lists only that domain's read-only tools, and with tool search or Code Mode, `tools/list` keeps their entry points while the catalog behind them holds only read-only tools. The profile sets the same read-only flag the gate reads. On each new session, read-only mode runs `USE SECONDARY ROLES NONE` before any tool SQL and closes the connection if that pin fails. Write mode does not run that statement. Objects readable only through a secondary role's grants are not visible under `--readonly` until the read-only primary role is granted `SELECT` on them directly. Set `DEFAULT_SECONDARY_ROLES = ()` on the read-only user, or use a dedicated user that holds only that role. Prefer a programmatic access token with `ROLE_RESTRICTION` set to the read-only role so Snowflake evaluates privileges under that role ([programmatic access tokens](https://docs.snowflake.com/en/user-guide/programmatic-access-tokens)). `ROLE_RESTRICTION` does not replace the session pin. See FAQ / Troubleshooting.  
 > - **Caller SQL:** `queries_query`, `queries_get_query_plan`, and the `query` arguments of `recipes_warehouse_scale_and_execute` and `recipes_export_query_to_stage` refuse anything that is not one read-only statement, whether or not read-only mode is on. Allowed forms are one `SELECT` (no `INTO`), `SHOW`, `DESCRIBE`/`DESC`, or `EXPLAIN SELECT`. `SYSTEM$` calls are refused except `SYSTEM$TYPEOF` and `SYSTEM$CLUSTERING_INFORMATION`. `IDENTIFIER(...)` in call position and `TABLE(IDENTIFIER(...))` are refused. User-defined functions inside `SELECT` are not inspected.  
 > - **Destructive Safety Gates:** Dropping databases, schemas, or tables requires explicit `confirm=True`.  
 > - **Object names follow Snowflake's [identifier rules](https://docs.snowflake.com/en/sql-reference/identifiers-syntax):** unquoted names resolve to uppercase (`mydb.public.orders` is `MYDB.PUBLIC.ORDERS`), and a double-quoted part keeps its exact case and may contain `.` (`"My.Db".PUBLIC."Orders"`; write a literal `"` as `""`). Pass an object created with a lowercase or mixed-case quoted name in double quotes. Every object row a `SHOW`-based list tool returns also carries `quoted_name`, its `name` already in double quotes with any `"` doubled (`my_table` gives `"my_table"`), ready to pass back as an object name argument; a row that has a `database_name` and a `schema_name` also carries `quoted_qualified_name`, the full `"database"."schema"."name"`, which names the object from any session database and schema. An unterminated quote, an empty part, or a stray `"` in an unquoted part is refused before any SQL runs.  
@@ -76,7 +76,7 @@ flowchart TD
 
 ### Read-only secondary-roles pin
 
-In read-only mode (`--readonly`, `--profile readonly`, or `SNOWFLAKE_MCP_READONLY=1`), each new session runs `USE SECONDARY ROLES NONE` before any tool SQL. If that pin fails, the server fails closed: the connection is closed and not served. Write mode does not run the statement.
+In read-only mode (`--readonly`, `--profile readonly`, or `SNOWFLAKE_MCP_READONLY=1`), each new session runs `USE SECONDARY ROLES NONE` before any tool SQL. If that pin fails, the server fails closed: the connection is closed and not served. Write mode does not run the statement. Every read-only path also hides mutating tools from `tools/list` and refuses them if called.
 
 Objects readable only through a secondary role's grants need `SELECT` granted on the primary role (the read-only role) directly. Set `DEFAULT_SECONDARY_ROLES = ()` on the read-only user, or use a dedicated user that holds only that role.
 
@@ -137,13 +137,14 @@ snowflake-mcp --init
 # Run with a specific Snowflake CLI connection profile
 snowflake-mcp -c my_connection
 
-# Run in read-only mode (every tool stays registered; handlers reject mutations)
+# Run in read-only mode (lists only read-only tools; a mutating tool is refused if called)
 snowflake-mcp -c my_connection --readonly
 
 # List one domain, or only read-only tools
 snowflake-mcp --profile cortex
 snowflake-mcp --profile readonly
-# `--profile readonly` hides mutating tools, sets the read-only flag, and pins USE SECONDARY ROLES NONE on each session.
+# Every read-only path (`--readonly`, `SNOWFLAKE_MCP_READONLY=1`, `--profile readonly`) hides mutating tools,
+# refuses them if called, and pins USE SECONDARY ROLES NONE on each session.
 # Set DEFAULT_SECONDARY_ROLES = () on that user, or use a dedicated user that holds only the read-only role.
 
 # Opt in to tool search instead of the flat 245-tool tools/list.

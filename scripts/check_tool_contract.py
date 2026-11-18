@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 
 from snowflake_mcp.config import SnowflakeConfig
@@ -11,6 +12,8 @@ from snowflake_mcp.server import DOMAIN_NAMES, create_server
 
 
 def verify_contract() -> int:
+    # The full catalog is checked, so an exported read-only flag must not filter tools/list.
+    os.environ.pop("SNOWFLAKE_MCP_READONLY", None)
     dummy_cfg = SnowflakeConfig(account="dummy_acc", user="dummy_user")
     mcp = create_server(config=dummy_cfg)
     # Compatibility keys are the mounted wire names. Component.name stays the bare local name.
