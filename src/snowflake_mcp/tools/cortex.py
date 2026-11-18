@@ -10,6 +10,7 @@ from fastmcp import FastMCP
 
 from snowflake_mcp.connection import SnowflakeClient, quote_literal
 from snowflake_mcp.errors import status_error
+from snowflake_mcp.tools.cortex_gap import register_cortex_gap_tools
 
 
 def _decode_object(value: Any, function: str) -> Any:
@@ -60,6 +61,7 @@ def _model_parameters_sql(temperature: object, max_tokens: object) -> tuple[str,
 
 def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     """Register Cortex AI, Search, Translation, Embeddings, and NLP tools."""
+    register_cortex_gap_tools(mcp, client)
 
     @mcp.tool(
         name="complete",
@@ -328,10 +330,9 @@ def register_cortex_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     ) -> dict[str, Any]:
         """Answer via AI_COMPLETE prompt fallback; not the Cortex Analyst REST API.
 
-        This server talks to Snowflake through the connector's SQL execute path only. It has no
-        HTTP client for POST /api/v2/cortex/analyst/message
-        (https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-analyst/rest-api), so
-        this tool keeps the existing AI_COMPLETE semantic-fallback behavior and documents it.
+        This tool does not call POST /api/v2/cortex/analyst/message
+        (https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-analyst/rest-api).
+        It keeps the existing AI_COMPLETE semantic-fallback behavior and documents it.
 
         https://docs.snowflake.com/en/sql-reference/functions/ai_complete-single-string
         """

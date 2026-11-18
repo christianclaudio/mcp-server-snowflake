@@ -15,6 +15,7 @@ from snowflake_mcp.connection import (
     exact_show_rows,
     ident_error,
     qualify_ident,
+    quote_ident,
     quote_literal,
     quote_resolved,
     refuse_empty_part,
@@ -30,6 +31,79 @@ from snowflake_mcp.errors import SafetyViolationError, status_error
 def _qualified(name: str) -> str:
     """Quote each part of a possibly dotted object name with ``quote_ident``."""
     return qualify_ident(name)
+
+
+# Object kinds that accept ``ALTER <kind> ... SET TAG`` / ``UNSET TAG``.
+# The first twelve match the original allowlist. The rest are the other taggable
+# kinds the Snowflake REST specifications expose with ``:set-tags`` and ``:unset-tags``.
+# https://docs.snowflake.com/en/sql-reference/sql/alter-tag
+_TAGGABLE = frozenset(
+    {
+        "TABLE",
+        "VIEW",
+        "SCHEMA",
+        "DATABASE",
+        "WAREHOUSE",
+        "USER",
+        "ROLE",
+        "STAGE",
+        "PIPE",
+        "STREAM",
+        "TASK",
+        "ALERT",
+        "API INTEGRATION",
+        "CATALOG INTEGRATION",
+        "COMPUTE POOL",
+        "DATABASE ROLE",
+        "DYNAMIC TABLE",
+        "EVENT TABLE",
+        "FUNCTION",
+        "ICEBERG TABLE",
+        "IMAGE REPOSITORY",
+        "NETWORK POLICY",
+        "NOTEBOOK",
+        "NOTIFICATION INTEGRATION",
+        "PASSWORD POLICY",
+        "PROCEDURE",
+        "STREAMLIT",
+        "USER DEFINED FUNCTION",
+    }
+)
+_ACCOUNT_TAG_KINDS = frozenset(
+    {
+        "DATABASE",
+        "WAREHOUSE",
+        "USER",
+        "ROLE",
+        "API INTEGRATION",
+        "CATALOG INTEGRATION",
+        "COMPUTE POOL",
+        "NETWORK POLICY",
+        "NOTIFICATION INTEGRATION",
+    }
+)
+_SIGNATURE_TAG_KINDS = frozenset({"FUNCTION", "PROCEDURE", "USER DEFINED FUNCTION"})
+
+
+def _tag_kind(domain: str) -> str:
+    """SQL object kind. User-defined functions are ``FUNCTION``."""
+    if domain == "USER DEFINED FUNCTION":
+        return "FUNCTION"
+    return domain
+
+
+def _tag_target(domain: str, object_name: str) -> str:
+    """Quote the object named in ``ALTER <kind>``."""
+    if domain == "SCHEMA":
+        refuse_empty_part(object_name)
+        return _qualified(object_name)
+    if domain in _SIGNATURE_TAG_KINDS:
+        from snowflake_mcp.tools.programmability import validate_and_quote_routine_signature
+
+        return validate_and_quote_routine_signature(object_name)
+    if domain in _ACCOUNT_TAG_KINDS:
+        return quote_ident(object_name)
+    return _qualified(object_name)
 
 
 def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
@@ -183,7 +257,9 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="set_object_tag",
-        description="Set or assign a tag value on a Snowflake object (TABLE, SCHEMA, DATABASE, etc.).",
+        description=(
+            "Set or assign a tag value on a Snowflake object. https://docs.snowflake.com/en/sql-reference/sql/alter-tag"
+        ),
     )
     async def snowflake_set_object_tag(
         object_name: Identifier,
@@ -195,32 +271,14 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         if client.config.read_only:
             raise SafetyViolationError("Denied in read-only mode.")
 
-        allowed_domains = {
-            "TABLE",
-            "VIEW",
-            "SCHEMA",
-            "DATABASE",
-            "WAREHOUSE",
-            "USER",
-            "ROLE",
-            "STAGE",
-            "PIPE",
-            "STREAM",
-            "TASK",
-            "ALERT",
-        }
         domain_upper = object_domain.strip().upper()
-        if domain_upper not in allowed_domains:
-            raise status_error(
-                f"Invalid object_domain '{object_domain}'. Allowed: {', '.join(sorted(allowed_domains))}"
-            )
+        if domain_upper not in _TAGGABLE:
+            raise status_error(f"Invalid object_domain '{object_domain}'. Allowed: {', '.join(sorted(_TAGGABLE))}")
 
         try:
-            if domain_upper == "SCHEMA":
-                refuse_empty_part(object_name)
             sql = (
-                f"ALTER {domain_upper} {_qualified(object_name)} SET TAG {_qualified(tag_name)} = "
-                f"{quote_literal(tag_value)}"
+                f"ALTER {_tag_kind(domain_upper)} {_tag_target(domain_upper, object_name)} SET TAG "
+                f"{_qualified(tag_name)} = {quote_literal(tag_value)}"
             )
             res = client.execute_query(sql)
             return {
@@ -232,4 +290,66 @@ def register_tag_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
             }
         except Exception as e:
             failure = ident_error(e)
+        raise failure from None
+
+    @mcp.tool(
+        name="unset_object_tag",
+        description="Remove a tag from a Snowflake object. https://docs.snowflake.com/en/sql-reference/sql/alter-tag",
+    )
+    async def snowflake_unset_object_tag(
+        object_name: Identifier,
+        tag_name: Identifier,
+        object_domain: str = "TABLE",
+    ) -> dict[str, Any]:
+        """``ALTER <kind> <object> UNSET TAG <tag>``.
+
+        The kind allowlist matches ``set_object_tag``.
+        https://docs.snowflake.com/en/sql-reference/sql/alter-tag
+        """
+        if client.config.read_only:
+            raise SafetyViolationError("Denied in read-only mode.")
+        domain_upper = object_domain.strip().upper()
+        if domain_upper not in _TAGGABLE:
+            raise status_error(f"Invalid object_domain '{object_domain}'. Allowed: {', '.join(sorted(_TAGGABLE))}")
+        try:
+            sql = (
+                f"ALTER {_tag_kind(domain_upper)} {_tag_target(domain_upper, object_name)} "
+                f"UNSET TAG {_qualified(tag_name)}"
+            )
+            res = client.execute_query(sql)
+            return {"status": "success", "object_name": object_name, "tag": tag_name, "result": res.get("data")}
+        except Exception as e:
+            failure = ident_error(e)
+        raise failure from None
+
+    @mcp.tool(
+        name="list_tag_assignments",
+        description=(
+            "List objects assigned a tag from ACCOUNT_USAGE.TAG_REFERENCES. "
+            "Account Usage can lag the live account. "
+            "https://docs.snowflake.com/en/sql-reference/account-usage/tag_references"
+        ),
+    )
+    async def snowflake_list_tag_assignments(
+        tag_database: str,
+        tag_schema: str,
+        tag_name: str,
+    ) -> dict[str, Any]:
+        """``SNOWFLAKE.ACCOUNT_USAGE.TAG_REFERENCES`` filtered by tag database, schema, and name.
+
+        ACCOUNT_USAGE views are not always current. Per-object assignments remain
+        ``get_object_tag_references``.
+        https://docs.snowflake.com/en/sql-reference/account-usage/tag_references
+        """
+        try:
+            sql = (
+                "SELECT * FROM SNOWFLAKE.ACCOUNT_USAGE.TAG_REFERENCES "
+                f"WHERE TAG_DATABASE = {quote_literal(tag_database)} "
+                f"AND TAG_SCHEMA = {quote_literal(tag_schema)} "
+                f"AND TAG_NAME = {quote_literal(tag_name)}"
+            )
+            res = client.execute_query(sql)
+            return {"status": "success", "assignments": res.get("data", [])}
+        except Exception as e:
+            failure = status_error(e)
         raise failure from None

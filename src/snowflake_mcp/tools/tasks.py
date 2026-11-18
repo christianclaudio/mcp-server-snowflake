@@ -54,6 +54,9 @@ def qualify_task_target(
 
 
 def register_task_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
+    from snowflake_mcp.tools.domain_gap import register_task_gap_tools
+
+    register_task_gap_tools(mcp, client)
     """Register Snowflake Task tools."""
 
     @mcp.tool(

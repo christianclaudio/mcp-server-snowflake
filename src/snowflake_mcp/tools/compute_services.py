@@ -19,6 +19,7 @@ from snowflake_mcp.connection import (
     with_quoted_names,
 )
 from snowflake_mcp.errors import SafetyViolationError, status_error
+from snowflake_mcp.tools.compute_gap import register_compute_gap_tools
 
 
 def qualify_compute_target(
@@ -32,6 +33,7 @@ def qualify_compute_target(
 
 def register_compute_service_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     """Register SPCS and Streamlit tools."""
+    register_compute_gap_tools(mcp, client)
 
     @mcp.tool(
         name="list_streamlits",

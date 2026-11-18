@@ -154,7 +154,7 @@ def main() -> None:
         choices=sorted(VALID_PROFILES),
         default=os.environ.get("SNOWFLAKE_MCP_PROFILE", "full"),
         help=(
-            "Tool catalog profile. 'full' (default) lists all 140 tools. "
+            "Tool catalog profile. 'full' (default) lists all 245 tools. "
             "'readonly' lists read-only tools only. A domain name lists that domain."
         ),
     )

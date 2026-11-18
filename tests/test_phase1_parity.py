@@ -41,6 +41,18 @@ def _kwargs(fn: Any, *, confirm: bool) -> dict[str, Any]:
     for name, param in inspect.signature(fn).parameters.items():
         if name == "confirm":
             kwargs[name] = confirm
+        elif name == "object_name":
+            kwargs[name] = "TEST"
+        elif name == "privileges":
+            kwargs[name] = ["SELECT"]
+        elif name in {"object_type", "object_domain"}:
+            kwargs[name] = "TABLE"
+        elif name in {"grantee_kind", "grantee_type"}:
+            kwargs[name] = "ROLE"
+        elif name == "scope_kind":
+            kwargs[name] = "SCHEMA"
+        elif param.annotation in {int, "int"}:
+            kwargs[name] = 1
         elif param.default is not inspect.Parameter.empty:
             kwargs[name] = param.default
         elif name in {"query", "statement", "sql", "sql_statement"}:
@@ -260,7 +272,7 @@ async def test_error_middleware_reraises_protocol_errors_and_redacts_others() ->
 async def test_default_catalog_is_flat_and_tool_search_is_opt_in() -> None:
     srv = create_server(client=_client())
     names = {tool.name for tool in await srv.list_tools()}
-    assert len(names) == 140
+    assert len(names) == 245
     assert "queries_query" in names
     assert "search_tools" not in names
     assert "call_tool" not in names
@@ -273,7 +285,7 @@ async def test_default_catalog_is_flat_and_tool_search_is_opt_in() -> None:
     cortex_names = {tool.name for tool in await cortex.list_tools()}
     assert cortex_names
     assert all(name.startswith("cortex_") for name in cortex_names)
-    assert len(cortex_names) < 140
+    assert len(cortex_names) < 245
 
     readonly_client = _client()
     readonly = create_server(client=readonly_client, profile="readonly")
@@ -282,7 +294,7 @@ async def test_default_catalog_is_flat_and_tool_search_is_opt_in() -> None:
     assert gate._read_only_enabled()
     readonly_tools = await readonly.list_tools()
     assert readonly_tools
-    assert len(readonly_tools) < 140
+    assert len(readonly_tools) < 245
     assert all(tool.annotations and tool.annotations.read_only_hint for tool in readonly_tools)
     with pytest.raises(NotFoundError, match="Unknown tool"):
         await readonly.call_tool("queries_execute_dml", {})
@@ -298,7 +310,7 @@ async def test_every_tool_has_explicit_hints_and_destructive_confirm() -> None:
     client = _client()
     srv = create_server(client=client)
     tools = await srv.list_tools()
-    assert len(tools) == 140
+    assert len(tools) == 245
     destructive: list[str] = []
     for tool in tools:
         annotations = tool.annotations
@@ -325,10 +337,18 @@ async def test_every_tool_has_explicit_hints_and_destructive_confirm() -> None:
             await fn(**_kwargs(fn, confirm=False))
         assert json.loads(str(refused.value))["status"] == "requires_confirmation", name
         client.execute_query.reset_mock()  # type: ignore[attr-defined]
+        saw_rest = {"called": False}
+
+        def _rest(request: httpx.Request) -> httpx.Response:
+            saw_rest["called"] = True
+            return httpx.Response(200, json={"ok": True})
+
+        client.config.token = "dummy-pat-value"
+        client.rest_transport = httpx.MockTransport(_rest)
         proceeded = await fn(**_kwargs(fn, confirm=True))
         assert proceeded["status"] != "requires_confirmation", name
         assert proceeded["status"] == "success", name
-        client.execute_query.assert_called()  # type: ignore[attr-defined]
+        assert client.execute_query.called or saw_rest["called"], name  # type: ignore[attr-defined]
 
 
 def _is_error(body: dict[str, Any]) -> bool:

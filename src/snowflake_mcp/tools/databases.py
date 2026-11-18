@@ -20,6 +20,9 @@ from snowflake_mcp.errors import SafetyViolationError, status_error
 
 
 def register_database_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
+    from snowflake_mcp.tools.domain_gap import register_database_gap_tools
+
+    register_database_gap_tools(mcp, client)
     """Register database management tools."""
 
     @mcp.tool(

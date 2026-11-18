@@ -44,7 +44,7 @@ ALL_DOMAINS: tuple[str, ...] = (
 
 _DOMAIN_JOBS: dict[str, str] = {
     "queries": "SQL queries, plans, and transactions.",
-    "databases": "Databases and clones.",
+    "databases": "Databases, clones, and replication.",
     "schemas": "Schemas and clones.",
     "tables": "Tables, views, and partitions.",
     "warehouses": "Virtual warehouses and load history.",
@@ -54,13 +54,13 @@ _DOMAIN_JOBS: dict[str, str] = {
     "dynamic_tables": "Dynamic tables, Iceberg tables, and volumes.",
     "pipes": "Snowpipe and ingestion.",
     "alerts": "Alerts and notifications.",
-    "governance": "Roles, users, grants, and connections.",
+    "governance": "Roles, users, grants, accounts, and connections.",
     "network": "Network rules and password policies.",
-    "compute_services": "Compute pools, services, and Streamlit.",
-    "tags": "Object tags.",
+    "compute_services": "Compute pools, services, notebooks, and Streamlit.",
+    "tags": "Object tags and tag assignments.",
     "horizon": "Lineage and governance policies.",
-    "programmability": "Procedures, functions, secrets, and integrations.",
-    "cortex": "Cortex AI functions.",
+    "programmability": "Procedures, functions, code bundles, sequences, and integrations.",
+    "cortex": "Cortex AI functions, search services, and REST inference.",
     "recipes": "Composite agent workflows.",
 }
 

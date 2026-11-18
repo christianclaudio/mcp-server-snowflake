@@ -23,10 +23,12 @@ from snowflake_mcp.connection import (
     with_quoted_names,
 )
 from snowflake_mcp.errors import SafetyViolationError, status_error
+from snowflake_mcp.tools.governance_gap import register_governance_gap_tools
 
 
 def register_governance_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     """Register governance and RBAC tools."""
+    register_governance_gap_tools(mcp, client)
 
     @mcp.tool(
         name="get_current_context",
@@ -252,14 +254,25 @@ def register_governance_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="list_grants_to_role",
-        description="List privileges granted to a specific role.",
+        description=(
+            "List privileges granted to a specific role. Set include_hierarchy to append "
+            "INCLUDE HIERARCHY. https://docs.snowflake.com/en/sql-reference/sql/show-grants"
+        ),
     )
     async def snowflake_list_grants_to_role(
         role_name: Identifier,
+        include_hierarchy: bool = False,
     ) -> dict[str, Any]:
-        """List grants to role."""
+        """``SHOW GRANTS TO ROLE <role> [ INCLUDE HIERARCHY ]``.
+
+        https://docs.snowflake.com/en/sql-reference/sql/show-grants
+        """
+        if not isinstance(include_hierarchy, bool):
+            raise status_error("include_hierarchy must be a boolean.")
         try:
             sql = f"SHOW GRANTS TO ROLE {quote_ident(role_name)}"
+            if include_hierarchy:
+                sql += " INCLUDE HIERARCHY"
             res = client.execute_query(sql)
             return {"status": "success", "role": role_name, "grants": res.get("data", [])}
         except Exception as e:
@@ -268,14 +281,25 @@ def register_governance_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
     @mcp.tool(
         name="list_grants_to_user",
-        description="List roles granted to a specific user.",
+        description=(
+            "List roles granted to a specific user. Set include_hierarchy to append "
+            "INCLUDE HIERARCHY. https://docs.snowflake.com/en/sql-reference/sql/show-grants"
+        ),
     )
     async def snowflake_list_grants_to_user(
         user_name: Identifier,
+        include_hierarchy: bool = False,
     ) -> dict[str, Any]:
-        """List grants to user."""
+        """``SHOW GRANTS TO USER <user> [ INCLUDE HIERARCHY ]``.
+
+        https://docs.snowflake.com/en/sql-reference/sql/show-grants
+        """
+        if not isinstance(include_hierarchy, bool):
+            raise status_error("include_hierarchy must be a boolean.")
         try:
             sql = f"SHOW GRANTS TO USER {quote_ident(user_name)}"
+            if include_hierarchy:
+                sql += " INCLUDE HIERARCHY"
             res = client.execute_query(sql)
             return {"status": "success", "user": user_name, "grants": res.get("data", [])}
         except Exception as e:

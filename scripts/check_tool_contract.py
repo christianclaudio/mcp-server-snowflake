@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Contract verification script asserting full suite of 140 Snowflake MCP tools and annotations."""
+"""Contract verification script asserting the full Snowflake MCP tool suite and annotations."""
 
 from __future__ import annotations
 
@@ -21,8 +21,8 @@ def verify_contract() -> int:
         print(f"  ✓ {name}")
 
     errors: list[str] = []
-    if len(registered) != 140:
-        errors.append(f"Expected 140 tools, found {len(registered)}")
+    if len(registered) != 245:
+        errors.append(f"Expected 245 tools, found {len(registered)}")
 
     tools = list(registered.values())
     ro_count = sum(1 for t in tools if t.annotations and t.annotations.read_only_hint)
@@ -31,17 +31,17 @@ def verify_contract() -> int:
     unannotated_count = sum(1 for t in tools if t.annotations is None)
 
     print("\nAnnotation verification:")
-    print(f"  ✓ Read-only annotations:  {ro_count} (expected 88)")
-    print(f"  ✓ Destructive annotations:{dest_count} (expected 17)")
-    print(f"  ✓ Idempotent annotations: {idem_count} (expected 103)")
+    print(f"  ✓ Read-only annotations:  {ro_count} (expected 127)")
+    print(f"  ✓ Destructive annotations:{dest_count} (expected 41)")
+    print(f"  ✓ Idempotent annotations: {idem_count} (expected 149)")
     print(f"  ✓ Unannotated tools:      {unannotated_count} (expected 0)")
 
-    if ro_count != 88:
-        errors.append(f"Expected 88 read-only tools, found {ro_count}")
-    if dest_count != 17:
-        errors.append(f"Expected 17 destructive tools, found {dest_count}")
-    if idem_count != 103:
-        errors.append(f"Expected 103 idempotent tools, found {idem_count}")
+    if ro_count != 127:
+        errors.append(f"Expected 127 read-only tools, found {ro_count}")
+    if dest_count != 41:
+        errors.append(f"Expected 41 destructive tools, found {dest_count}")
+    if idem_count != 149:
+        errors.append(f"Expected 149 idempotent tools, found {idem_count}")
     if unannotated_count != 0:
         errors.append(f"Expected 0 unannotated tools, found {unannotated_count}")
 

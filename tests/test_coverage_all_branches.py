@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 from fastmcp.exceptions import ToolError
 
@@ -29,6 +30,8 @@ def mock_client() -> SnowflakeClient:
         }
     )
     client.switch_connection = MagicMock(return_value=cfg)  # type: ignore[method-assign]
+    client.config.token = "pat-dummy"
+    client.rest_transport = httpx.MockTransport(lambda _request: httpx.Response(200, json={"ok": True}))
     return client
 
 
@@ -72,7 +75,9 @@ async def test_all_tools_success_and_error_branches(
         for p_name, param in sig.parameters.items():
             hint = type_hints.get(p_name, param.annotation)
             hint_str = str(hint)
-            if param.default is not inspect.Parameter.empty:
+            if p_name == "set_properties":
+                args_kwargs[p_name] = {"COMMENT": "note"}
+            elif param.default is not inspect.Parameter.empty:
                 # Use default or set confirm=True for destructive tools
                 args_kwargs[p_name] = True if "confirm" in p_name else param.default
             elif p_name == "query":
@@ -81,6 +86,45 @@ async def test_all_tools_success_and_error_branches(
                 args_kwargs[p_name] = "X-SMALL"
             elif p_name in ("connection_name", "conn_name"):
                 args_kwargs[p_name] = "trial"
+            elif p_name == "target_lag":
+                args_kwargs[p_name] = "1 hour"
+            elif p_name == "edition":
+                args_kwargs[p_name] = "ENTERPRISE"
+            elif p_name == "catalog_kind":
+                args_kwargs[p_name] = "GLUE"
+            elif p_name == "api_provider":
+                args_kwargs[p_name] = "aws_api_gateway"
+            elif p_name == "repository_type":
+                args_kwargs[p_name] = "PYPI"
+            elif p_name == "source":
+                args_kwargs[p_name] = "snow://workspace/demo"
+            elif p_name in {"object_type", "object_domain"}:
+                args_kwargs[p_name] = "TABLE"
+            elif p_name == "grantee_kind":
+                args_kwargs[p_name] = "ROLE"
+            elif p_name == "scope_kind":
+                args_kwargs[p_name] = "SCHEMA"
+            elif p_name == "returns":
+                args_kwargs[p_name] = "NUMBER"
+            elif p_name == "arguments" and "str" in hint_str:
+                args_kwargs[p_name] = "x NUMBER"
+            elif p_name == "set_properties":
+                args_kwargs[p_name] = {"COMMENT": "note"} if "service" in name else {"DISABLED": True}
+            elif "list" in hint_str or "List" in hint_str:
+                if p_name == "privileges":
+                    args_kwargs[p_name] = ["SELECT"]
+                elif p_name == "accounts":
+                    args_kwargs[p_name] = ["org.acct"]
+                elif p_name == "columns":
+                    args_kwargs[p_name] = ["ID NUMBER"]
+                elif p_name == "attributes":
+                    args_kwargs[p_name] = ["TITLE"]
+                elif p_name == "api_allowed_prefixes":
+                    args_kwargs[p_name] = ["https://example.com"]
+                else:
+                    args_kwargs[p_name] = ["test"]
+            elif "dict" in hint_str or "Dict" in hint_str:
+                args_kwargs[p_name] = {"prompt": "hi"}
             elif hint in (str, "str") or "str" in hint_str:
                 args_kwargs[p_name] = "test_val"
             elif hint in (int, "int") or "int" in hint_str:
