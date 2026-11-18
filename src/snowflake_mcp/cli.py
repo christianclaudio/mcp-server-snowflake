@@ -147,7 +147,7 @@ def main() -> None:
     parser.add_argument(
         "--readonly",
         action="store_true",
-        help="Run in strict read-only mode (tools stay registered; handlers reject mutations)",
+        help="Run in strict read-only mode (lists only read-only tools; mutating calls are refused)",
     )
     parser.add_argument(
         "--profile",

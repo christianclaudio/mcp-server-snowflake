@@ -16,7 +16,7 @@ from mcp.types import CallToolResult, ToolAnnotations
 from snowflake_mcp import __version__
 from snowflake_mcp.auth import SharedTokenVerifier, read_auth_token
 from snowflake_mcp.config import SnowflakeConfig
-from snowflake_mcp.connection import IDENT_RULE, SnowflakeClient
+from snowflake_mcp.connection import IDENT_RULE, SnowflakeClient, read_only_enabled
 from snowflake_mcp.middleware import (
     ErrorHandlingMiddleware,
     ParentAuditMiddleware,
@@ -463,11 +463,16 @@ def create_server(
     mcp._tool_manager = tool_mgr  # type: ignore[attr-defined]
     record_mutating_tools(tool_mgr._tools, DOMAIN_NAMES)
 
-    if active.readonly:
-        for name, component in list(tool_mgr._tools.items()):
-            annotations = getattr(component, "annotations", None)
-            if not (annotations and annotations.read_only_hint):
-                read_only_gate.conceal(name)
+    # Every read-only path lists only read-only tools: the readonly profile,
+    # --readonly, SNOWFLAKE_MCP_READONLY=1, and read_only in connections.toml.
+    # The profile also conceals mutating tools, so a call reports an unknown tool.
+    # The flag paths keep them registered, so the gate refuses a call by name.
+    if active.readonly or read_only_enabled(snow_client.config):
+        if active.readonly:
+            for name, component in list(tool_mgr._tools.items()):
+                annotations = getattr(component, "annotations", None)
+                if not (annotations and annotations.read_only_hint):
+                    read_only_gate.conceal(name)
         mcp.add_transform(ReadOnlyToolFilter())
 
     # Tool search stays on every profile. Some hosts only surface search tools,
