@@ -1,0 +1,7 @@
+# Documented Snowflake REST endpoints that are not in the pinned specification snapshot.
+# Checked 2026-11-17.
+cortex-agent	POST	/api/v2/databases/{database}/schemas/{schema}/agents/{name}:run	tool	cortex_run_agent	https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents-run	2026-11-17
+cortex-agent	POST	/api/v2/cortex/agent:run	gap	documented agent run with no separate tool; cortex_run_agent calls DATA_AGENT_RUN	https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents-run	2026-11-17
+cortex-agent	GET	/api/v2/cortex/agent/runs/{run_id}	gap	no tool reads a Cortex agent run	https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents-run	2026-11-17
+cortex-agent	POST	/api/v2/cortex/agent/runs/{run_id}/cancel	gap	no tool cancels a Cortex agent run	https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents-run	2026-11-17
+cortex-responses	POST	/api/v2/cortex/v1/responses	tool	cortex_generate_response	https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-rest-api	2026-11-17

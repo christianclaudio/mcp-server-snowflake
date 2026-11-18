@@ -98,7 +98,12 @@ def test_conformance_is_its_own_job() -> None:
     assert "./scripts/check_conformance.sh" in conformance
     assert "setup-node" not in tool_contract
     assert "check_conformance.sh" not in tool_contract
-    assert "Assert 140 tool contract" in tool_contract
+    assert "Assert 245 tool contract" in tool_contract
+    drift = _job_block(jobs, "drift-check")
+    assert "--fail-on-new-unmapped" in drift
+    assert "GITHUB_TOKEN:" in drift
+    without_drift = jobs.replace(drift, "")
+    assert "--fail-on-new-unmapped" not in without_drift
     script = CONFORMANCE_PATH.read_text(encoding="utf-8")
     assert 'CONFORMANCE_VERSION="${CONFORMANCE_VERSION:-0.1.16}"' in script
 

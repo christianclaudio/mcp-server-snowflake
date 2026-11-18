@@ -1,0 +1,475 @@
+# snowflake-rest-api-specs 990e25d97236a11826c9eed40e587c2b859e5680
+# Update specification files for version 10.32
+# aa5d30b8ab96416a70d50f975e9e8db5da6f8f49 specifications/account.yaml
+# caaa69b6fbd8d16fae3686e6147eb8a418032a32 specifications/alert.yaml
+# 43863b370e9d1940fe53f1aae53707fb11d10d45 specifications/api-integration.yaml
+# d0a9289d090709ec41e61fdbf09366de14f2d188 specifications/artifact-repository.yaml
+# 744278d077f2456c8ed5e358ca606bedcf1b3861 specifications/catalog-integration.yaml
+# 6546e7779e442b6de2ad7ed34c74566bd03cb18f specifications/code-bundle-execution.yaml
+# 03b661db6e40a2c438068e893b115e844109c44f specifications/code-bundle.yaml
+# 067d369b05c15dbf51680c7c2ad70fc87a3c1e91 specifications/common-code-bundle.yaml
+# 07e71a348d6a101b7c0ce9d744b6764551107fc0 specifications/common-cortex-agent.yaml
+# 346076cdf8007639f837b204532bdc999bb7eaa6 specifications/common-cortex-analyst.yaml
+# 2022875262da2b51f2720c65cafba90b0aa4beef specifications/common-cortex-tool.yaml
+# 348d3eb050d9c9d4ddf715eed4ccda7b6c1c4947 specifications/common-file-format.yaml
+# 60727e6933a5de630750b5ac261b0d002978b973 specifications/common.yaml
+# f988c39df70d1952b5f35c2b04038f084c2086da specifications/compute-pool.yaml
+# 5b089de06fca3c5af4a00f877264733453f14905 specifications/cortex-analyst.yaml
+# 2b5412fa3326f3402b6718d787f1f5fdde942084 specifications/cortex-embed.yaml
+# 888d8ea42ea1dc7b9bf08d3b229fac4109e21f82 specifications/cortex-generic-anthropic.yaml
+# cddcac174eb6c5a5102ee88d6279ad62b8c582af specifications/cortex-generic-openai.yaml
+# 4853c326522dd2d4f1ede5c500828911b12939ad specifications/cortex-inference.yaml
+# 046e781b3f0125a83e767bf3e5a17347e2220792 specifications/cortex-search-service.yaml
+# 87cc6270820ee101d8df0f3356851dc4017f9a82 specifications/database-role.yaml
+# 9feb7b2092d9a4fadca130ac24384cf03d5277df specifications/database.yaml
+# ffd89b310fd83a8edf4ec007d438e45acfc5862e specifications/dynamic-table.yaml
+# 7b81f00920dffd868300603b53d20805e67eee71 specifications/event-table.yaml
+# 6e6462ccc982cfba7a53fb6027e6f8e5f4f59d0a specifications/external-volume.yaml
+# e786011f76c1f518be422ffc94784978aa4747a3 specifications/function.yaml
+# a0ac9b981716817d0f4a6bc5eeeaa7926f1d7192 specifications/grant.yaml
+# 93ca057ef57e86118b7f9d8508a9845b6d502e27 specifications/iceberg-table.yaml
+# e6c014a5024e1d1d1054bde7106b29c6c8b51227 specifications/image-repository.yaml
+# a1604a17cc1a5116b2ecf4c803fa8f471bcd8d31 specifications/managed-account.yaml
+# b2ed7c81ad29abb44f338419c83db76b6f3171fd specifications/network-policy.yaml
+# adc42395e299fa72ddcd065fa7ebddd5f8308bfe specifications/network-rule.yaml
+# ba2a60680cce19ec36b8f78274b1a39232c4d109 specifications/notebook.yaml
+# 8167ba9b9115952675c8be095a8ba7f1e09de287 specifications/notification-integration.yaml
+# 6eed7ee76bdbc7e2fe721aa42f92ca996c3dbe59 specifications/password-policy.yaml
+# 5d83703770b23226bccdb0bc3fe1705aa7836b0e specifications/pipe.yaml
+# fdabd5626d5b89692e043b41cb47e60b43f7616c specifications/procedure.yaml
+# 8676a8d992a9cfc7d07b78913d3ba8c0cd645a77 specifications/result.yaml
+# 0b78f4a282fed333036910abed7844cf2d6a92f0 specifications/role.yaml
+# 32478a0181e97e95baeef03ed2d1051c7ea3c597 specifications/schema.yaml
+# 2d2a982590d4dc9786feb47143c59659217d0a08 specifications/secret.yaml
+# 0a5967ed43710e2b7961a2d33dc89f4011e5263d specifications/sequence.yaml
+# 53e4d9546c444fdd2e458b3358776ab1e497aa25 specifications/service.yaml
+# 4f5b838e176c06187836e7f2f3e09e6b56582c05 specifications/spark-connect.yaml
+# c03739afba4403e43208ca63b2d08337da98a934 specifications/sqlapi.yaml
+# e8144d458c32fab1c5f9153984472338b59bda62 specifications/stage.yaml
+# 71b262e0a4c8f1c9ab2bbbb89e459612db0e3fb9 specifications/stream.yaml
+# b2abae93249d78dee6162e4987d138c288a4e848 specifications/streamlit.yaml
+# 8ed1c697226f528c961afb228eb2bbf5d5a881af specifications/table.yaml
+# e817e4ab94ceb63f779d37822223b1da0bc42227 specifications/tag.yaml
+# 44316489e575e53f2c3790a1200424b555b65c85 specifications/task.yaml
+# 3a3ac6b638e55435fb2974e9ee66e293ca8d0618 specifications/user-defined-function.yaml
+# 5db05f74ab1bc5db24217062b7f2d046c70d593f specifications/user.yaml
+# bff48483257bbe8adf5dc2f8fc1d95e6938f9137 specifications/view.yaml
+# e27aea1986379c13052ffecbd64bcdc68ed6100b specifications/warehouse.yaml
+account	GET	/api/v2/accounts	tool	governance_list_accounts
+account	POST	/api/v2/accounts	tool	governance_create_account
+account	DELETE	/api/v2/accounts/{name}	tool	governance_drop_account
+account	POST	/api/v2/accounts/{name}:undrop	tool	governance_undrop_account
+alert	GET	/api/v2/databases/{database}/schemas/{schema}/alerts	tool	alerts_list_alerts
+alert	POST	/api/v2/databases/{database}/schemas/{schema}/alerts	tool	alerts_create_alert
+alert	GET	/api/v2/databases/{database}/schemas/{schema}/alerts/{name}	tool	alerts_describe_alert
+alert	DELETE	/api/v2/databases/{database}/schemas/{schema}/alerts/{name}	tool	alerts_drop_alert
+alert	POST	/api/v2/databases/{database}/schemas/{schema}/alerts/{name}:clone	gap	no tool: alerts_clone_alert
+alert	POST	/api/v2/databases/{database}/schemas/{schema}/alerts/{name}:execute	gap	no tool: alerts_execute_alert
+alert	POST	/api/v2/databases/{database}/schemas/{schema}/alerts/{name}:set-tags	tool	tags_set_object_tag
+alert	POST	/api/v2/databases/{database}/schemas/{schema}/alerts/{name}:unset-tags	tool	tags_unset_object_tag
+alert	GET	/api/v2/databases/{database}/schemas/{schema}/alerts/{name}:get-tags	tool	tags_get_object_tag_references
+api-integration	GET	/api/v2/api-integrations	tool	programmability_list_integrations
+api-integration	POST	/api/v2/api-integrations	tool	programmability_create_api_integration
+api-integration	GET	/api/v2/api-integrations/{name}	tool	programmability_describe_api_integration
+api-integration	PUT	/api/v2/api-integrations/{name}	gap	no tool: programmability_put_api_integration
+api-integration	DELETE	/api/v2/api-integrations/{name}	gap	no tool: programmability_drop_api_integration
+api-integration	POST	/api/v2/api-integrations/{name}:set-tags	tool	tags_set_object_tag
+api-integration	POST	/api/v2/api-integrations/{name}:unset-tags	tool	tags_unset_object_tag
+api-integration	GET	/api/v2/api-integrations/{name}:get-tags	tool	tags_get_object_tag_references
+artifact-repository	GET	/api/v2/databases/{database}/schemas/{schema}/artifact-repositories	tool	programmability_list_artifact_repositories
+artifact-repository	POST	/api/v2/databases/{database}/schemas/{schema}/artifact-repositories	tool	programmability_create_artifact_repository
+artifact-repository	GET	/api/v2/databases/{database}/schemas/{schema}/artifact-repositories/{name}	tool	programmability_describe_artifact_repository
+artifact-repository	DELETE	/api/v2/databases/{database}/schemas/{schema}/artifact-repositories/{name}	tool	programmability_drop_artifact_repository
+artifact-repository	PUT	/api/v2/databases/{database}/schemas/{schema}/artifact-repositories/{name}	gap	no tool: programmability_put_artifact_repository
+artifact-repository	POST	/api/v2/databases/{database}/schemas/{schema}/artifact-repositories/{name}:rename	gap	no tool: programmability_rename_artifact_repository
+catalog-integration	GET	/api/v2/catalog-integrations	tool	dynamic_tables_list_catalog_integrations
+catalog-integration	POST	/api/v2/catalog-integrations	gap	no tool: dynamic_tables_create_catalog_integration
+catalog-integration	GET	/api/v2/catalog-integrations/{name}	gap	no tool: dynamic_tables_describe_catalog_integration
+catalog-integration	DELETE	/api/v2/catalog-integrations/{name}	gap	no tool: dynamic_tables_drop_catalog_integration
+catalog-integration	POST	/api/v2/catalog-integrations/{name}:set-tags	tool	tags_set_object_tag
+catalog-integration	POST	/api/v2/catalog-integrations/{name}:unset-tags	tool	tags_unset_object_tag
+catalog-integration	GET	/api/v2/catalog-integrations/{name}:get-tags	tool	tags_get_object_tag_references
+code-bundle-execution	GET	/api/v2/code-bundle-executions	tool	programmability_list_code_bundle_executions
+code-bundle-execution	POST	/api/v2/code-bundle-executions	tool	programmability_execute_code_bundle
+code-bundle-execution	GET	/api/v2/code-bundle-executions/{executionId}	tool	programmability_get_code_bundle_execution
+code-bundle-execution	POST	/api/v2/code-bundle-executions/{executionId}:cancel	tool	programmability_cancel_code_bundle_execution
+code-bundle	GET	/api/v2/databases/{database}/schemas/{schema}/code-bundles	tool	programmability_list_code_bundles
+code-bundle	POST	/api/v2/databases/{database}/schemas/{schema}/code-bundles	tool	programmability_create_code_bundle
+code-bundle	GET	/api/v2/databases/{database}/schemas/{schema}/code-bundles/{name}	gap	no tool: programmability_describe_code_bundle
+code-bundle	DELETE	/api/v2/databases/{database}/schemas/{schema}/code-bundles/{name}	gap	no tool: programmability_drop_code_bundle
+code-bundle	POST	/api/v2/databases/{database}/schemas/{schema}/code-bundles/{name}:execute	tool	programmability_execute_code_bundle
+code-bundle	POST	/api/v2/databases/{database}/schemas/{schema}/code-bundles/{name}:add-version	gap	no tool: programmability_add_version_code_bundle
+compute-pool	GET	/api/v2/compute-pools	tool	compute_services_list_compute_pools
+compute-pool	POST	/api/v2/compute-pools	gap	no tool: compute_services_create_compute_pool
+compute-pool	GET	/api/v2/compute-pools/{name}	tool	compute_services_describe_compute_pool
+compute-pool	PUT	/api/v2/compute-pools/{name}	gap	no tool: compute_services_put_compute_pool
+compute-pool	DELETE	/api/v2/compute-pools/{name}	gap	no tool: compute_services_drop_compute_pool
+compute-pool	POST	/api/v2/compute-pools/{name}:resume	tool	compute_services_resume_compute_pool
+compute-pool	POST	/api/v2/compute-pools/{name}:suspend	tool	compute_services_suspend_compute_pool
+compute-pool	POST	/api/v2/compute-pools/{name}:stopallservices	deprecated	deprecated: true in the spec
+compute-pool	POST	/api/v2/compute-pools/{name}:stop-all-services	gap	no tool: compute_services_stop_all_services_compute_pool
+compute-pool	GET	/api/v2/compute-pools/instance-families	gap	no tool: instance families list
+compute-pool	POST	/api/v2/compute-pools/{name}:set-tags	tool	tags_set_object_tag
+compute-pool	POST	/api/v2/compute-pools/{name}:unset-tags	tool	tags_unset_object_tag
+compute-pool	GET	/api/v2/compute-pools/{name}:get-tags	tool	tags_get_object_tag_references
+cortex-analyst	POST	/api/v2/cortex/analyst/feedback	gap	REST-only feedback endpoint; not in brief
+cortex-analyst	POST	/api/v2/cortex/analyst/message	gap	REST-only; analyst_query is a documented AI_COMPLETE fallback (OQ1)
+cortex-analyst	POST	/api/v2/cortex/analyst/verified-query-suggestions	tool	cortex_suggest_verified_queries
+cortex-analyst	POST	/api/v2/cortex/analyst/fast-generation	tool	cortex_generate_semantic_model
+cortex-analyst	POST	/api/v2/cortex/analyst/pre-selection	tool	cortex_preselect_semantic_model_tables
+cortex-analyst	POST	/api/v2/cortex/analyst/filters-and-metrics-suggestions	tool	cortex_suggest_semantic_model_metrics
+cortex-analyst	POST	/api/v2/cortex/analyst/agentic-optimizations	tool	cortex_list_semantic_model_optimizations
+cortex-analyst	GET	/api/v2/cortex/analyst/agentic-optimization	tool	cortex_get_semantic_model_optimization
+cortex-analyst	GET	/api/v2/cortex/analyst/token	excluded	internal Cortex Analyst OAuth token exchange
+cortex-embed	POST	/api/v2/cortex/inference:embed	tool	cortex_embed_text_768
+cortex-generic-anthropic	POST	/api/v2/cortex/v1/messages	tool	cortex_message_completion
+cortex-generic-openai	POST	/api/v2/cortex/v1/chat/completions	tool	cortex_chat_completion
+cortex-inference	GET	/api/v2/cortex/models	tool	cortex_list_models
+cortex-inference	POST	/api/v2/cortex/inference:complete	tool	cortex_complete
+cortex-search-service	GET	/api/v2/databases/{database}/schemas/{schema}/cortex-search-services	tool	cortex_list_search_services
+cortex-search-service	POST	/api/v2/databases/{database}/schemas/{schema}/cortex-search-services	tool	cortex_create_search_service
+cortex-search-service	GET	/api/v2/databases/{database}/schemas/{schema}/cortex-search-services/{name}	tool	cortex_describe_search_service
+cortex-search-service	DELETE	/api/v2/databases/{database}/schemas/{schema}/cortex-search-services/{name}	tool	cortex_drop_search_service
+cortex-search-service	POST	/api/v2/databases/{database}/schemas/{schema}/cortex-search-services/{service_name}:query	tool	cortex_search
+cortex-search-service	POST	/api/v2/databases/{database}/schemas/{schema}/cortex-search-services/{service_name}:suggest	tool	cortex_suggest_search
+cortex-search-service	POST	/api/v2/databases/{database}/schemas/{schema}/cortex-search-services/{name}:suspend	tool	cortex_suspend_search_service
+cortex-search-service	POST	/api/v2/databases/{database}/schemas/{schema}/cortex-search-services/{name}:resume	tool	cortex_resume_search_service
+cortex-search-service	POST	/api/v2/databases/{database}/schemas/{schema}/cortex-search-services/{name}:feedback	gap	REST-only feedback endpoint; not in brief
+database-role	GET	/api/v2/databases/{database}/database-roles	tool	governance_list_database_roles
+database-role	POST	/api/v2/databases/{database}/database-roles	tool	governance_create_database_role
+database-role	DELETE	/api/v2/databases/{database}/database-roles/{name}	tool	governance_drop_database_role
+database-role	POST	/api/v2/databases/{database}/database-roles/{name}:clone	gap	no tool: governance_clone_database_role
+database-role	GET	/api/v2/databases/{database}/database-roles/{name}/grants	tool	governance_list_grants_to_database_role
+database-role	POST	/api/v2/databases/{database}/database-roles/{name}/grants	tool	governance_grant_privileges
+database-role	POST	/api/v2/databases/{database}/database-roles/{name}/grants:revoke	tool	governance_revoke_privileges
+database-role	GET	/api/v2/databases/{database}/database-roles/{name}/future-grants	tool	governance_list_future_grants
+database-role	POST	/api/v2/databases/{database}/database-roles/{name}/future-grants	tool	governance_grant_future_privileges
+database-role	POST	/api/v2/databases/{database}/database-roles/{name}/future-grants:revoke	tool	governance_revoke_future_privileges
+database-role	POST	/api/v2/databases/{database}/database-roles/{name}:set-tags	tool	tags_set_object_tag
+database-role	POST	/api/v2/databases/{database}/database-roles/{name}:unset-tags	tool	tags_unset_object_tag
+database-role	GET	/api/v2/databases/{database}/database-roles/{name}:get-tags	tool	tags_get_object_tag_references
+database	GET	/api/v2/databases	tool	databases_list_databases
+database	POST	/api/v2/databases	tool	databases_create_database
+database	POST	/api/v2/databases:from-share	gap	no tool: databases_from_share_database
+database	POST	/api/v2/databases/{name}:from_share	deprecated	deprecated: true in the spec
+database	POST	/api/v2/databases/{name}:clone	tool	databases_clone_database
+database	GET	/api/v2/databases/{name}	tool	databases_describe_database
+database	PUT	/api/v2/databases/{name}	gap	no tool: databases_put_database
+database	DELETE	/api/v2/databases/{name}	tool	databases_drop_database
+database	POST	/api/v2/databases/{name}:undrop	tool	databases_undrop_database
+database	POST	/api/v2/databases/{name}/replication:enable	tool	databases_enable_database_replication
+database	POST	/api/v2/databases/{name}/replication:disable	tool	databases_disable_database_replication
+database	POST	/api/v2/databases/{name}/replication:refresh	tool	databases_refresh_database
+database	POST	/api/v2/databases/{name}/failover:enable	tool	databases_enable_database_failover
+database	POST	/api/v2/databases/{name}/failover:disable	tool	databases_disable_database_failover
+database	POST	/api/v2/databases/{name}/failover:primary	tool	databases_promote_database
+database	POST	/api/v2/databases/{name}:set-tags	tool	tags_set_object_tag
+database	POST	/api/v2/databases/{name}:unset-tags	tool	tags_unset_object_tag
+database	GET	/api/v2/databases/{name}:get-tags	tool	tags_get_object_tag_references
+dynamic-table	GET	/api/v2/databases/{database}/schemas/{schema}/dynamic-tables	tool	dynamic_tables_list_dynamic_tables
+dynamic-table	POST	/api/v2/databases/{database}/schemas/{schema}/dynamic-tables	gap	no tool: dynamic_tables_create_dynamic_table
+dynamic-table	GET	/api/v2/databases/{database}/schemas/{schema}/dynamic-tables/{name}	tool	dynamic_tables_describe_dynamic_table
+dynamic-table	DELETE	/api/v2/databases/{database}/schemas/{schema}/dynamic-tables/{name}	gap	no tool: dynamic_tables_drop_dynamic_table
+dynamic-table	POST	/api/v2/databases/{database}/schemas/{schema}/dynamic-tables/{name}:clone	gap	no tool: dynamic_tables_clone_dynamic_table
+dynamic-table	POST	/api/v2/databases/{database}/schemas/{schema}/dynamic-tables/{name}:undrop	gap	no tool: dynamic_tables_undrop_dynamic_table
+dynamic-table	POST	/api/v2/databases/{database}/schemas/{schema}/dynamic-tables/{name}:suspend	tool	dynamic_tables_suspend_dynamic_table
+dynamic-table	POST	/api/v2/databases/{database}/schemas/{schema}/dynamic-tables/{name}:resume	tool	dynamic_tables_resume_dynamic_table
+dynamic-table	POST	/api/v2/databases/{database}/schemas/{schema}/dynamic-tables/{name}:refresh	tool	dynamic_tables_refresh_dynamic_table
+dynamic-table	POST	/api/v2/databases/{database}/schemas/{schema}/dynamic-tables/{name}:suspend-recluster	gap	no tool: dynamic_tables_suspend_recluster_dynamic_table
+dynamic-table	POST	/api/v2/databases/{database}/schemas/{schema}/dynamic-tables/{name}:resume-recluster	gap	no tool: dynamic_tables_resume_recluster_dynamic_table
+dynamic-table	POST	/api/v2/databases/{database}/schemas/{schema}/dynamic-tables/{name}:swap-with	gap	no tool: dynamic_tables_swap_with_dynamic_table
+dynamic-table	POST	/api/v2/databases/{database}/schemas/{schema}/dynamic-tables/{name}:set-tags	tool	tags_set_object_tag
+dynamic-table	POST	/api/v2/databases/{database}/schemas/{schema}/dynamic-tables/{name}:unset-tags	tool	tags_unset_object_tag
+dynamic-table	GET	/api/v2/databases/{database}/schemas/{schema}/dynamic-tables/{name}:get-tags	tool	tags_get_object_tag_references
+event-table	GET	/api/v2/databases/{database}/schemas/{schema}/event-tables	tool	programmability_list_event_tables
+event-table	POST	/api/v2/databases/{database}/schemas/{schema}/event-tables	gap	no tool: programmability_create_event_table
+event-table	GET	/api/v2/databases/{database}/schemas/{schema}/event-tables/{name}	gap	no tool: programmability_describe_event_table
+event-table	DELETE	/api/v2/databases/{database}/schemas/{schema}/event-tables/{name}	gap	no tool: programmability_drop_event_table
+event-table	POST	/api/v2/databases/{database}/schemas/{schema}/event-tables/{name}:rename	gap	no tool: programmability_rename_event_table
+event-table	POST	/api/v2/databases/{database}/schemas/{schema}/event-tables/{name}:set-tags	tool	tags_set_object_tag
+event-table	POST	/api/v2/databases/{database}/schemas/{schema}/event-tables/{name}:unset-tags	tool	tags_unset_object_tag
+event-table	GET	/api/v2/databases/{database}/schemas/{schema}/event-tables/{name}:get-tags	tool	tags_get_object_tag_references
+external-volume	GET	/api/v2/external-volumes	tool	dynamic_tables_list_external_volumes
+external-volume	POST	/api/v2/external-volumes	gap	no tool: dynamic_tables_create_external_volume
+external-volume	GET	/api/v2/external-volumes/{name}	gap	no tool: dynamic_tables_describe_external_volume
+external-volume	DELETE	/api/v2/external-volumes/{name}	gap	no tool: dynamic_tables_drop_external_volume
+external-volume	POST	/api/v2/external-volumes/{name}:undrop	gap	no tool: dynamic_tables_undrop_external_volume
+function	GET	/api/v2/databases/{database}/schemas/{schema}/functions	gap	no tool: programmability_list_service_functions
+function	POST	/api/v2/databases/{database}/schemas/{schema}/functions	gap	no tool: programmability_create_service_function
+function	GET	/api/v2/databases/{database}/schemas/{schema}/functions/{nameWithArgs}	gap	no tool: programmability_describe_service_function
+function	DELETE	/api/v2/databases/{database}/schemas/{schema}/functions/{nameWithArgs}	gap	no tool: programmability_drop_service_function
+function	POST	/api/v2/databases/{database}/schemas/{schema}/functions/{name}:execute	gap	no tool: programmability_execute_service_function
+function	POST	/api/v2/databases/{database}/schemas/{schema}/functions/{nameWithArgs}:set-tags	tool	tags_set_object_tag
+function	POST	/api/v2/databases/{database}/schemas/{schema}/functions/{nameWithArgs}:unset-tags	tool	tags_unset_object_tag
+function	GET	/api/v2/databases/{database}/schemas/{schema}/functions/{nameWithArgs}:get-tags	tool	tags_get_object_tag_references
+grant	POST	/api/v2/grants/{granteeType}/{granteeName}/{securableType}/{securableName}/privileges	deprecated	deprecated: true in the spec
+grant	POST	/api/v2/grants/{granteeType}/{granteeName}/{bulkGrantType}/{securableTypePlural}/{scopeType}/{scopeName}/privileges	deprecated	deprecated: true in the spec
+grant	DELETE	/api/v2/grants/{granteeType}/{granteeName}/{securableType}/{securableName}/privileges/{privilege}	deprecated	deprecated: true in the spec
+grant	DELETE	/api/v2/grants/{granteeType}/{granteeName}/{securableType}/{securableName}/privileges/{privilege}/grant-option	deprecated	deprecated: true in the spec
+grant	DELETE	/api/v2/grants/{granteeType}/{granteeName}/{bulkGrantType}/{securableTypePlural}/{scopeType}/{scopeName}/privileges/{privilege}	deprecated	deprecated: true in the spec
+grant	DELETE	/api/v2/grants/{granteeType}/{granteeName}/{bulkGrantType}/{securableTypePlural}/{scopeType}/{scopeName}/privileges/{privilege}/grant-option	deprecated	deprecated: true in the spec
+grant	GET	/api/v2/grants/{granteeType}/{granteeName}	deprecated	deprecated: true in the spec
+iceberg-table	GET	/api/v2/databases/{database}/schemas/{schema}/iceberg-tables	tool	dynamic_tables_list_iceberg_tables
+iceberg-table	POST	/api/v2/databases/{database}/schemas/{schema}/iceberg-tables	tool	dynamic_tables_create_iceberg_table
+iceberg-table	POST	/api/v2/databases/{database}/schemas/{schema}/iceberg-tables:as-select	gap	no tool: dynamic_tables_as_select_iceberg_table
+iceberg-table	POST	/api/v2/databases/{database}/schemas/{schema}/iceberg-tables:from-aws-glue-catalog	tool	dynamic_tables_create_iceberg_table_from_catalog
+iceberg-table	POST	/api/v2/databases/{database}/schemas/{schema}/iceberg-tables:from-delta	tool	dynamic_tables_create_iceberg_table_from_catalog
+iceberg-table	POST	/api/v2/databases/{database}/schemas/{schema}/iceberg-tables:from-iceberg-files	tool	dynamic_tables_create_iceberg_table_from_catalog
+iceberg-table	POST	/api/v2/databases/{database}/schemas/{schema}/iceberg-tables:from-iceberg-rest	tool	dynamic_tables_create_iceberg_table_from_catalog
+iceberg-table	GET	/api/v2/databases/{database}/schemas/{schema}/iceberg-tables/{name}	tool	dynamic_tables_describe_iceberg_table
+iceberg-table	DELETE	/api/v2/databases/{database}/schemas/{schema}/iceberg-tables/{name}	gap	no tool: dynamic_tables_drop_iceberg_table
+iceberg-table	POST	/api/v2/databases/{database}/schemas/{schema}/iceberg-tables/{name}:resume-recluster	gap	no tool: dynamic_tables_resume_recluster_iceberg_table
+iceberg-table	POST	/api/v2/databases/{database}/schemas/{schema}/iceberg-tables/{name}:suspend-recluster	gap	no tool: dynamic_tables_suspend_recluster_iceberg_table
+iceberg-table	POST	/api/v2/databases/{database}/schemas/{schema}/iceberg-tables/{name}:refresh	tool	dynamic_tables_refresh_iceberg_table
+iceberg-table	POST	/api/v2/databases/{database}/schemas/{schema}/iceberg-tables/{name}:convert-to-managed	tool	dynamic_tables_convert_iceberg_table_to_managed
+iceberg-table	POST	/api/v2/databases/{database}/schemas/{schema}/iceberg-tables/{name}:undrop	gap	no tool: dynamic_tables_undrop_iceberg_table
+iceberg-table	POST	/api/v2/databases/{database}/schemas/{schema}/iceberg-tables/{name}:clone	gap	no tool: dynamic_tables_clone_iceberg_table
+iceberg-table	POST	/api/v2/databases/{database}/schemas/{schema}/iceberg-tables/{name}:create-like	gap	no tool: dynamic_tables_create_like_iceberg_table
+iceberg-table	POST	/api/v2/databases/{database}/schemas/{schema}/iceberg-tables/{name}:set-tags	tool	tags_set_object_tag
+iceberg-table	POST	/api/v2/databases/{database}/schemas/{schema}/iceberg-tables/{name}:unset-tags	tool	tags_unset_object_tag
+iceberg-table	GET	/api/v2/databases/{database}/schemas/{schema}/iceberg-tables/{name}:get-tags	tool	tags_get_object_tag_references
+image-repository	GET	/api/v2/databases/{database}/schemas/{schema}/image-repositories	tool	compute_services_list_image_repositories
+image-repository	POST	/api/v2/databases/{database}/schemas/{schema}/image-repositories	gap	no tool: compute_services_create_image_repository
+image-repository	GET	/api/v2/databases/{database}/schemas/{schema}/image-repositories/{name}	gap	no tool: compute_services_describe_image_repository
+image-repository	DELETE	/api/v2/databases/{database}/schemas/{schema}/image-repositories/{name}	gap	no tool: compute_services_drop_image_repository
+image-repository	GET	/api/v2/databases/{database}/schemas/{schema}/image-repositories/{name}/images	tool	compute_services_list_images
+image-repository	POST	/api/v2/databases/{database}/schemas/{schema}/image-repositories/{name}:set-tags	tool	tags_set_object_tag
+image-repository	POST	/api/v2/databases/{database}/schemas/{schema}/image-repositories/{name}:unset-tags	tool	tags_unset_object_tag
+image-repository	GET	/api/v2/databases/{database}/schemas/{schema}/image-repositories/{name}:get-tags	tool	tags_get_object_tag_references
+managed-account	GET	/api/v2/managed-accounts	tool	governance_list_managed_accounts
+managed-account	POST	/api/v2/managed-accounts	tool	governance_create_managed_account
+managed-account	DELETE	/api/v2/managed-accounts/{name}	tool	governance_drop_managed_account
+network-policy	GET	/api/v2/network-policies	tool	network_list_network_policies
+network-policy	POST	/api/v2/network-policies	gap	no tool: network_create_network_policy
+network-policy	GET	/api/v2/network-policies/{name}	tool	network_describe_network_policy
+network-policy	DELETE	/api/v2/network-policies/{name}	gap	no tool: network_drop_network_policy
+network-policy	POST	/api/v2/network-policies/{name}:set-tags	tool	tags_set_object_tag
+network-policy	POST	/api/v2/network-policies/{name}:unset-tags	tool	tags_unset_object_tag
+network-policy	GET	/api/v2/network-policies/{name}:get-tags	tool	tags_get_object_tag_references
+network-rule	GET	/api/v2/databases/{database}/schemas/{schema}/network-rules	tool	network_list_network_rules
+network-rule	POST	/api/v2/databases/{database}/schemas/{schema}/network-rules	gap	no tool: network_create_network_rule
+network-rule	GET	/api/v2/databases/{database}/schemas/{schema}/network-rules/{name}	tool	network_describe_network_rule
+network-rule	DELETE	/api/v2/databases/{database}/schemas/{schema}/network-rules/{name}	gap	no tool: network_drop_network_rule
+notebook	GET	/api/v2/databases/{database}/schemas/{schema}/notebooks	tool	compute_services_list_notebooks
+notebook	POST	/api/v2/databases/{database}/schemas/{schema}/notebooks	tool	compute_services_create_notebook
+notebook	GET	/api/v2/databases/{database}/schemas/{schema}/notebooks/{name}	tool	compute_services_describe_notebook
+notebook	DELETE	/api/v2/databases/{database}/schemas/{schema}/notebooks/{name}	tool	compute_services_drop_notebook
+notebook	POST	/api/v2/databases/{database}/schemas/{schema}/notebooks/{name}:execute	tool	compute_services_execute_notebook
+notebook	POST	/api/v2/databases/{database}/schemas/{schema}/notebooks/{name}:rename	gap	no tool: compute_services_rename_notebook
+notebook	POST	/api/v2/databases/{database}/schemas/{schema}/notebooks/{name}:add-live-version	tool	compute_services_add_notebook_live_version
+notebook	POST	/api/v2/databases/{database}/schemas/{schema}/notebooks/{name}:commit	tool	compute_services_commit_notebook_version
+notebook	POST	/api/v2/databases/{database}/schemas/{schema}/notebooks/{name}:set-tags	tool	tags_set_object_tag
+notebook	POST	/api/v2/databases/{database}/schemas/{schema}/notebooks/{name}:unset-tags	tool	tags_unset_object_tag
+notebook	GET	/api/v2/databases/{database}/schemas/{schema}/notebooks/{name}:get-tags	tool	tags_get_object_tag_references
+notification-integration	GET	/api/v2/notification-integrations	tool	programmability_list_notification_integrations
+notification-integration	POST	/api/v2/notification-integrations	gap	no tool: programmability_create_notification_integration
+notification-integration	GET	/api/v2/notification-integrations/{name}	gap	no tool: programmability_describe_notification_integration
+notification-integration	DELETE	/api/v2/notification-integrations/{name}	gap	no tool: programmability_drop_notification_integration
+notification-integration	POST	/api/v2/notification-integrations/{name}:set-tags	tool	tags_set_object_tag
+notification-integration	POST	/api/v2/notification-integrations/{name}:unset-tags	tool	tags_unset_object_tag
+notification-integration	GET	/api/v2/notification-integrations/{name}:get-tags	tool	tags_get_object_tag_references
+password-policy	GET	/api/v2/databases/{database}/schemas/{schema}/password-policies	tool	network_list_password_policies
+password-policy	POST	/api/v2/databases/{database}/schemas/{schema}/password-policies	gap	no tool: network_create_password_policy
+password-policy	GET	/api/v2/databases/{database}/schemas/{schema}/password-policies/{name}	tool	network_describe_password_policy
+password-policy	DELETE	/api/v2/databases/{database}/schemas/{schema}/password-policies/{name}	gap	no tool: network_drop_password_policy
+password-policy	POST	/api/v2/databases/{database}/schemas/{schema}/password-policies/{name}:rename	gap	no tool: network_rename_password_policy
+password-policy	POST	/api/v2/databases/{database}/schemas/{schema}/password-policies/{name}:set-tags	tool	tags_set_object_tag
+password-policy	POST	/api/v2/databases/{database}/schemas/{schema}/password-policies/{name}:unset-tags	tool	tags_unset_object_tag
+password-policy	GET	/api/v2/databases/{database}/schemas/{schema}/password-policies/{name}:get-tags	tool	tags_get_object_tag_references
+pipe	GET	/api/v2/databases/{database}/schemas/{schema}/pipes	tool	pipes_list_pipes
+pipe	POST	/api/v2/databases/{database}/schemas/{schema}/pipes	tool	pipes_create_pipe
+pipe	GET	/api/v2/databases/{database}/schemas/{schema}/pipes/{name}	tool	pipes_describe_pipe
+pipe	DELETE	/api/v2/databases/{database}/schemas/{schema}/pipes/{name}	tool	pipes_drop_pipe
+pipe	POST	/api/v2/databases/{database}/schemas/{schema}/pipes/{name}:refresh	gap	no tool: pipes_refresh_pipe
+pipe	POST	/api/v2/databases/{database}/schemas/{schema}/pipes/{name}:set-tags	tool	tags_set_object_tag
+pipe	POST	/api/v2/databases/{database}/schemas/{schema}/pipes/{name}:unset-tags	tool	tags_unset_object_tag
+pipe	GET	/api/v2/databases/{database}/schemas/{schema}/pipes/{name}:get-tags	tool	tags_get_object_tag_references
+procedure	GET	/api/v2/databases/{database}/schemas/{schema}/procedures	tool	programmability_list_procedures
+procedure	POST	/api/v2/databases/{database}/schemas/{schema}/procedures	gap	no tool: programmability_create_procedure
+procedure	GET	/api/v2/databases/{database}/schemas/{schema}/procedures/{nameWithArgs}	tool	programmability_describe_procedure
+procedure	DELETE	/api/v2/databases/{database}/schemas/{schema}/procedures/{nameWithArgs}	gap	no tool: programmability_drop_procedure
+procedure	POST	/api/v2/databases/{database}/schemas/{schema}/procedures/{nameWithArgs}:call	gap	no tool: programmability_call_procedure
+procedure	POST	/api/v2/databases/{database}/schemas/{schema}/procedures/{nameWithArgs}:set-tags	tool	tags_set_object_tag
+procedure	POST	/api/v2/databases/{database}/schemas/{schema}/procedures/{nameWithArgs}:unset-tags	tool	tags_unset_object_tag
+procedure	GET	/api/v2/databases/{database}/schemas/{schema}/procedures/{nameWithArgs}:get-tags	tool	tags_get_object_tag_references
+result	GET	/api/v2/results/{result_handler}	excluded	SQL API async result fetch; the connector returns rows
+role	GET	/api/v2/roles	tool	governance_list_roles
+role	POST	/api/v2/roles	tool	governance_create_role
+role	DELETE	/api/v2/roles/{name}	tool	governance_drop_role
+role	GET	/api/v2/roles/{name}/grants	tool	governance_list_grants_to_role
+role	POST	/api/v2/roles/{name}/grants	tool	governance_grant_privileges
+role	POST	/api/v2/roles/{name}/grants:revoke	tool	governance_revoke_privileges
+role	GET	/api/v2/roles/{name}/grants-of	tool	governance_list_grants_of_role
+role	GET	/api/v2/roles/{name}/grants-on	tool	governance_list_grants_on_object
+role	GET	/api/v2/roles/{name}/future-grants	tool	governance_list_future_grants
+role	POST	/api/v2/roles/{name}/future-grants	tool	governance_grant_future_privileges
+role	POST	/api/v2/roles/{name}/future-grants:revoke	tool	governance_revoke_future_privileges
+role	POST	/api/v2/roles/{name}:set-tags	tool	tags_set_object_tag
+role	POST	/api/v2/roles/{name}:unset-tags	tool	tags_unset_object_tag
+role	GET	/api/v2/roles/{name}:get-tags	tool	tags_get_object_tag_references
+schema	GET	/api/v2/databases/{database}/schemas	tool	schemas_list_schemas
+schema	POST	/api/v2/databases/{database}/schemas	tool	schemas_create_schema
+schema	POST	/api/v2/databases/{database}/schemas/{name}:clone	tool	schemas_clone_schema
+schema	POST	/api/v2/databases/{database}/schemas/{name}:undrop	tool	schemas_undrop_schema
+schema	GET	/api/v2/databases/{database}/schemas/{name}	tool	schemas_describe_schema
+schema	PUT	/api/v2/databases/{database}/schemas/{name}	gap	no tool: schemas_put_schema
+schema	DELETE	/api/v2/databases/{database}/schemas/{name}	tool	schemas_drop_schema
+schema	POST	/api/v2/databases/{database}/schemas/{name}:set-tags	tool	tags_set_object_tag
+schema	POST	/api/v2/databases/{database}/schemas/{name}:unset-tags	tool	tags_unset_object_tag
+schema	GET	/api/v2/databases/{database}/schemas/{name}:get-tags	tool	tags_get_object_tag_references
+secret	GET	/api/v2/databases/{database}/schemas/{schema}/secrets	tool	programmability_list_secrets
+secret	POST	/api/v2/databases/{database}/schemas/{schema}/secrets	gap	no tool: programmability_create_secret
+secret	GET	/api/v2/databases/{database}/schemas/{schema}/secrets/{name}	tool	programmability_describe_secret
+secret	DELETE	/api/v2/databases/{database}/schemas/{schema}/secrets/{name}	gap	no tool: programmability_drop_secret
+sequence	GET	/api/v2/databases/{database}/schemas/{schema}/sequences	tool	programmability_list_sequences
+sequence	POST	/api/v2/databases/{database}/schemas/{schema}/sequences	tool	programmability_create_sequence
+sequence	GET	/api/v2/databases/{database}/schemas/{schema}/sequences/{name}	gap	no tool: programmability_describe_sequence
+sequence	DELETE	/api/v2/databases/{database}/schemas/{schema}/sequences/{name}	tool	programmability_drop_sequence
+sequence	POST	/api/v2/databases/{database}/schemas/{schema}/sequences/{name}:clone	gap	no tool: programmability_clone_sequence
+sequence	POST	/api/v2/databases/{database}/schemas/{schema}/sequences/{name}:rename	gap	no tool: programmability_rename_sequence
+service	GET	/api/v2/databases/{database}/schemas/{schema}/services	tool	compute_services_list_services
+service	POST	/api/v2/databases/{database}/schemas/{schema}/services	tool	compute_services_create_service
+service	POST	/api/v2/databases/{database}/schemas/{schema}/services:execute-job	tool	compute_services_execute_job_service
+service	GET	/api/v2/databases/{database}/schemas/{schema}/services/{name}	tool	compute_services_describe_service
+service	PUT	/api/v2/databases/{database}/schemas/{schema}/services/{name}	tool	compute_services_alter_service
+service	DELETE	/api/v2/databases/{database}/schemas/{schema}/services/{name}	tool	compute_services_drop_service
+service	GET	/api/v2/databases/{database}/schemas/{schema}/services/{name}/logs	tool	compute_services_get_service_logs
+service	GET	/api/v2/databases/{database}/schemas/{schema}/services/{name}/status	deprecated	deprecated: true in the spec
+service	GET	/api/v2/databases/{database}/schemas/{schema}/services/{name}/containers	tool	compute_services_list_services
+service	GET	/api/v2/databases/{database}/schemas/{schema}/services/{name}/instances	tool	compute_services_list_services
+service	GET	/api/v2/databases/{database}/schemas/{schema}/services/{name}/roles	tool	compute_services_list_services
+service	GET	/api/v2/databases/{database}/schemas/{schema}/services/{service}/roles/{name}/grants-of	tool	compute_services_list_services
+service	GET	/api/v2/databases/{database}/schemas/{schema}/services/{service}/roles/{name}/grants	tool	compute_services_list_services
+service	POST	/api/v2/databases/{database}/schemas/{schema}/services/{name}:resume	tool	compute_services_resume_service
+service	POST	/api/v2/databases/{database}/schemas/{schema}/services/{name}:suspend	tool	compute_services_suspend_service
+service	GET	/api/v2/databases/{database}/schemas/{schema}/services/{name}/endpoints	tool	compute_services_list_service_endpoints
+spark-connect	POST	/api/v2/spark-connect/execute-plan	excluded	Spark Connect: gRPC transport for Snowpark Connect, not a tool surface
+spark-connect	POST	/api/v2/spark-connect/analyze-plan	excluded	Spark Connect: gRPC transport for Snowpark Connect, not a tool surface
+spark-connect	POST	/api/v2/spark-connect/config	excluded	Spark Connect: gRPC transport for Snowpark Connect, not a tool surface
+spark-connect	POST	/api/v2/spark-connect/add-artifacts	excluded	Spark Connect: gRPC transport for Snowpark Connect, not a tool surface
+spark-connect	POST	/api/v2/spark-connect/artifact-status	excluded	Spark Connect: gRPC transport for Snowpark Connect, not a tool surface
+spark-connect	POST	/api/v2/spark-connect/interrupt	excluded	Spark Connect: gRPC transport for Snowpark Connect, not a tool surface
+spark-connect	POST	/api/v2/spark-connect/reattach-execute	excluded	Spark Connect: gRPC transport for Snowpark Connect, not a tool surface
+spark-connect	POST	/api/v2/spark-connect/release-execute	excluded	Spark Connect: gRPC transport for Snowpark Connect, not a tool surface
+spark-connect	POST	/api/v2/spark-connect/pull-request	excluded	Spark Connect: gRPC transport for Snowpark Connect, not a tool surface
+spark-connect	POST	/api/v2/spark-connect/push-response	excluded	Spark Connect: gRPC transport for Snowpark Connect, not a tool surface
+sqlapi	POST	/api/v2/statements	tool	queries_execute_dml
+sqlapi	GET	/api/v2/statements/{statementHandle}	excluded	SQL API async status; the connector waits for results
+sqlapi	POST	/api/v2/statements/{statementHandle}/cancel	tool	queries_cancel_query
+stage	GET	/api/v2/databases/{database}/schemas/{schema}/stages	tool	stages_list_stages
+stage	POST	/api/v2/databases/{database}/schemas/{schema}/stages	tool	stages_create_stage
+stage	GET	/api/v2/databases/{database}/schemas/{schema}/stages/{name}	tool	stages_describe_stage
+stage	DELETE	/api/v2/databases/{database}/schemas/{schema}/stages/{name}	tool	stages_drop_stage
+stage	GET	/api/v2/databases/{database}/schemas/{schema}/stages/{name}/files	tool	stages_list_stage_files
+stage	POST	/api/v2/databases/{database}/schemas/{schema}/stages/{name}/files/{filePath}:presigned-url	tool	stages_get_presigned_url
+stream	GET	/api/v2/databases/{database}/schemas/{schema}/streams	tool	streams_list_streams
+stream	POST	/api/v2/databases/{database}/schemas/{schema}/streams	tool	streams_create_stream
+stream	GET	/api/v2/databases/{database}/schemas/{schema}/streams/{name}	tool	streams_describe_stream
+stream	DELETE	/api/v2/databases/{database}/schemas/{schema}/streams/{name}	tool	streams_drop_stream
+stream	POST	/api/v2/databases/{database}/schemas/{schema}/streams/{name}:clone	gap	no tool: streams_clone_stream
+stream	POST	/api/v2/databases/{database}/schemas/{schema}/streams/{name}:set-tags	tool	tags_set_object_tag
+stream	POST	/api/v2/databases/{database}/schemas/{schema}/streams/{name}:unset-tags	tool	tags_unset_object_tag
+stream	GET	/api/v2/databases/{database}/schemas/{schema}/streams/{name}:get-tags	tool	tags_get_object_tag_references
+streamlit	GET	/api/v2/databases/{database}/schemas/{schema}/streamlits	tool	compute_services_list_streamlits
+streamlit	POST	/api/v2/databases/{database}/schemas/{schema}/streamlits	gap	no tool: compute_services_create_streamlit
+streamlit	GET	/api/v2/databases/{database}/schemas/{schema}/streamlits/{name}	tool	compute_services_describe_streamlit
+streamlit	DELETE	/api/v2/databases/{database}/schemas/{schema}/streamlits/{name}	gap	no tool: compute_services_drop_streamlit
+streamlit	POST	/api/v2/databases/{database}/schemas/{schema}/streamlits/{name}:undrop	gap	no tool: compute_services_undrop_streamlit
+streamlit	POST	/api/v2/databases/{database}/schemas/{schema}/streamlits/{name}:rename	gap	no tool: compute_services_rename_streamlit
+streamlit	POST	/api/v2/databases/{database}/schemas/{schema}/streamlits/{name}:add-live-version	tool	compute_services_add_streamlit_live_version
+streamlit	POST	/api/v2/databases/{database}/schemas/{schema}/streamlits/{name}:commit	tool	compute_services_commit_streamlit_version
+streamlit	POST	/api/v2/databases/{database}/schemas/{schema}/streamlits/{name}:add-version	gap	no tool: compute_services_add_version_streamlit
+streamlit	POST	/api/v2/databases/{database}/schemas/{schema}/streamlits/{name}:add-version-from-git	gap	no tool: compute_services_add_version_from_git_streamlit
+streamlit	POST	/api/v2/databases/{database}/schemas/{schema}/streamlits/{name}:abort	tool	compute_services_abort_streamlit_live_version
+streamlit	POST	/api/v2/databases/{database}/schemas/{schema}/streamlits/{name}:pull	tool	compute_services_pull_streamlit_from_git
+streamlit	POST	/api/v2/databases/{database}/schemas/{schema}/streamlits/{name}:push	tool	compute_services_push_streamlit_to_git
+streamlit	POST	/api/v2/databases/{database}/schemas/{schema}/streamlits/{name}:set-tags	tool	tags_set_object_tag
+streamlit	POST	/api/v2/databases/{database}/schemas/{schema}/streamlits/{name}:unset-tags	tool	tags_unset_object_tag
+streamlit	GET	/api/v2/databases/{database}/schemas/{schema}/streamlits/{name}:get-tags	tool	tags_get_object_tag_references
+table	GET	/api/v2/databases/{database}/schemas/{schema}/tables	tool	tables_list_tables
+table	POST	/api/v2/databases/{database}/schemas/{schema}/tables	tool	tables_create_table
+table	POST	/api/v2/databases/{database}/schemas/{schema}/tables/{name}:as_select	deprecated	deprecated: true in the spec
+table	POST	/api/v2/databases/{database}/schemas/{schema}/tables:as-select	gap	no tool: tables_as_select_table
+table	POST	/api/v2/databases/{database}/schemas/{schema}/tables/{name}:using_template	deprecated	deprecated: true in the spec
+table	POST	/api/v2/databases/{database}/schemas/{schema}/tables:using-template	gap	no tool: tables_using_template_table
+table	GET	/api/v2/databases/{database}/schemas/{schema}/tables/{name}	tool	tables_describe_table
+table	PUT	/api/v2/databases/{database}/schemas/{schema}/tables/{name}	gap	no tool: tables_put_table
+table	DELETE	/api/v2/databases/{database}/schemas/{schema}/tables/{name}	tool	tables_drop_table
+table	POST	/api/v2/databases/{database}/schemas/{schema}/tables/{name}:clone	tool	tables_clone_table
+table	POST	/api/v2/databases/{database}/schemas/{schema}/tables/{name}:create_like	deprecated	deprecated: true in the spec
+table	POST	/api/v2/databases/{database}/schemas/{schema}/tables/{name}:create-like	gap	no tool: tables_create_like_table
+table	POST	/api/v2/databases/{database}/schemas/{schema}/tables/{name}:undrop	tool	tables_undrop_table
+table	POST	/api/v2/databases/{database}/schemas/{schema}/tables/{name}:suspend_recluster	deprecated	deprecated: true in the spec
+table	POST	/api/v2/databases/{database}/schemas/{schema}/tables/{name}:suspend-recluster	gap	no tool: tables_suspend_recluster_table
+table	POST	/api/v2/databases/{database}/schemas/{schema}/tables/{name}:resume_recluster	deprecated	deprecated: true in the spec
+table	POST	/api/v2/databases/{database}/schemas/{schema}/tables/{name}:resume-recluster	gap	no tool: tables_resume_recluster_table
+table	POST	/api/v2/databases/{database}/schemas/{schema}/tables/{name}:swapwith	deprecated	deprecated: true in the spec
+table	POST	/api/v2/databases/{database}/schemas/{schema}/tables/{name}:swap-with	gap	no tool: tables_swap_with_table
+table	POST	/api/v2/databases/{database}/schemas/{schema}/tables/{name}:set-tags	tool	tags_set_object_tag
+table	POST	/api/v2/databases/{database}/schemas/{schema}/tables/{name}:unset-tags	tool	tags_unset_object_tag
+table	GET	/api/v2/databases/{database}/schemas/{schema}/tables/{name}:get-tags	tool	tags_get_object_tag_references
+tag	GET	/api/v2/databases/{database}/schemas/{schema}/tags	tool	tags_list_tags
+tag	POST	/api/v2/databases/{database}/schemas/{schema}/tags	gap	no tool: tags_create_tag
+tag	GET	/api/v2/databases/{database}/schemas/{schema}/tags/{name}	tool	tags_describe_tag
+tag	DELETE	/api/v2/databases/{database}/schemas/{schema}/tags/{name}	gap	no tool: tags_drop_tag
+tag	PUT	/api/v2/databases/{database}/schemas/{schema}/tags/{name}	gap	no tool: tags_put_tag
+tag	POST	/api/v2/databases/{database}/schemas/{schema}/tags/{name}:undrop	gap	no tool: tags_undrop_tag
+tag	POST	/api/v2/databases/{database}/schemas/{schema}/tags/{name}:rename	gap	no tool: tags_rename_tag
+task	GET	/api/v2/databases/{database}/schemas/{schema}/tasks	tool	tasks_list_tasks
+task	POST	/api/v2/databases/{database}/schemas/{schema}/tasks	tool	tasks_create_task
+task	GET	/api/v2/databases/{database}/schemas/{schema}/tasks/{name}	tool	tasks_describe_task
+task	PUT	/api/v2/databases/{database}/schemas/{schema}/tasks/{name}	gap	no tool: tasks_put_task
+task	DELETE	/api/v2/databases/{database}/schemas/{schema}/tasks/{name}	tool	tasks_drop_task
+task	POST	/api/v2/databases/{database}/schemas/{schema}/tasks/{name}:execute	tool	tasks_execute_task
+task	POST	/api/v2/databases/{database}/schemas/{schema}/tasks/{name}:resume	tool	tasks_resume_task
+task	POST	/api/v2/databases/{database}/schemas/{schema}/tasks/{name}:suspend	tool	tasks_suspend_task
+task	GET	/api/v2/databases/{database}/schemas/{schema}/tasks/{name}/dependents	tool	tasks_list_task_dependents
+task	GET	/api/v2/databases/{database}/schemas/{schema}/tasks/{name}/current_graphs	deprecated	deprecated: true in the spec
+task	GET	/api/v2/databases/{database}/schemas/{schema}/tasks/{name}/current-graphs	tool	tasks_list_current_task_graphs
+task	GET	/api/v2/databases/{database}/schemas/{schema}/tasks/{name}/complete_graphs	deprecated	deprecated: true in the spec
+task	GET	/api/v2/databases/{database}/schemas/{schema}/tasks/{name}/complete-graphs	tool	tasks_list_complete_task_graphs
+task	POST	/api/v2/databases/{database}/schemas/{schema}/tasks/{name}:set-tags	tool	tags_set_object_tag
+task	POST	/api/v2/databases/{database}/schemas/{schema}/tasks/{name}:unset-tags	tool	tags_unset_object_tag
+task	GET	/api/v2/databases/{database}/schemas/{schema}/tasks/{name}:get-tags	tool	tags_get_object_tag_references
+user-defined-function	POST	/api/v2/databases/{database}/schemas/{schema}/user-defined-functions	tool	programmability_create_function
+user-defined-function	GET	/api/v2/databases/{database}/schemas/{schema}/user-defined-functions	tool	programmability_list_functions
+user-defined-function	GET	/api/v2/databases/{database}/schemas/{schema}/user-defined-functions/{nameWithArgs}	tool	programmability_describe_function
+user-defined-function	DELETE	/api/v2/databases/{database}/schemas/{schema}/user-defined-functions/{nameWithArgs}	tool	programmability_drop_function
+user-defined-function	POST	/api/v2/databases/{database}/schemas/{schema}/user-defined-functions/{name}:execute	tool	programmability_invoke_function
+user-defined-function	POST	/api/v2/databases/{database}/schemas/{schema}/user-defined-functions/{nameWithArgs}:rename	gap	no tool: programmability_rename_function
+user-defined-function	POST	/api/v2/databases/{database}/schemas/{schema}/user-defined-functions/{nameWithArgs}:set-tags	tool	tags_set_object_tag
+user-defined-function	POST	/api/v2/databases/{database}/schemas/{schema}/user-defined-functions/{nameWithArgs}:unset-tags	tool	tags_unset_object_tag
+user-defined-function	GET	/api/v2/databases/{database}/schemas/{schema}/user-defined-functions/{nameWithArgs}:get-tags	tool	tags_get_object_tag_references
+user	POST	/api/v2/users	tool	governance_create_user
+user	GET	/api/v2/users	tool	governance_list_users
+user	GET	/api/v2/users/{name}	tool	governance_describe_user
+user	DELETE	/api/v2/users/{name}	tool	governance_drop_user
+user	PUT	/api/v2/users/{name}	tool	governance_alter_user
+user	GET	/api/v2/users/{name}/grants	tool	governance_list_grants_to_user
+user	POST	/api/v2/users/{name}/grants	tool	governance_grant_role_to_user
+user	POST	/api/v2/users/{name}/grants:revoke	tool	governance_revoke_role_from_user
+user	POST	/api/v2/users/{name}:set-tags	tool	tags_set_object_tag
+user	POST	/api/v2/users/{name}:unset-tags	tool	tags_unset_object_tag
+user	GET	/api/v2/users/{name}:get-tags	tool	tags_get_object_tag_references
+view	GET	/api/v2/databases/{database}/schemas/{schema}/views	tool	tables_list_views
+view	POST	/api/v2/databases/{database}/schemas/{schema}/views	tool	tables_create_view
+view	GET	/api/v2/databases/{database}/schemas/{schema}/views/{name}	tool	tables_describe_view
+view	DELETE	/api/v2/databases/{database}/schemas/{schema}/views/{name}	tool	tables_drop_view
+view	POST	/api/v2/databases/{database}/schemas/{schema}/views/{name}:set-tags	tool	tags_set_object_tag
+view	POST	/api/v2/databases/{database}/schemas/{schema}/views/{name}:unset-tags	tool	tags_unset_object_tag
+view	GET	/api/v2/databases/{database}/schemas/{schema}/views/{name}:get-tags	tool	tags_get_object_tag_references
+warehouse	POST	/api/v2/warehouses	tool	warehouses_create_warehouse
+warehouse	GET	/api/v2/warehouses	tool	warehouses_list_warehouses
+warehouse	GET	/api/v2/warehouses/{name}	tool	warehouses_describe_warehouse
+warehouse	DELETE	/api/v2/warehouses/{name}	tool	warehouses_drop_warehouse
+warehouse	PUT	/api/v2/warehouses/{name}	gap	no tool: warehouses_put_warehouse
+warehouse	POST	/api/v2/warehouses/{name}:resume	tool	warehouses_resume_warehouse
+warehouse	POST	/api/v2/warehouses/{name}:suspend	tool	warehouses_suspend_warehouse
+warehouse	POST	/api/v2/warehouses/{name}:rename	gap	no tool: warehouses_rename_warehouse
+warehouse	POST	/api/v2/warehouses/{name}:abort	gap	no tool: warehouses_abort_warehouse
+warehouse	POST	/api/v2/warehouses/{name}:use	deprecated	deprecated: true in the spec
+warehouse	POST	/api/v2/warehouses/{name}:enable	gap	no tool: warehouses_enable_warehouse
+warehouse	POST	/api/v2/warehouses/{name}:disable	gap	no tool: warehouses_disable_warehouse
+warehouse	POST	/api/v2/warehouses/{name}:set-tags	tool	tags_set_object_tag
+warehouse	POST	/api/v2/warehouses/{name}:unset-tags	tool	tags_unset_object_tag
+warehouse	GET	/api/v2/warehouses/{name}:get-tags	tool	tags_get_object_tag_references
