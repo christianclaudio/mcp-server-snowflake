@@ -16,7 +16,7 @@ from mcp.types import CallToolResult, ToolAnnotations
 from snowflake_mcp import __version__
 from snowflake_mcp.auth import SharedTokenVerifier, read_auth_token
 from snowflake_mcp.config import SnowflakeConfig
-from snowflake_mcp.connection import IDENT_RULE, SnowflakeClient, read_only_enabled
+from snowflake_mcp.connection import IDENT_RULE, SnowflakeClient
 from snowflake_mcp.middleware import (
     ErrorHandlingMiddleware,
     ParentAuditMiddleware,
@@ -446,7 +446,7 @@ def create_server(
     # Audit re-raises the same exception. The read-only gate runs before handlers.
     # The inner layer redacts tool-result payloads and still re-raises protocol errors.
     mcp.add_middleware(ParentAuditMiddleware())
-    read_only_gate = ReadOnlyGateMiddleware(snow_client.config)
+    read_only_gate = ReadOnlyGateMiddleware(snow_client.config, lambda: snow_client.config)
     mcp.add_middleware(read_only_gate)
     mcp.add_middleware(ErrorHandlingMiddleware())
 
@@ -464,16 +464,18 @@ def create_server(
     record_mutating_tools(tool_mgr._tools, DOMAIN_NAMES)
 
     # Every read-only path lists only read-only tools: the readonly profile,
-    # --readonly, SNOWFLAKE_MCP_READONLY=1, and read_only in connections.toml.
+    # --readonly, SNOWFLAKE_MCP_READONLY=1, and read_only in connections.toml,
+    # including a governance_use_connection switch to a read_only profile.
     # The profile also conceals mutating tools, so a call reports an unknown tool.
     # The flag paths keep them registered, so the gate refuses a call by name.
-    if active.readonly or read_only_enabled(snow_client.config):
-        if active.readonly:
-            for name, component in list(tool_mgr._tools.items()):
-                annotations = getattr(component, "annotations", None)
-                if not (annotations and annotations.read_only_hint):
-                    read_only_gate.conceal(name)
+    if active.readonly:
+        for name, component in list(tool_mgr._tools.items()):
+            annotations = getattr(component, "annotations", None)
+            if not (annotations and annotations.read_only_hint):
+                read_only_gate.conceal(name)
         mcp.add_transform(ReadOnlyToolFilter())
+    else:
+        mcp.add_transform(ReadOnlyToolFilter(when=read_only_gate.enabled))
 
     # Tool search stays on every profile. Some hosts only surface search tools,
     # so a domain or readonly catalog still needs the search transform.

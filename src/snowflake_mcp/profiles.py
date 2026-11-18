@@ -11,7 +11,7 @@ The connector read-only gate is separate: the ``readonly`` profile still sets it
 
 from __future__ import annotations
 
-from collections.abc import Collection, Sequence
+from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass
 
 from fastmcp.server.transforms import GetToolNext, Transform
@@ -127,13 +127,27 @@ def is_read_only_tool(tool: Tool | None) -> bool:
 
 
 class ReadOnlyToolFilter(Transform):
-    """Keep only tools annotated ``readOnlyHint=True``."""
+    """Keep only tools annotated ``readOnlyHint=True``.
+
+    With ``when``, the filter applies only while ``when()`` is true, so the catalog
+    follows the read-only flag of the active connection. Without it, it always applies.
+    """
+
+    def __init__(self, when: Callable[[], bool] | None = None) -> None:
+        self._when = when
+
+    def _filtering(self) -> bool:
+        return self._when is None or self._when()
 
     async def list_tools(self, tools: Sequence[Tool]) -> Sequence[Tool]:
+        if not self._filtering():
+            return tools
         return [tool for tool in tools if is_read_only_tool(tool)]
 
     async def get_tool(self, name: str, call_next: GetToolNext, *, version: VersionSpec | None = None) -> Tool | None:
         tool = await call_next(name, version=version)
+        if not self._filtering():
+            return tool
         return tool if is_read_only_tool(tool) else None
 
 
