@@ -37,6 +37,9 @@ def sanitize_stage_location(loc: str) -> str:
 
 
 def register_stage_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
+    from snowflake_mcp.tools.domain_gap import register_stage_gap_tools
+
+    register_stage_gap_tools(mcp, client)
     """Register Snowflake stage tools."""
 
     @mcp.tool(

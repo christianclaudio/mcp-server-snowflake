@@ -11,7 +11,7 @@ The connector read-only gate is separate: the ``readonly`` profile still sets it
 
 from __future__ import annotations
 
-from collections.abc import Collection, Sequence
+from collections.abc import Callable, Collection, Sequence
 from dataclasses import dataclass
 
 from fastmcp.server.transforms import GetToolNext, Transform
@@ -44,7 +44,7 @@ ALL_DOMAINS: tuple[str, ...] = (
 
 _DOMAIN_JOBS: dict[str, str] = {
     "queries": "SQL queries, plans, and transactions.",
-    "databases": "Databases and clones.",
+    "databases": "Databases, clones, and replication.",
     "schemas": "Schemas and clones.",
     "tables": "Tables, views, and partitions.",
     "warehouses": "Virtual warehouses and load history.",
@@ -54,13 +54,13 @@ _DOMAIN_JOBS: dict[str, str] = {
     "dynamic_tables": "Dynamic tables, Iceberg tables, and volumes.",
     "pipes": "Snowpipe and ingestion.",
     "alerts": "Alerts and notifications.",
-    "governance": "Roles, users, grants, and connections.",
+    "governance": "Roles, users, grants, accounts, and connections.",
     "network": "Network rules and password policies.",
-    "compute_services": "Compute pools, services, and Streamlit.",
-    "tags": "Object tags.",
+    "compute_services": "Compute pools, services, notebooks, and Streamlit.",
+    "tags": "Object tags and tag assignments.",
     "horizon": "Lineage and governance policies.",
-    "programmability": "Procedures, functions, secrets, and integrations.",
-    "cortex": "Cortex AI functions.",
+    "programmability": "Procedures, functions, code bundles, sequences, and integrations.",
+    "cortex": "Cortex AI functions, search services, and REST inference.",
     "recipes": "Composite agent workflows.",
 }
 
@@ -127,13 +127,27 @@ def is_read_only_tool(tool: Tool | None) -> bool:
 
 
 class ReadOnlyToolFilter(Transform):
-    """Keep only tools annotated ``readOnlyHint=True``."""
+    """Keep only tools annotated ``readOnlyHint=True``.
+
+    With ``when``, the filter applies only while ``when()`` is true, so the catalog
+    follows the read-only flag of the active connection. Without it, it always applies.
+    """
+
+    def __init__(self, when: Callable[[], bool] | None = None) -> None:
+        self._when = when
+
+    def _filtering(self) -> bool:
+        return self._when is None or self._when()
 
     async def list_tools(self, tools: Sequence[Tool]) -> Sequence[Tool]:
+        if not self._filtering():
+            return tools
         return [tool for tool in tools if is_read_only_tool(tool)]
 
     async def get_tool(self, name: str, call_next: GetToolNext, *, version: VersionSpec | None = None) -> Tool | None:
         tool = await call_next(name, version=version)
+        if not self._filtering():
+            return tool
         return tool if is_read_only_tool(tool) else None
 
 

@@ -1,4 +1,4 @@
-"""MCPServer initialization, annotations, and complete 140-tool enterprise suite registration."""
+"""MCPServer initialization, annotations, and complete enterprise suite registration."""
 
 from __future__ import annotations
 
@@ -78,6 +78,12 @@ _RO_NAMES = {
     "search",
     "embed_text_768",
     "analyst_query",
+    "invoke_function",
+    "suggest_search",
+    "suggest_verified_queries",
+    "generate_semantic_model",
+    "preselect_semantic_model_tables",
+    "suggest_semantic_model_metrics",
 }
 
 _DESTRUCTIVE_NAMES = {
@@ -98,6 +104,34 @@ _DESTRUCTIVE_NAMES = {
     "execute_dml",
     "execute_task",
     "warehouse_scale_and_execute",
+    "drop_search_service",
+    "revoke_privileges",
+    "revoke_future_privileges",
+    "drop_database_role",
+    "revoke_database_role",
+    "revoke_role_from_user",
+    "drop_user",
+    "drop_account",
+    "drop_managed_account",
+    "drop_service",
+    "execute_job_service",
+    "abort_streamlit_live_version",
+    "execute_notebook",
+    "drop_notebook",
+    "execute_notebook_project",
+    "execute_code_bundle",
+    "cancel_code_bundle_execution",
+    "drop_artifact_repository",
+    "drop_sequence",
+    "drop_function",
+    "drop_view",
+    "disable_database_replication",
+    "disable_database_failover",
+    "promote_database",
+    "create_view",
+    "create_function",
+    "alter_user",
+    "alter_service",
 }
 
 _IDEMPOTENT_NAMES = {
@@ -116,6 +150,13 @@ _IDEMPOTENT_NAMES = {
     "use_connection",
     "begin_transaction",
     "commit_transaction",
+    "suspend_search_service",
+    "resume_search_service",
+    "suspend_service",
+    "resume_service",
+    "refresh_iceberg_table",
+    "refresh_database",
+    "unset_object_tag",
 }
 
 # Module boundaries are the domains. Order matches the historical catalog.
@@ -145,7 +186,7 @@ DOMAIN_NAMES: tuple[str, ...] = tuple(name for name, _register in _DOMAIN_REGIST
 
 # ``full`` mounts every domain. ``readonly`` mounts every domain, keeps tools
 # annotated readOnlyHint=True, and sets the connector read-only gate. A domain
-# name mounts only that domain. The default catalog is ``full`` (140 tools).
+# name mounts only that domain. The default catalog is ``full`` (245 tools).
 VALID_PROFILES: frozenset[str] = frozenset(PROFILES)
 
 ToolSearchBackend = Literal["regex", "bm25"]
@@ -354,7 +395,7 @@ def create_server(
 ) -> FastMCP:
     """Create and configure the complete FastMCP server for Snowflake.
 
-    The default profile ``full`` exposes one flat ``tools/list`` of all 140 tools.
+    The default profile ``full`` exposes one flat ``tools/list`` of all 245 tools.
     Tool search is opt-in (``enable_tool_search`` or ``SNOWFLAKE_MCP_ENABLE_TOOL_SEARCH``)
     and attaches on every profile. Code Mode is opt-in, full-profile only, and
     mutually exclusive with tool search.
@@ -405,7 +446,7 @@ def create_server(
     # Audit re-raises the same exception. The read-only gate runs before handlers.
     # The inner layer redacts tool-result payloads and still re-raises protocol errors.
     mcp.add_middleware(ParentAuditMiddleware())
-    read_only_gate = ReadOnlyGateMiddleware(snow_client.config)
+    read_only_gate = ReadOnlyGateMiddleware(snow_client.config, lambda: snow_client.config)
     mcp.add_middleware(read_only_gate)
     mcp.add_middleware(ErrorHandlingMiddleware())
 
@@ -422,12 +463,19 @@ def create_server(
     mcp._tool_manager = tool_mgr  # type: ignore[attr-defined]
     record_mutating_tools(tool_mgr._tools, DOMAIN_NAMES)
 
+    # Every read-only path lists only read-only tools: the readonly profile,
+    # --readonly, SNOWFLAKE_MCP_READONLY=1, and read_only in connections.toml,
+    # including a governance_use_connection switch to a read_only profile.
+    # The profile also conceals mutating tools, so a call reports an unknown tool.
+    # The flag paths keep them registered, so the gate refuses a call by name.
     if active.readonly:
         for name, component in list(tool_mgr._tools.items()):
             annotations = getattr(component, "annotations", None)
             if not (annotations and annotations.read_only_hint):
                 read_only_gate.conceal(name)
         mcp.add_transform(ReadOnlyToolFilter())
+    else:
+        mcp.add_transform(ReadOnlyToolFilter(when=read_only_gate.enabled))
 
     # Tool search stays on every profile. Some hosts only surface search tools,
     # so a domain or readonly catalog still needs the search transform.

@@ -66,6 +66,16 @@ SHOW_LIST_TOOLS = {
     "tags_list_tags": "tags",
     "tasks_list_tasks": "tasks",
     "warehouses_list_warehouses": "warehouses",
+    "compute_services_list_notebooks": "notebooks",
+    "compute_services_list_notebook_projects": "notebook_projects",
+    "cortex_list_agents": "agents",
+    "cortex_list_search_services": "services",
+    "databases_list_replication_databases": "databases",
+    "governance_list_accounts": "accounts",
+    "governance_list_database_roles": "database_roles",
+    "governance_list_managed_accounts": "managed_accounts",
+    "programmability_list_artifact_repositories": "repositories",
+    "programmability_list_code_bundles": "code_bundles",
 }
 
 # List tools whose rows are not named objects from SHOW: connection profiles, staged files, grants.
@@ -74,6 +84,19 @@ NOT_SHOW_OBJECT_LISTS = {
     "stages_list_stage_files",
     "governance_list_grants_to_role",
     "governance_list_grants_to_user",
+    "compute_services_list_images",
+    "compute_services_list_service_endpoints",
+    "cortex_list_models",
+    "cortex_list_semantic_model_optimizations",
+    "governance_list_future_grants",
+    "governance_list_grants_of_role",
+    "governance_list_grants_on_object",
+    "governance_list_grants_to_database_role",
+    "programmability_list_code_bundle_executions",
+    "tags_list_tag_assignments",
+    "tasks_list_complete_task_graphs",
+    "tasks_list_current_task_graphs",
+    "tasks_list_task_dependents",
 }
 
 
@@ -173,7 +196,7 @@ async def test_every_show_list_tool_adds_quoted_name_and_keeps_fields() -> None:
             assert payload is not None
             assert payload["status"] == "success"
             assert payload[key] == want, tool
-    assert len(SHOW_LIST_TOOLS) == 33
+    assert len(SHOW_LIST_TOOLS) == 43
 
 
 @pytest.mark.asyncio

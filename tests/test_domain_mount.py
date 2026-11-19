@@ -40,7 +40,7 @@ async def test_tools_list_is_flat_domain_names(mock_client: SnowflakeClient) -> 
     mcp = create_server(client=mock_client)
     listed = await mcp.list_tools()
     names = [tool.name for tool in listed]
-    assert len(names) == 140
+    assert len(names) == 245
     assert len(names) == len(set(names))
     assert set(names) == set(mcp._tool_manager._tools)
     assert not any(name.startswith("snowflake_") for name in names)
@@ -75,7 +75,7 @@ async def test_compat_listing_omits_mounted_tool_disabled_by_exposed_name(
     assert "list_warehouses" not in mcp._tool_manager._tools
     listed = {tool.name for tool in await mcp.list_tools()}
     assert exposed not in listed
-    assert len(listed) == 139
+    assert len(listed) == 244
 
 
 def test_local_name_and_tag_disables_hide_mounted_tools(mock_client: SnowflakeClient) -> None:
@@ -146,7 +146,7 @@ def test_compat_skips_non_tools_and_blank_names(mock_client: SnowflakeClient) ->
     assert "queries_" not in names
     assert "queries_info" not in names
     assert "queries_query" in names
-    assert len(mcp._tool_manager.list_tools()) == 140
+    assert len(mcp._tool_manager.list_tools()) == 245
 
 
 @pytest.mark.asyncio

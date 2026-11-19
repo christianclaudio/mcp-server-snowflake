@@ -44,6 +44,9 @@ def qualify_table_target(
 
 
 def register_table_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
+    from snowflake_mcp.tools.domain_gap import register_table_gap_tools
+
+    register_table_gap_tools(mcp, client)
     """Register table and view inspection tools."""
 
     @mcp.tool(

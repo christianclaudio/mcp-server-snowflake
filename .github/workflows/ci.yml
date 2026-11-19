@@ -115,7 +115,7 @@ jobs:
           python-version: "3.12"
       - name: Install
         run: uv sync --locked --extra dev --python 3.12
-      - name: Assert 140 tool contract
+      - name: Assert 245 tool contract
         run: uv run python scripts/check_tool_contract.py
 
   conformance:
@@ -315,11 +315,13 @@ jobs:
 
       - name: Run Drift Check
         id: drift-check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Capture the exit code explicitly: under the default `bash -e` a failing
           # command would end the step before DRIFT_STATUS is written.
           set +e
-          uv run python scripts/check_snowflake_drift.py > drift_results.txt 2>&1
+          uv run python scripts/check_snowflake_drift.py --fail-on-new-unmapped > drift_results.txt 2>&1
           status=$?
           set -e
           echo "DRIFT_STATUS=${status}" >> "$GITHUB_ENV"
@@ -340,13 +342,18 @@ jobs:
             const status = process.env.DRIFT_STATUS;
             // An uncaught exception also exits 1, so drift needs the line the script
             // prints only right before `return 1`.
+            const unmapped = status === '1' && driftOutput.includes('❌ New unmapped');
             const drift = status === '1' && driftOutput.includes('❌ Drift Error');
-            const issueTitle = drift
-              ? "Snowflake drift: registered tool count no longer matches the 140-tool contract"
+            const issueTitle = unmapped
+              ? "Snowflake drift: new Snowflake REST op: add a tool or a tagged snapshot line"
+              : drift
+              ? "Snowflake drift: registered tool count no longer matches the contract"
               : `Snowflake drift monitor failed (exit ${status})`;
-            const summary = drift
-              ? "The drift scan found that the server no longer registers exactly 140 tools. The latest Snowflake SDK versions on PyPI are listed for reference only; they never fail the check."
-              : `The drift scan could not finish: the drift script exited ${status} before it reported a tool count, so there is no drift result.`;
+            const summary = unmapped
+              ? "The drift scan found a new Snowflake REST op: add a tool or a tagged snapshot line."
+              : drift
+              ? "The drift scan found that the server no longer registers the expected tools. The latest Snowflake SDK versions on PyPI are listed for reference only; they never fail the check."
+              : `The drift scan could not finish: the drift script exited ${status} before it reported a result, so there is no drift result.`;
             const issueBody = [
               "### Snowflake Drift Monitor",
               "",
@@ -357,8 +364,10 @@ jobs:
               driftOutput,
               "```",
               "",
-              drift
-                ? "Inspect the output. If the tool count changed by mistake, fix the registration under `src/snowflake_mcp/`. If the change is intended, update the expected count in `scripts/check_tool_contract.py` and `scripts/check_snowflake_drift.py`, and the \"Assert 140 tool contract\" step in `.github/workflows/ci.yml`, together."
+              unmapped
+                ? "New Snowflake REST op: add a tool or a tagged snapshot line."
+                : drift
+                ? "Inspect the output. If the tool count changed by mistake, fix the registration under `src/snowflake_mcp/`. If the change is intended, update the expected count in `scripts/check_tool_contract.py` and the \"Assert 245 tool contract\" step in `.github/workflows/ci.yml`, together."
                 : "Fix the failing step shown in the output, then re-run the workflow.",
             ].join("\n");
 
