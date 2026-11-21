@@ -53,7 +53,7 @@ classifiers = [
 ]
 dependencies = [
     "mcp>=2.3.0",
-    "fastmcp>=4.2.1",
+    "fastmcp>=4.2.4",
     # certifi floor from FastMCP's October 2026 certificate authority incident notice:
     # https://github.com/PrefectHQ/fastmcp/blob/main/SECURITY.md#certificate-authority-incident-october-2026
     # snowflake-connector-python verifies Snowflake TLS against certifi's bundle.
@@ -69,10 +69,10 @@ dependencies = [
 [project.optional-dependencies]
 # Code Mode is optional. The sandbox ships as fastmcp's code-mode extra.
 code-mode = [
-    "fastmcp[code-mode]>=4.2.1",
+    "fastmcp[code-mode]>=4.2.4",
 ]
 dev = [
-    "fastmcp[code-mode]>=4.2.1",
+    "fastmcp[code-mode]>=4.2.4",
     "pytest>=9.2.0",
     "pytest-asyncio>=1.4.1.post1",
     "pytest-cov>=7.1.0",
