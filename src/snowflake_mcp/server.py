@@ -78,7 +78,9 @@ _RO_NAMES = {
     "search",
     "embed_text_768",
     "analyst_query",
-    "invoke_function",
+    # invoke_function is intentionally unlisted. An arbitrary function, including an
+    # external function, can change state or call outside services, so the call is a
+    # non-destructive, non-idempotent write rather than a read.
     "suggest_search",
     "suggest_verified_queries",
     "generate_semantic_model",

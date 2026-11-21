@@ -466,9 +466,10 @@ def register_programmability_gap_tools(mcp: FastMCP, client: SnowflakeClient) ->
         """``SELECT <function>(<literals>)``.
 
         The function name is qualified. Each argument is a quoted string literal. External
-        functions and UDFs with external access can reach outside services, the same stance
-        as ``queries_query`` for a UDF inside ``SELECT``.
+        functions and UDFs with external access can reach outside services. The function
+        body is not inspected, and read-only mode refuses the call before any SQL.
         """
+        deny_write(client)
         target = validate_and_quote_routine_signature(
             function_signature,
             database=database or client.config.database,

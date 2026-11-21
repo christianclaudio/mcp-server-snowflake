@@ -516,7 +516,7 @@ TOOL_FIXTURES: dict[str, tuple[dict[str, Any], str]] = {
         "confirm",
     ),
     "programmability_get_code_bundle_execution": ({"execution_id": "E2E_MCP_MISSING_OBJECT"}, "success"),
-    "programmability_invoke_function": ({"function_signature": "E2E_MCP_MISSING_OBJECT"}, "success"),
+    "programmability_invoke_function": ({"function_signature": "E2E_MCP_MISSING_OBJECT"}, "confirm"),
     "programmability_list_artifact_repositories": ({}, "success"),
     "programmability_list_code_bundle_executions": ({}, "success"),
     "programmability_list_code_bundles": ({}, "success"),
@@ -1465,7 +1465,7 @@ async def test_fixture_catalog_matches_server_tools(mock_snowflake_client: Snowf
             assert arguments["confirm"] is False
         if expect == "cortex":
             assert CORTEX_SKIP_REASON.strip()
-    assert counts == {"success": 69, "rejected": 42, "confirm": 118, "cortex": 16}
+    assert counts == {"success": 68, "rejected": 42, "confirm": 119, "cortex": 16}
     assert TOOL_FIXTURES["queries_query"] == ({"query": "SELECT 1"}, "success")
     # A tag name with no match is the not-found error, not an empty success.
     assert TOOL_FIXTURES["tags_describe_tag"] == ({"tag_name": "E2E_MCP_MISSING_OBJECT"}, "rejected")

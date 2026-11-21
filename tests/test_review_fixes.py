@@ -91,9 +91,21 @@ async def test_annotations_and_destructive_count() -> None:
         assert listed[name].annotations.destructive_hint is True, name  # type: ignore[union-attr]
     assert listed["compute_services_alter_service"].annotations.destructive_hint is True  # type: ignore[union-attr]
     assert listed["compute_services_suspend_service"].annotations.idempotent_hint is True  # type: ignore[union-attr]
+    invoke = listed["programmability_invoke_function"].annotations
+    assert invoke is not None
+    assert invoke.read_only_hint is False
+    assert invoke.idempotent_hint is False
+    assert invoke.destructive_hint is False
+    assert invoke.open_world_hint is True
+    presigned = listed["stages_get_presigned_url"]
+    assert presigned.annotations is not None
+    assert presigned.annotations.read_only_hint is True
+    assert presigned.annotations.open_world_hint is True
+    assert presigned.description is not None
+    assert presigned.description.lower().count("until it expires") == 1
     assert sum(1 for tool in listed.values() if tool.annotations and tool.annotations.destructive_hint) == 45
-    assert sum(1 for tool in listed.values() if tool.annotations and tool.annotations.idempotent_hint) == 149
-    assert sum(1 for tool in listed.values() if tool.annotations and tool.annotations.read_only_hint) == 127
+    assert sum(1 for tool in listed.values() if tool.annotations and tool.annotations.idempotent_hint) == 148
+    assert sum(1 for tool in listed.values() if tool.annotations and tool.annotations.read_only_hint) == 126
 
 
 def test_rest_role_header_port_and_extra_headers() -> None:
