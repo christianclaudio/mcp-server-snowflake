@@ -14,7 +14,7 @@ from snowflake_mcp.connection import SnowflakeClient
 from snowflake_mcp.profiles import ALL_DOMAINS, PROFILES, get_profile, is_read_only_tool
 from snowflake_mcp.server import DOMAIN_NAMES, create_server
 
-# Client-visible counts. ``readonly`` is the readOnlyHint subset of ``full`` (127).
+# Client-visible counts. ``readonly`` is the readOnlyHint subset of ``full`` (126).
 EXPECTED_DOMAIN_COUNTS = {
     "queries": 9,
     "databases": 14,
@@ -95,7 +95,7 @@ async def test_profile_catalogs_keep_every_tool() -> None:
         name for name, tool in full._tool_manager._tools.items() if tool.annotations and tool.annotations.read_only_hint
     }
     assert readonly_names == annotated
-    assert len(readonly_names) == 127
+    assert len(readonly_names) == 126
     assert await readonly.get_tool("queries_query") is not None
     assert await readonly.get_tool("queries_execute_dml") is None
     assert await readonly.get_tool("not_a_tool") is None

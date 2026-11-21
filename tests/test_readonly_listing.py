@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from fastmcp import FastMCP
-from fastmcp.exceptions import ToolError
+from fastmcp.exceptions import NotFoundError, ToolError
 from scripts import check_tool_contract
 
 from snowflake_mcp.cli import main
@@ -165,6 +165,60 @@ async def test_flag_off_lists_every_tool() -> None:
     names = await _listed(srv)
     assert names == set(_registered(srv))
     assert "queries_execute_dml" in names
+
+
+async def test_invoke_function_is_hidden_in_read_only_and_presigned_url_stays() -> None:
+    """A function call is not read-only. A presigned URL stays listed and is open-world."""
+    writable = _client()
+    full = create_server(client=writable)
+    tools = {tool.name: tool for tool in await full.list_tools()}
+    invoke = tools["programmability_invoke_function"]
+    presigned = tools["stages_get_presigned_url"]
+    assert invoke.annotations is not None
+    assert invoke.annotations.read_only_hint is False
+    assert invoke.annotations.idempotent_hint is False
+    assert invoke.annotations.destructive_hint is True
+    assert invoke.annotations.open_world_hint is True
+    assert presigned.annotations is not None
+    assert presigned.annotations.read_only_hint is True
+    assert presigned.annotations.idempotent_hint is True
+    assert presigned.annotations.open_world_hint is True
+    assert presigned.description is not None
+    assert presigned.description.lower().count("until it expires") == 1
+    writable.execute_query.reset_mock()  # type: ignore[attr-defined]
+    with pytest.raises(ToolError, match="confirm=True"):
+        await full.call_tool(
+            "programmability_invoke_function",
+            {"function_signature": "F()", "database": "DB", "schema_name": "SCH"},
+        )
+    writable.execute_query.assert_not_called()  # type: ignore[attr-defined]
+    called = await full.call_tool(
+        "programmability_invoke_function",
+        {"function_signature": "F()", "database": "DB", "schema_name": "SCH", "confirm": True},
+    )
+    assert called.is_error is False
+    writable.execute_query.assert_called()  # type: ignore[attr-defined]
+
+    locked_client = _client(read_only=True)
+    locked = create_server(client=locked_client)
+    locked_names = await _listed(locked)
+    assert "programmability_invoke_function" not in locked_names
+    assert "stages_get_presigned_url" in locked_names
+    with pytest.raises(ToolError, match="read-only"):
+        await locked.call_tool(
+            "programmability_invoke_function",
+            {"function_signature": "F()", "confirm": True},
+        )
+    with pytest.raises(ToolError, match="read-only"):
+        await _registered(locked)["programmability_invoke_function"].fn("F()", confirm=True)  # type: ignore[attr-defined]
+    locked_client.execute_query.assert_not_called()  # type: ignore[attr-defined]
+
+    readonly = create_server(client=_client(), profile="readonly")
+    readonly_names = await _listed(readonly)
+    assert "programmability_invoke_function" not in readonly_names
+    assert "stages_get_presigned_url" in readonly_names
+    with pytest.raises(NotFoundError, match="Unknown tool"):
+        await readonly.call_tool("programmability_invoke_function", {"function_signature": "F()"})
 
 
 def test_tool_contract_ignores_exported_read_only_flag(monkeypatch: pytest.MonkeyPatch) -> None:

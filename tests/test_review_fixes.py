@@ -91,9 +91,21 @@ async def test_annotations_and_destructive_count() -> None:
         assert listed[name].annotations.destructive_hint is True, name  # type: ignore[union-attr]
     assert listed["compute_services_alter_service"].annotations.destructive_hint is True  # type: ignore[union-attr]
     assert listed["compute_services_suspend_service"].annotations.idempotent_hint is True  # type: ignore[union-attr]
-    assert sum(1 for tool in listed.values() if tool.annotations and tool.annotations.destructive_hint) == 45
-    assert sum(1 for tool in listed.values() if tool.annotations and tool.annotations.idempotent_hint) == 149
-    assert sum(1 for tool in listed.values() if tool.annotations and tool.annotations.read_only_hint) == 127
+    invoke = listed["programmability_invoke_function"].annotations
+    assert invoke is not None
+    assert invoke.read_only_hint is False
+    assert invoke.idempotent_hint is False
+    assert invoke.destructive_hint is True
+    assert invoke.open_world_hint is True
+    presigned = listed["stages_get_presigned_url"]
+    assert presigned.annotations is not None
+    assert presigned.annotations.read_only_hint is True
+    assert presigned.annotations.open_world_hint is True
+    assert presigned.description is not None
+    assert presigned.description.lower().count("until it expires") == 1
+    assert sum(1 for tool in listed.values() if tool.annotations and tool.annotations.destructive_hint) == 46
+    assert sum(1 for tool in listed.values() if tool.annotations and tool.annotations.idempotent_hint) == 148
+    assert sum(1 for tool in listed.values() if tool.annotations and tool.annotations.read_only_hint) == 126
 
 
 def test_rest_role_header_port_and_extra_headers() -> None:
@@ -188,9 +200,13 @@ async def test_function_body_literal_and_invocation_name() -> None:
     assert _sql(client).endswith("AS $$x + 1$$")
     await tools["programmability_create_function"].fn("F", "", "VARCHAR", "'a$$b' || '\\'", confirm=True)
     assert _sql(client).endswith("AS '''a$$b'' || ''\\\\'''")
-    await tools["programmability_invoke_function"].fn("F(NUMBER(10, 2))", ["1.5"])
+    client.execute_query.reset_mock()  # type: ignore[attr-defined]
+    with pytest.raises(ToolError, match="confirm=True"):
+        await tools["programmability_invoke_function"].fn("F(NUMBER(10, 2))", ["1.5"])
+    client.execute_query.assert_not_called()  # type: ignore[attr-defined]
+    await tools["programmability_invoke_function"].fn("F(NUMBER(10, 2))", ["1.5"], confirm=True)
     assert _sql(client) == 'SELECT "DB"."SCH"."F"(\'1.5\') AS result'
-    await tools["programmability_invoke_function"].fn("F()")
+    await tools["programmability_invoke_function"].fn("F()", confirm=True)
     assert _sql(client) == 'SELECT "DB"."SCH"."F"() AS result'
 
 

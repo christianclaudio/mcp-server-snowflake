@@ -78,7 +78,6 @@ _RO_NAMES = {
     "search",
     "embed_text_768",
     "analyst_query",
-    "invoke_function",
     "suggest_search",
     "suggest_verified_queries",
     "generate_semantic_model",
@@ -130,6 +129,8 @@ _DESTRUCTIVE_NAMES = {
     "promote_database",
     "create_view",
     "create_function",
+    # An arbitrary function can change state or call outside services, so the call is destructive.
+    "invoke_function",
     "alter_user",
     "alter_service",
 }

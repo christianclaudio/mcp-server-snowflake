@@ -294,7 +294,7 @@ def test_mutating_set_covers_every_non_readonly_tool() -> None:
             missing.append(name)
     assert not read_only_leaks
     assert not missing
-    assert len(MUTATING_TOOLS) == 236
+    assert len(MUTATING_TOOLS) == 238
 
 
 def test_redact_secrets_token_forms() -> None:
