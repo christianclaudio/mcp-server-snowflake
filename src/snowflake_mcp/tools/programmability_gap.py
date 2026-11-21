@@ -453,13 +453,15 @@ def register_programmability_gap_tools(mcp: FastMCP, client: SnowflakeClient) ->
     @mcp.tool(
         name="invoke_function",
         description=(
-            "Call a function with literal arguments. External functions and UDFs with external access "
-            "can reach outside services. https://docs.snowflake.com/en/sql-reference/sql/create-function"
+            "Call a function with literal arguments. Requires confirmation. External functions and UDFs "
+            "with external access can reach outside services. "
+            "https://docs.snowflake.com/en/sql-reference/sql/create-function"
         ),
     )
     async def snowflake_invoke_function(
         function_signature: Identifier,
         arguments: list[str] | None = None,
+        confirm: bool = False,
         database: OptionalIdentifier = None,
         schema_name: OptionalIdentifier = None,
     ) -> dict[str, Any]:
@@ -467,9 +469,11 @@ def register_programmability_gap_tools(mcp: FastMCP, client: SnowflakeClient) ->
 
         The function name is qualified. Each argument is a quoted string literal. External
         functions and UDFs with external access can reach outside services. The function
-        body is not inspected, and read-only mode refuses the call before any SQL.
+        body is not inspected. Read-only mode refuses the call before any SQL, and every
+        call needs ``confirm=True``.
         """
         deny_write(client)
+        require_confirm(confirm, f"Destructive: To invoke function '{function_signature}', set confirm=True.")
         target = validate_and_quote_routine_signature(
             function_signature,
             database=database or client.config.database,

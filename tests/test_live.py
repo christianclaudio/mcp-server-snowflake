@@ -516,7 +516,10 @@ TOOL_FIXTURES: dict[str, tuple[dict[str, Any], str]] = {
         "confirm",
     ),
     "programmability_get_code_bundle_execution": ({"execution_id": "E2E_MCP_MISSING_OBJECT"}, "success"),
-    "programmability_invoke_function": ({"function_signature": "E2E_MCP_MISSING_OBJECT"}, "confirm"),
+    "programmability_invoke_function": (
+        {"function_signature": "E2E_MCP_MISSING_OBJECT", "confirm": False},
+        "confirm",
+    ),
     "programmability_list_artifact_repositories": ({}, "success"),
     "programmability_list_code_bundle_executions": ({}, "success"),
     "programmability_list_code_bundles": ({}, "success"),

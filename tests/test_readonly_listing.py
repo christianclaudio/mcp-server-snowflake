@@ -177,7 +177,7 @@ async def test_invoke_function_is_hidden_in_read_only_and_presigned_url_stays() 
     assert invoke.annotations is not None
     assert invoke.annotations.read_only_hint is False
     assert invoke.annotations.idempotent_hint is False
-    assert invoke.annotations.destructive_hint is False
+    assert invoke.annotations.destructive_hint is True
     assert invoke.annotations.open_world_hint is True
     assert presigned.annotations is not None
     assert presigned.annotations.read_only_hint is True
@@ -185,9 +185,16 @@ async def test_invoke_function_is_hidden_in_read_only_and_presigned_url_stays() 
     assert presigned.annotations.open_world_hint is True
     assert presigned.description is not None
     assert presigned.description.lower().count("until it expires") == 1
+    writable.execute_query.reset_mock()  # type: ignore[attr-defined]
+    with pytest.raises(ToolError, match="confirm=True"):
+        await full.call_tool(
+            "programmability_invoke_function",
+            {"function_signature": "F()", "database": "DB", "schema_name": "SCH"},
+        )
+    writable.execute_query.assert_not_called()  # type: ignore[attr-defined]
     called = await full.call_tool(
         "programmability_invoke_function",
-        {"function_signature": "F()", "database": "DB", "schema_name": "SCH"},
+        {"function_signature": "F()", "database": "DB", "schema_name": "SCH", "confirm": True},
     )
     assert called.is_error is False
     writable.execute_query.assert_called()  # type: ignore[attr-defined]
@@ -198,9 +205,12 @@ async def test_invoke_function_is_hidden_in_read_only_and_presigned_url_stays() 
     assert "programmability_invoke_function" not in locked_names
     assert "stages_get_presigned_url" in locked_names
     with pytest.raises(ToolError, match="read-only"):
-        await locked.call_tool("programmability_invoke_function", {"function_signature": "F()"})
+        await locked.call_tool(
+            "programmability_invoke_function",
+            {"function_signature": "F()", "confirm": True},
+        )
     with pytest.raises(ToolError, match="read-only"):
-        await _registered(locked)["programmability_invoke_function"].fn("F()")  # type: ignore[attr-defined]
+        await _registered(locked)["programmability_invoke_function"].fn("F()", confirm=True)  # type: ignore[attr-defined]
     locked_client.execute_query.assert_not_called()  # type: ignore[attr-defined]
 
     readonly = create_server(client=_client(), profile="readonly")

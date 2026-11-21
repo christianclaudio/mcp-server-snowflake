@@ -35,14 +35,14 @@ def verify_contract() -> int:
 
     print("\nAnnotation verification:")
     print(f"  ✓ Read-only annotations:  {ro_count} (expected 126)")
-    print(f"  ✓ Destructive annotations:{dest_count} (expected 45)")
+    print(f"  ✓ Destructive annotations:{dest_count} (expected 46)")
     print(f"  ✓ Idempotent annotations: {idem_count} (expected 148)")
     print(f"  ✓ Unannotated tools:      {unannotated_count} (expected 0)")
 
     if ro_count != 126:
         errors.append(f"Expected 126 read-only tools, found {ro_count}")
-    if dest_count != 45:
-        errors.append(f"Expected 45 destructive tools, found {dest_count}")
+    if dest_count != 46:
+        errors.append(f"Expected 46 destructive tools, found {dest_count}")
     if idem_count != 148:
         errors.append(f"Expected 148 idempotent tools, found {idem_count}")
     if unannotated_count != 0:
