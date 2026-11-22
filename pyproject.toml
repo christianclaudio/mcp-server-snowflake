@@ -60,7 +60,7 @@ dependencies = [
     "certifi>=2026.10.23",
     "snowflake-connector-python>=5.2.0",
     "snowflake-core>=1.14.0",
-    "pydantic>=2.14.3",
+    "pydantic>=2.14.4",
     "cryptography>=50.0.2",
     "python-dotenv>=1.2.4",
     "httpx>=0.28.1",
@@ -78,7 +78,7 @@ dev = [
     "pytest-cov>=7.1.0",
     "opentelemetry-sdk>=1.45.2,<1.46",
     "mypy>=2.4.1",
-    "ruff>=0.17.4",
+    "ruff>=0.17.5",
     "build>=1.6.1",
     "twine>=7.0.0",
 ]
