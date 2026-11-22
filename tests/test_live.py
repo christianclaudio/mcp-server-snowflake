@@ -10,6 +10,7 @@ import copy
 import json
 import os
 import re
+import sys
 import time
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -32,12 +33,23 @@ _REDACT_PATTERN = re.compile(
     r"(?i)(password|token|secret|key|private_key|authorization)(['\":\s=]+)(?:\"[^\"]*\"|'[^']*'|[^\s,;'\"]+)"
 )
 
+# User object names resolved during the live run. Failure output never shows them.
+_RESOLVED_LIVE_NAMES: set[str] = set()
+
+
+def _redact_live_names(text: str) -> str:
+    """Mask the login name from SNOWFLAKE_USER and any resolved user object name."""
+    names = {os.environ.get("SNOWFLAKE_USER", "").strip()} | _RESOLVED_LIVE_NAMES
+    for name in sorted((name for name in names if name), key=len, reverse=True):
+        text = re.sub(re.escape(name), "[redacted user]", text, flags=re.IGNORECASE)
+    return text
+
 
 def _redact_secrets(text: str) -> str:
     """Strip credentials, bearer tokens, and private keys from output strings."""
     redacted = _PEM_KEY_PATTERN.sub("[redacted private key]", text)
     redacted = _BEARER_PATTERN.sub("Bearer [redacted]", redacted)
-    return _REDACT_PATTERN.sub(r"\1\2[redacted]", redacted)
+    return _redact_live_names(_REDACT_PATTERN.sub(r"\1\2[redacted]", redacted))
 
 
 TOOL_FIXTURES: dict[str, tuple[dict[str, Any], str]] = {
@@ -99,8 +111,9 @@ TOOL_FIXTURES: dict[str, tuple[dict[str, Any], str]] = {
     "governance_drop_role": ({"role_name": "E2E_MCP_MISSING_OBJECT", "confirm": False}, "confirm"),
     "governance_get_current_context": ({}, "success"),
     "governance_list_connections": ({}, "success"),
-    "governance_list_grants_to_role": ({"role_name": "E2E_MCP_MISSING_OBJECT"}, "rejected"),
-    "governance_list_grants_to_user": ({"user_name": "E2E_MCP_MISSING_OBJECT"}, "rejected"),
+    "governance_list_grants_to_role": ({"role_name": os.environ.get("SNOWFLAKE_ROLE", "").strip()}, "success"),
+    # dispatch_tool_call fills user_name from CURRENT_USER() at run time.
+    "governance_list_grants_to_user": ({"user_name": ""}, "success"),
     "governance_list_roles": ({}, "success"),
     "governance_list_users": ({}, "success"),
     "governance_use_connection": ({"connection_name": "e2e_missing_profile"}, "confirm"),
@@ -553,6 +566,14 @@ TOOL_FIXTURES: dict[str, tuple[dict[str, Any], str]] = {
 # Tools left out of the live catalog. Each value is a non-empty skip reason.
 EXPLICIT_TOOL_SKIPS: dict[str, str] = {}
 
+# Fixtures that name the live run's own role or user. The role comes from the environment at run
+# time and the user from CURRENT_USER(), so neither lives in the repo. The probe is skipped when
+# the variable is unset.
+_ENV_NAMED_FIXTURES: dict[str, str] = {
+    "governance_list_grants_to_role": "SNOWFLAKE_ROLE",
+    "governance_list_grants_to_user": "SNOWFLAKE_USER",
+}
+
 CORTEX_SKIP_REASON = "Cortex is not available on this account"
 # Expect policy (success | rejected | confirm | cortex): TESTING.md "Live e2e expect policy".
 _SAFE_REJECTION_MARKERS = ("does not exist", "not authorized", "insufficient privileges")
@@ -706,6 +727,14 @@ async def _call_json(srv: Any, tool_name: str, arguments: dict[str, Any]) -> dic
     return _json_object(res.content[0].text)
 
 
+async def _current_user_name(srv: Any) -> str | None:
+    """Return CURRENT_USER(), the user object name, which can differ from the login name."""
+    payload = await _call_json(srv, "governance_get_current_context", {})
+    context = payload.get("context") if payload else None
+    user = _row_value(context, "user") if isinstance(context, dict) else None
+    return user.strip() if isinstance(user, str) and user.strip() else None
+
+
 def _usable_names(rows: Any, *, kind: str | None = None, exclude: tuple[str, ...] = ()) -> list[str]:
     names: list[str] = []
     for row in rows if isinstance(rows, list) else []:
@@ -842,7 +871,18 @@ async def dispatch_tool_call(
     if namespace is None and (tool_name in _NAMESPACED or tool_name in _DATABASE_SCOPED):
         return ("SKIP", False, NO_NAMESPACE_REASON)
 
+    env_name = _ENV_NAMED_FIXTURES.get(tool_name)
+    if env_name and not os.environ.get(env_name, "").strip():
+        return ("SKIP", False, f"{env_name} is not set")
+
     arguments, expect = fixtures[tool_name]
+    if tool_name == "governance_list_grants_to_user":
+        # SHOW GRANTS TO USER takes the user object name, so resolve it here instead of using the login name.
+        user_name = await _current_user_name(srv)
+        if user_name is None:
+            return ("SKIP", False, "CURRENT_USER() is not available")
+        _RESOLVED_LIVE_NAMES.add(user_name)
+        arguments = {**arguments, "user_name": user_name}
     if expect == "cortex" and _cortex_skip_requested():
         return ("SKIP", False, CORTEX_SKIP_REASON)
 
@@ -1468,7 +1508,7 @@ async def test_fixture_catalog_matches_server_tools(mock_snowflake_client: Snowf
             assert arguments["confirm"] is False
         if expect == "cortex":
             assert CORTEX_SKIP_REASON.strip()
-    assert counts == {"success": 68, "rejected": 42, "confirm": 119, "cortex": 16}
+    assert counts == {"success": 70, "rejected": 40, "confirm": 119, "cortex": 16}
     assert TOOL_FIXTURES["queries_query"] == ({"query": "SELECT 1"}, "success")
     # A tag name with no match is the not-found error, not an empty success.
     assert TOOL_FIXTURES["tags_describe_tag"] == ({"tag_name": "E2E_MCP_MISSING_OBJECT"}, "rejected")
@@ -1554,3 +1594,31 @@ async def test_database_scoped_probes_get_the_discovered_database() -> None:
         assert argument not in TOOL_FIXTURES[tool_name][0]
         result = await dispatch_tool_call(AsyncMock(), tool_name, False, namespace=None)
         assert result == ("SKIP", False, NO_NAMESPACE_REASON), tool_name
+
+
+@pytest.mark.asyncio
+async def test_grants_to_user_probe_uses_current_user_not_login(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SNOWFLAKE_USER", "e2e.fake.login@example.com")
+    monkeypatch.setattr(sys.modules[__name__], "_RESOLVED_LIVE_NAMES", set())
+    srv = AsyncMock()
+    srv.call_tool.side_effect = [
+        _json_result({"status": "success", "context": {"USER": "E2E_FAKE_OBJECT"}}),
+        ValueError("bad identifier E2E_FAKE_OBJECT for e2e.fake.login@example.com"),
+    ]
+    status, is_error, message = await dispatch_tool_call(srv, "governance_list_grants_to_user", False)
+    assert srv.call_tool.await_args_list[1].args == ("governance_list_grants_to_user", {"user_name": "E2E_FAKE_OBJECT"})
+    assert (status, is_error) == ("FAIL", True)
+    assert message is not None
+    assert "E2E_FAKE_OBJECT" not in message and "e2e.fake.login" not in message
+    assert "[redacted user]" in message
+    assert TOOL_FIXTURES["governance_list_grants_to_user"][0] == {"user_name": ""}
+
+
+@pytest.mark.asyncio
+async def test_grants_probes_skip_when_env_is_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SNOWFLAKE_ROLE", raising=False)
+    monkeypatch.setenv("SNOWFLAKE_USER", " ")
+    srv = AsyncMock()
+    for tool_name, env_name in _ENV_NAMED_FIXTURES.items():
+        assert await dispatch_tool_call(srv, tool_name, False) == ("SKIP", False, f"{env_name} is not set")
+    srv.call_tool.assert_not_awaited()

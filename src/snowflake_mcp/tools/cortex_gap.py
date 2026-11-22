@@ -333,7 +333,9 @@ def register_cortex_gap_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
 
         https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-rest-api
         """
-        result = _rest(client, "GET", "/api/v2/cortex/models")
+        # Snowflake answers this GET with 415 when it has no Content-Type and 400 when it has no body;
+        # it lists the models only for a JSON body, so send {} (httpx adds the JSON Content-Type).
+        result = _rest(client, "GET", "/api/v2/cortex/models", json_body={})
         return {"status": "success", "models": result.get("data")}
 
     @mcp.tool(
