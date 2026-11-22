@@ -99,8 +99,8 @@ TOOL_FIXTURES: dict[str, tuple[dict[str, Any], str]] = {
     "governance_drop_role": ({"role_name": "E2E_MCP_MISSING_OBJECT", "confirm": False}, "confirm"),
     "governance_get_current_context": ({}, "success"),
     "governance_list_connections": ({}, "success"),
-    "governance_list_grants_to_role": ({"role_name": os.environ.get("SNOWFLAKE_ROLE", "")}, "success"),
-    "governance_list_grants_to_user": ({"user_name": os.environ.get("SNOWFLAKE_USER", "")}, "success"),
+    "governance_list_grants_to_role": ({"role_name": os.environ.get("SNOWFLAKE_ROLE", "").strip()}, "success"),
+    "governance_list_grants_to_user": ({"user_name": os.environ.get("SNOWFLAKE_USER", "").strip()}, "success"),
     "governance_list_roles": ({}, "success"),
     "governance_list_users": ({}, "success"),
     "governance_use_connection": ({"connection_name": "e2e_missing_profile"}, "confirm"),
@@ -553,6 +553,13 @@ TOOL_FIXTURES: dict[str, tuple[dict[str, Any], str]] = {
 # Tools left out of the live catalog. Each value is a non-empty skip reason.
 EXPLICIT_TOOL_SKIPS: dict[str, str] = {}
 
+# Fixtures that name the live run's own role or user. The names come from the environment at run
+# time so they never live in the repo; the probe is skipped when the variable is unset.
+_ENV_NAMED_FIXTURES: dict[str, str] = {
+    "governance_list_grants_to_role": "SNOWFLAKE_ROLE",
+    "governance_list_grants_to_user": "SNOWFLAKE_USER",
+}
+
 CORTEX_SKIP_REASON = "Cortex is not available on this account"
 # Expect policy (success | rejected | confirm | cortex): TESTING.md "Live e2e expect policy".
 _SAFE_REJECTION_MARKERS = ("does not exist", "not authorized", "insufficient privileges")
@@ -841,6 +848,10 @@ async def dispatch_tool_call(
 
     if namespace is None and (tool_name in _NAMESPACED or tool_name in _DATABASE_SCOPED):
         return ("SKIP", False, NO_NAMESPACE_REASON)
+
+    env_name = _ENV_NAMED_FIXTURES.get(tool_name)
+    if env_name and not os.environ.get(env_name, "").strip():
+        return ("SKIP", False, f"{env_name} is not set")
 
     arguments, expect = fixtures[tool_name]
     if expect == "cortex" and _cortex_skip_requested():
@@ -1468,7 +1479,7 @@ async def test_fixture_catalog_matches_server_tools(mock_snowflake_client: Snowf
             assert arguments["confirm"] is False
         if expect == "cortex":
             assert CORTEX_SKIP_REASON.strip()
-    assert counts == {"success": 68, "rejected": 42, "confirm": 119, "cortex": 16}
+    assert counts == {"success": 70, "rejected": 40, "confirm": 119, "cortex": 16}
     assert TOOL_FIXTURES["queries_query"] == ({"query": "SELECT 1"}, "success")
     # A tag name with no match is the not-found error, not an empty success.
     assert TOOL_FIXTURES["tags_describe_tag"] == ({"tag_name": "E2E_MCP_MISSING_OBJECT"}, "rejected")
