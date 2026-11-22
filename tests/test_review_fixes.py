@@ -146,6 +146,17 @@ async def test_messages_send_the_anthropic_version_header_only() -> None:
 
 
 @pytest.mark.asyncio
+async def test_list_models_sends_a_json_body_and_content_type() -> None:
+    _client_obj, tools, rest = _client()
+    await tools["cortex_list_models"].fn()
+    (request,) = rest.requests
+    assert request.method == "GET"
+    assert request.url.path == "/api/v2/cortex/models"
+    assert request.headers["Content-Type"] == "application/json"
+    assert json.loads(request.content) == {}
+
+
+@pytest.mark.asyncio
 async def test_service_logs_name_is_a_string_and_agent_versions() -> None:
     client, tools, _rest = _client()
     await tools["compute_services_get_service_logs"].fn('"My Svc"', "0", "c", num_lines=5)
