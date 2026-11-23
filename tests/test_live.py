@@ -937,12 +937,13 @@ def live_log_lines(
 ) -> list[str]:
     """Three log lines, plus a fourth for the live fixture objects when that is given.
 
-    The role has its own line; the account identifier and user are never logged.
+    The role has its own line; the account identifier and user are never logged. A database or
+    schema name that contains the login name or the resolved user object name is masked.
     """
     if namespace is None:
         namespace_line = f"live namespace: none ({NO_NAMESPACE_REASON})"
     else:
-        namespace_line = f"live namespace: database={namespace[0]} schema={namespace[1]}"
+        namespace_line = _redact_live_names(f"live namespace: database={namespace[0]} schema={namespace[1]}")
     lines = [
         namespace_line,
         f"live role: {role or 'unknown'}",
@@ -1607,6 +1608,20 @@ async def test_live_log_lines_keep_role_apart_and_never_log_account_or_user(monk
     assert lines[0] == f"live namespace: none ({NO_NAMESPACE_REASON})"
     assert [i for i, line in enumerate(lines) if "E2E_FAKE_ROLE" in line] == [1]
     assert not any("E2E_FAKE_USER" in line or "E2E_FAKE_ACCT" in line for line in lines)
+
+
+def test_live_log_lines_mask_user_in_namespace(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A database or schema name that starts with the login or user object name is masked."""
+    monkeypatch.setenv("SNOWFLAKE_USER", "E2E_FAKE_USER")
+    monkeypatch.setattr(sys.modules[__name__], "_RESOLVED_LIVE_NAMES", {"E2E_FAKE_OBJECT"})
+
+    lines = live_log_lines(('"E2E_FAKE_USER_DB"', '"PUBLIC"'), "E2E_FAKE_ROLE", WAREHOUSE_PRESENT, True, True)
+    assert lines[0] == 'live namespace: database="[redacted user]_DB" schema="PUBLIC"'
+    assert not any("e2e_fake_user" in line.lower() for line in lines)
+
+    lines = live_log_lines(('"e2e_fake_user_db"', '"E2E_FAKE_OBJECT_SCHEMA"'), None, WAREHOUSE_PRESENT, True)
+    assert lines[0] == 'live namespace: database="[redacted user]_db" schema="[redacted user]_SCHEMA"'
+    assert not any("e2e_fake_user" in line.lower() or "e2e_fake_object" in line.lower() for line in lines)
 
 
 @pytest.mark.asyncio

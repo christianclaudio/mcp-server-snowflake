@@ -142,7 +142,7 @@ Discovery is read-only, through the server's own tools. It first looks for the l
 
 `_DATABASE_SCOPED` lists two database-scoped list probes, `governance_list_database_roles` and `governance_list_future_grants`. With no current database they refuse to run, so the harness passes the discovered database as their `database` argument.
 
-The run prints four lines: the discovered database and schema (or `none`), the current role on its own line, the warehouse state with whether a warehouse is configured, and whether the live fixture objects are present. The account identifier and user are never printed.
+The run prints four lines: the discovered database and schema (or `none`), the current role on its own line, the warehouse state with whether a warehouse is configured, and whether the live fixture objects are present. The account identifier and user are never printed; a login name or user object name inside the database or schema name is printed as `[redacted user]`.
 
 Four skips, each with its reason:
 
