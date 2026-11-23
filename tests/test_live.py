@@ -735,6 +735,18 @@ async def _current_user_name(srv: Any) -> str | None:
     return user.strip() if isinstance(user, str) and user.strip() else None
 
 
+async def resolve_live_user_mask(srv: Any) -> str | None:
+    """Resolve CURRENT_USER() once, before the tool loop, and add it to the mask set.
+
+    FAIL messages from tools that run before the grants-to-user probe then mask a user object name
+    that differs from the login name. The name is never logged.
+    """
+    user_name = await _current_user_name(srv)
+    if user_name is not None:
+        _RESOLVED_LIVE_NAMES.add(user_name)
+    return user_name
+
+
 def _usable_names(rows: Any, *, kind: str | None = None, exclude: tuple[str, ...] = ()) -> list[str]:
     names: list[str] = []
     for row in rows if isinstance(rows, list) else []:
@@ -1532,6 +1544,7 @@ async def test_all_discovered_tools_live(monkeypatch: pytest.MonkeyPatch) -> Non
     assert len(tools) > 0, "No tools registered in MCPServer"
 
     warehouse_state, role = await read_warehouse_state(srv, warehouse_configured)
+    await resolve_live_user_mask(srv)
     namespace = await discover_namespace(srv)
     for line in live_log_lines(namespace, role, warehouse_state, warehouse_configured):
         print(line)
@@ -1612,6 +1625,53 @@ async def test_grants_to_user_probe_uses_current_user_not_login(monkeypatch: pyt
     assert "E2E_FAKE_OBJECT" not in message and "e2e.fake.login" not in message
     assert "[redacted user]" in message
     assert TOOL_FIXTURES["governance_list_grants_to_user"][0] == {"user_name": ""}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        _json_result({"status": "success", "context": {"ROLE": "E2E_FAKE_ROLE"}}),
+        _json_result({"status": "success", "context": {"USER": " "}}),
+        _json_result({"status": "error", "error": "denied"}, is_error=True),
+        ToolError("context failed"),
+    ],
+    ids=["no-user-key", "blank-user", "is-error", "raised"],
+)
+async def test_grants_to_user_skips_when_current_user_unavailable(
+    monkeypatch: pytest.MonkeyPatch, outcome: CallToolResult | Exception
+) -> None:
+    monkeypatch.setenv("SNOWFLAKE_USER", "e2e.fake.login@example.com")
+    monkeypatch.setattr(sys.modules[__name__], "_RESOLVED_LIVE_NAMES", set())
+    srv = AsyncMock()
+    if isinstance(outcome, Exception):
+        srv.call_tool.side_effect = outcome
+    else:
+        srv.call_tool.return_value = outcome
+    result = await dispatch_tool_call(srv, "governance_list_grants_to_user", False)
+    assert result == ("SKIP", False, "CURRENT_USER() is not available")
+    assert [c.args[0] for c in srv.call_tool.await_args_list] == ["governance_get_current_context"]
+    assert await resolve_live_user_mask(srv) is None
+    assert not _RESOLVED_LIVE_NAMES
+
+
+@pytest.mark.asyncio
+async def test_resolve_live_user_mask_redacts_before_grants_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SNOWFLAKE_USER", "e2e.fake.login@example.com")
+    monkeypatch.setattr(sys.modules[__name__], "_RESOLVED_LIVE_NAMES", set())
+    srv = AsyncMock()
+    srv.call_tool.return_value = _json_result({"status": "success", "context": {"USER": "E2E_FAKE_OBJECT"}})
+    assert await resolve_live_user_mask(srv) == "E2E_FAKE_OBJECT"
+    assert _RESOLVED_LIVE_NAMES == {"E2E_FAKE_OBJECT"}
+
+    srv.call_tool.side_effect = ValueError("warehouse check failed for E2E_FAKE_OBJECT")
+    status, is_error, message = await dispatch_tool_call(srv, "queries_query", False)
+    assert (status, is_error) == ("FAIL", True)
+    assert message is not None
+    assert "E2E_FAKE_OBJECT" not in message
+    assert "[redacted user]" in message
+    called = [c.args[0] for c in srv.call_tool.await_args_list]
+    assert called == ["governance_get_current_context", "queries_query"]
 
 
 @pytest.mark.asyncio
