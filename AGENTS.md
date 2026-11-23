@@ -98,7 +98,7 @@ coderabbit review --agent --uncommitted
 ## 🔄 CI & Releases
 
 - **CI (`.github/workflows/ci.yml`):** runs on `push`/`pull_request` to `main`, weekly schedule, and `workflow_dispatch` (`fetch-depth: 0` on package jobs). Jobs: `lint-and-types`, `test` (Python 3.11–3.14, 100% cov) + `tests`, `tool-contract` (asserts 245 tools), `conformance`, `build-check`, `docker-build` (no push; verifies stripped build deps, stdio `initialize`/`tools/list`, negative `CA_CERTIFICATES_FLOOR`), and `drift-check` (schedule/manual only; passes `--fail-on-new-unmapped` and `GITHUB_TOKEN`, checks the committed REST snapshot for a new unmapped operation, and opens a `forge-todo` issue when the script finds one or exits with an error).
-- **Dependabot (`dependabot-automerge.yml`):** squash-merges minor/patch PRs (`gh pr merge --squash --match-head-commit`) after CI passes; major & docker updates wait for human review.
+- **Dependabot (`dependabot-automerge.yml`):** squash-merges minor/patch PRs (`gh pr merge --squash --match-head-commit`) after CI passes on that head commit, only when every commit is Dependabot's or a clean GitHub update-branch merge; major and `docker` updates always wait for human review.
 - **Releases (`.github/workflows/release.yml`):** triggered on `v*` tags (`fetch-depth: 0`); verifies wheel matches tag, creates GitHub Release (`wheel`, `sdist`, SBOM, `release_notes.py`), pushes GHCR image (`UV_DYNAMIC_VERSIONING_BYPASS` set to tag version because the Docker build context has no `.git`), and attests `dist/*` + image digest in separate `attest` job.
 
 ---
