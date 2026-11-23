@@ -1879,7 +1879,7 @@ async def test_fixture_objects_use_discovered_namespace() -> None:
         "stages_get_presigned_url": ['@"Db ""1"""."PUBLIC"."E2E_MCP_FIXTURE_STAGE"', "'e2e-missing-file.txt'"],
         "tasks_list_task_dependents": [
             '"Db ""1""".INFORMATION_SCHEMA.TASK_DEPENDENTS(',
-            "TASK_NAME => '\"Db \"\"1\"\"\".\"PUBLIC\".\"E2E_MCP_FIXTURE_TASK\"'",
+            'TASK_NAME => \'"Db ""1"""."PUBLIC"."E2E_MCP_FIXTURE_TASK"\'',
         ],
     }
     assert set(expected) == set(_FIXTURE_OBJECTS)
