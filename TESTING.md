@@ -103,12 +103,14 @@ Global `_SAFE_REJECTION_MARKERS`, applied to every `rejected` tool and also acce
 - `not authorized`
 - `insufficient privileges`
 
-Per-tool `_TOOL_REJECTION_MARKERS`. The only entry is `queries_get_query_operator_stats`. Its fixture calls `GET_QUERY_OPERATOR_STATS` with the non-UUID id `e2e-missing-query-id`, and Snowflake's wording misses the global markers:
+Per-tool `_TOOL_REJECTION_MARKERS` has two entries. `queries_get_query_operator_stats`: its fixture calls `GET_QUERY_OPERATOR_STATS` with the non-UUID id `e2e-missing-query-id`, and Snowflake's wording misses the global markers:
 
 - `invalid uuid`
 - `invalid query id`
 - `invalid value`
 - `get_query_operator_stats`
+
+`programmability_get_code_bundle_execution` has one marker, `505167`. Its fixture passes the non-UUID execution id `E2E_MCP_MISSING_OBJECT`, and Snowflake answers HTTP 400 code `505167` (`invalid notebook configuration: query_id is not a valid uuid`). There is no real notebook execution id to use as a fixture, so the row is `rejected`.
 
 ### Confirm markers and the destructive gate
 

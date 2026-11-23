@@ -528,7 +528,7 @@ TOOL_FIXTURES: dict[str, tuple[dict[str, Any], str]] = {
         {"bundle_name": "E2E_MCP_MISSING_OBJECT", "entrypoint": "E2E_MCP_MISSING_OBJECT", "confirm": False},
         "confirm",
     ),
-    "programmability_get_code_bundle_execution": ({"execution_id": "E2E_MCP_MISSING_OBJECT"}, "success"),
+    "programmability_get_code_bundle_execution": ({"execution_id": "E2E_MCP_MISSING_OBJECT"}, "rejected"),
     "programmability_invoke_function": (
         {"function_signature": "E2E_MCP_MISSING_OBJECT", "confirm": False},
         "confirm",
@@ -577,8 +577,11 @@ _ENV_NAMED_FIXTURES: dict[str, str] = {
 CORTEX_SKIP_REASON = "Cortex is not available on this account"
 # Expect policy (success | rejected | confirm | cortex): TESTING.md "Live e2e expect policy".
 _SAFE_REJECTION_MARKERS = ("does not exist", "not authorized", "insufficient privileges")
-# GET_QUERY_OPERATOR_STATS rejects a non-UUID query id with wording the global markers miss.
+# GET_QUERY_OPERATOR_STATS rejects a non-UUID query id with wording the global markers miss. The
+# code bundle execution lookup answers a non-UUID execution id with HTTP 400 code 505167 ("invalid
+# notebook configuration: query_id is not a valid uuid"); there is no real execution id to use.
 _TOOL_REJECTION_MARKERS: dict[str, tuple[str, ...]] = {
+    "programmability_get_code_bundle_execution": ("505167",),
     "queries_get_query_operator_stats": (
         "invalid uuid",
         "invalid query id",
@@ -1649,7 +1652,7 @@ async def test_fixture_catalog_matches_server_tools(mock_snowflake_client: Snowf
             assert arguments["confirm"] is False
         if expect == "cortex":
             assert CORTEX_SKIP_REASON.strip()
-    assert counts == {"success": 67, "rejected": 43, "confirm": 119, "cortex": 16}
+    assert counts == {"success": 66, "rejected": 44, "confirm": 119, "cortex": 16}
     assert TOOL_FIXTURES["queries_query"] == ({"query": "SELECT 1"}, "success")
     # A tag name with no match is the not-found error, not an empty success.
     assert TOOL_FIXTURES["tags_describe_tag"] == ({"tag_name": "E2E_MCP_MISSING_OBJECT"}, "rejected")
@@ -1839,6 +1842,31 @@ async def test_grants_probes_skip_when_env_is_unset(monkeypatch: pytest.MonkeyPa
     for tool_name, env_name in _ENV_NAMED_FIXTURES.items():
         assert await dispatch_tool_call(srv, tool_name, False) == ("SKIP", False, f"{env_name} is not set")
     srv.call_tool.assert_not_awaited()
+
+
+_CODE_BUNDLE_505167 = (
+    'Snowflake REST request failed (400): {"code": "505167", "message": "invalid notebook configuration: '
+    'query_id is not a valid uuid: invalid uuid length: 22"}'
+)
+
+
+@pytest.mark.asyncio
+async def test_get_code_bundle_execution_expects_505167_rejection() -> None:
+    """Live, a non-UUID execution id gets HTTP 400 code 505167, which the rejected row passes on."""
+    name = "programmability_get_code_bundle_execution"
+    assert TOOL_FIXTURES[name][1] == "rejected"
+    assert "505167" in _rejection_markers(name)
+    mock_srv = AsyncMock()
+    mock_srv.call_tool.side_effect = ToolError(_CODE_BUNDLE_505167)
+    assert await dispatch_tool_call(mock_srv, name, False) == ("PASS", True, None)
+    mock_srv.call_tool.side_effect = None
+    mock_srv.call_tool.return_value = _json_result({"status": "error", "error": _CODE_BUNDLE_505167}, is_error=True)
+    assert await dispatch_tool_call(mock_srv, name, False) == ("PASS", True, None)
+    # Any other error, or a success, is not the expected rejection.
+    mock_srv.call_tool.return_value = _json_result({"status": "error", "error": "warehouse suspended"}, is_error=True)
+    assert (await dispatch_tool_call(mock_srv, name, False))[0] == "FAIL"
+    mock_srv.call_tool.return_value = _json_result({"status": "success", "execution": {}})
+    assert (await dispatch_tool_call(mock_srv, name, False))[0] == "FAIL"
 
 
 _SPCS_ROWS = (
