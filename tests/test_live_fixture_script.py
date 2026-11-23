@@ -55,14 +55,23 @@ def test_script_uses_sse_encryption() -> None:
 
 
 def test_script_uses_standard_templating() -> None:
-    """Account values come only through <% database %> and <% schema %>; every name is qualified."""
-    assert set(re.findall(r"<%\s*(\w+)\s*%>", _text())) == {"database", "schema"}
+    """Account values come only through <% database %>, <% schema %> and <% warehouse %>; every name is qualified."""
+    assert set(re.findall(r"<%\s*(\w+)\s*%>", _text())) == {"database", "schema", "warehouse"}
     for statement in _statements():
         # A database role lives in the database; the other objects live in the schema.
         if statement.upper().startswith("CREATE DATABASE ROLE "):
             assert "IF NOT EXISTS <% database %>.E2E_MCP_FIXTURE_" in statement, statement
         else:
             assert "IF NOT EXISTS <% database %>.<% schema %>.E2E_MCP_FIXTURE_" in statement, statement
+
+
+def test_task_runs_on_named_warehouse() -> None:
+    """Without a WAREHOUSE the task needs the serverless task privilege (live error 091447)."""
+    task = [s for s in _statements() if s.upper().startswith("CREATE TASK ")]
+    assert len(task) == 1
+    assert "E2E_MCP_FIXTURE_TASK WAREHOUSE = <% warehouse %> SCHEDULE" in task[0]
+    other = [s for s in _statements() if not s.upper().startswith("CREATE TASK ")]
+    assert not any("<% warehouse %>" in statement for statement in other)
 
 
 def test_script_has_no_identity_or_secret() -> None:

@@ -1,10 +1,10 @@
 -- Live fixture objects for the live e2e harness (tests/test_live.py; TESTING.md "Live fixture objects").
 --
 -- Run once per account before the live suite. Safe to re-run: every statement is CREATE ... IF NOT EXISTS.
--- Snowflake CLI templating fills the two variables
+-- Snowflake CLI templating fills the three variables
 -- (https://docs.snowflake.com/en/developer-guide/snowflake-cli/sql/execute-sql):
 --
---   snow sql -f scripts/live_fixtures.sql -D database=MY_DB -D schema=PUBLIC
+--   snow sql -f scripts/live_fixtures.sql -D database=MY_DB -D schema=PUBLIC -D warehouse=MY_WH
 --
 -- The live harness finds these objects by name in whichever database and schema they are in.
 
@@ -21,7 +21,8 @@ CREATE DATABASE ROLE IF NOT EXISTS <% database %>.E2E_MCP_FIXTURE_DATABASE_ROLE;
 -- (https://docs.snowflake.com/en/sql-reference/sql/create-stage).
 CREATE STAGE IF NOT EXISTS <% database %>.<% schema %>.E2E_MCP_FIXTURE_STAGE ENCRYPTION = (TYPE = 'SNOWFLAKE_SSE');
 
--- tasks_list_task_dependents. A new task is created suspended and this script never resumes it;
--- with no WAREHOUSE the task uses serverless compute
+-- tasks_list_task_dependents. The task runs on the named warehouse, so the account needs no
+-- serverless task privilege. A new task is created suspended and this script never resumes it
 -- (https://docs.snowflake.com/en/sql-reference/sql/create-task).
-CREATE TASK IF NOT EXISTS <% database %>.<% schema %>.E2E_MCP_FIXTURE_TASK SCHEDULE = '60 MINUTES' AS SELECT 1;
+CREATE TASK IF NOT EXISTS <% database %>.<% schema %>.E2E_MCP_FIXTURE_TASK WAREHOUSE = <% warehouse %>
+    SCHEDULE = '60 MINUTES' AS SELECT 1;
