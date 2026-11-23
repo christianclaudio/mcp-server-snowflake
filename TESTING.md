@@ -125,7 +125,7 @@ Per-tool `_TOOL_REJECTION_MARKERS`. The only entry is `queries_get_query_operato
 The `cortex` fixtures are `cortex_analyst_query`, `cortex_complete`, `cortex_embed_text_768`, `cortex_extract_answer`, `cortex_search`, `cortex_sentiment`, `cortex_summarize`, and `cortex_translate`.
 
 - `SNOWFLAKE_MCP_E2E_SKIP_CORTEX` set to `1`, `true`, or `yes` skips those tools before the call. Skip reason: `Cortex is not available on this account`.
-- A result or exception whose text matches `_CORTEX_UNAVAILABLE_MARKERS` (`unknown function`, `cortex not enabled`, `not available`) is the same skip when the account does not offer Cortex.
+- A result or exception whose text matches `_CORTEX_UNAVAILABLE_MARKERS` (`unknown function`, `cortex not enabled`, `not available`, `399104`, `suggest api is not enabled`) is the same skip when the account does not offer Cortex. The last two match the HTTP 403 `cortex_suggest_search` gets when the Cortex Search Suggest API is not enabled on the account.
 - A match on `_SAFE_REJECTION_MARKERS` is a pass for `expect: cortex`, not a skip.
 
 ### Live run with only account, user and token

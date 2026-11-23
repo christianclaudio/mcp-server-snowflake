@@ -596,7 +596,15 @@ _ACCOUNT_USAGE_DENIED_MARKERS = ("schema 'snowflake.account_usage' does not exis
 # must succeed.
 _SHOW_ACCOUNTS_TOOLS = frozenset({"governance_list_accounts"})
 _SHOW_ACCOUNTS_DENIED_MARKERS = ("insufficient privileges", "003001")
-_CORTEX_UNAVAILABLE_MARKERS = ("unknown function", "cortex not enabled", "not available")
+# Cortex Search Suggest answers HTTP 403 with code 399104 ("Cortex Search Suggest API is not enabled")
+# when the account does not offer it.
+_CORTEX_UNAVAILABLE_MARKERS = (
+    "unknown function",
+    "cortex not enabled",
+    "not available",
+    "399104",
+    "suggest api is not enabled",
+)
 # REST-backed tools refuse password and other authenticators before any request is sent
 # (snowflake_mcp.rest.SnowflakeRestClient.headers). Key-pair, PAT and OAuth runs still call them.
 REST_AUTH_SKIP_REASON = (
@@ -1710,6 +1718,10 @@ async def test_all_discovered_tools_live(monkeypatch: pytest.MonkeyPatch) -> Non
 
 
 _REST_AUTH_TEXT = "Snowflake REST tools need key-pair, PAT or OAuth-token authentication; use one."
+_SUGGEST_DISABLED_TEXT = (
+    'Snowflake REST request failed (403): {"code": "399104", "message": "Cortex Search Suggest API is not enabled"}'
+)
+_OTHER_403_TEXT = 'Snowflake REST request failed (403): {"code": "390186", "message": "Forbidden"}'
 
 
 @pytest.mark.asyncio
@@ -1723,6 +1735,25 @@ async def test_rest_tools_skip_without_rest_auth() -> None:
     # A confirm probe must still hit its gate, so the marker never skips it.
     status, _is_error, _message = await dispatch_tool_call(srv, "databases_drop_database", True)
     assert status == "FAIL"
+
+
+@pytest.mark.asyncio
+async def test_suggest_search_skips_when_suggest_api_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Live, a disabled Suggest API answers HTTP 403 code 399104; that is the Cortex skip, not a FAIL."""
+    monkeypatch.delenv("SNOWFLAKE_MCP_E2E_SKIP_CORTEX", raising=False)
+    assert TOOL_FIXTURES["cortex_suggest_search"][1] == "cortex"
+    skip = ("SKIP", True, CORTEX_SKIP_REASON)
+    srv = AsyncMock()
+    srv.call_tool.side_effect = ToolError(_SUGGEST_DISABLED_TEXT)
+    assert await dispatch_tool_call(srv, "cortex_suggest_search", False) == skip
+    srv.call_tool.side_effect = None
+    srv.call_tool.return_value = _json_result({"status": "error", "error": _SUGGEST_DISABLED_TEXT}, is_error=True)
+    assert await dispatch_tool_call(srv, "cortex_suggest_search", False) == skip
+    # Any other 403 still fails.
+    srv.call_tool.return_value = _json_result({"status": "error", "error": _OTHER_403_TEXT}, is_error=True)
+    assert (await dispatch_tool_call(srv, "cortex_suggest_search", False))[0] == "FAIL"
+    srv.call_tool.side_effect = ToolError(_OTHER_403_TEXT)
+    assert (await dispatch_tool_call(srv, "cortex_suggest_search", False))[0] == "FAIL"
 
 
 @pytest.mark.asyncio
