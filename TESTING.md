@@ -89,6 +89,10 @@ Most other missing-object describe tools stay `rejected`. `tags_describe_tag` is
 
 `horizon_get_object_lineage` and `horizon_get_column_lineage` read `SNOWFLAKE.ACCOUNT_USAGE`. With a role that has the grant (IMPORTED PRIVILEGES on database `SNOWFLAKE`), the call runs and must succeed. Without it, the expected result is `isError` with Snowflake's privilege error (`Schema 'SNOWFLAKE.ACCOUNT_USAGE' does not exist or not authorized`); that passes. Any other error fails.
 
+### SHOW ACCOUNTS without ORGADMIN (`_SHOW_ACCOUNTS_TOOLS`)
+
+`governance_list_accounts` runs `SHOW ACCOUNTS`, which needs the ORGADMIN role. With it, the call must succeed. Without it, Snowflake answers `003001` insufficient privileges, raised or as an `isError` body; that passes. `_SHOW_ACCOUNTS_DENIED_MARKERS` are `insufficient privileges` and `003001`. The ACCOUNT_USAGE marker above does not match this error, so the tool is not in `_ACCOUNT_USAGE_TOOLS`. The fixture stays `success`, and this soft pass applies to no other tool. Any other error fails.
+
 ### Rejection markers
 
 `_rejection_markers` is the global list plus that tool's extra list. Per-tool markers do not replace the global list.
@@ -99,12 +103,14 @@ Global `_SAFE_REJECTION_MARKERS`, applied to every `rejected` tool and also acce
 - `not authorized`
 - `insufficient privileges`
 
-Per-tool `_TOOL_REJECTION_MARKERS`. The only entry is `queries_get_query_operator_stats`. Its fixture calls `GET_QUERY_OPERATOR_STATS` with the non-UUID id `e2e-missing-query-id`, and Snowflake's wording misses the global markers:
+Per-tool `_TOOL_REJECTION_MARKERS` has two entries. `queries_get_query_operator_stats`: its fixture calls `GET_QUERY_OPERATOR_STATS` with the non-UUID id `e2e-missing-query-id`, and Snowflake's wording misses the global markers:
 
 - `invalid uuid`
 - `invalid query id`
 - `invalid value`
 - `get_query_operator_stats`
+
+`programmability_get_code_bundle_execution` has one marker, `505167`. Its fixture passes the non-UUID execution id `E2E_MCP_MISSING_OBJECT`, and Snowflake answers HTTP 400 code `505167` (`invalid notebook configuration: query_id is not a valid uuid`). There is no real notebook execution id to use as a fixture, so the row is `rejected`.
 
 ### Confirm markers and the destructive gate
 
@@ -121,24 +127,29 @@ Per-tool `_TOOL_REJECTION_MARKERS`. The only entry is `queries_get_query_operato
 The `cortex` fixtures are `cortex_analyst_query`, `cortex_complete`, `cortex_embed_text_768`, `cortex_extract_answer`, `cortex_search`, `cortex_sentiment`, `cortex_summarize`, and `cortex_translate`.
 
 - `SNOWFLAKE_MCP_E2E_SKIP_CORTEX` set to `1`, `true`, or `yes` skips those tools before the call. Skip reason: `Cortex is not available on this account`.
-- A result or exception whose text matches `_CORTEX_UNAVAILABLE_MARKERS` (`unknown function`, `cortex not enabled`, `not available`) is the same skip when the account does not offer Cortex.
+- A result or exception whose text matches `_CORTEX_UNAVAILABLE_MARKERS` (`unknown function`, `cortex not enabled`, `not available`, `399104`, `suggest api is not enabled`) is the same skip when the account does not offer Cortex. The last two match the HTTP 403 `cortex_suggest_search` gets when the Cortex Search Suggest API is not enabled on the account.
 - A match on `_SAFE_REJECTION_MARKERS` is a pass for `expect: cortex`, not a skip.
 
 ### Live run with only account, user and token
 
 The live test needs only `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER` and `SNOWFLAKE_TOKEN`. `SNOWFLAKE_DATABASE`, `SNOWFLAKE_SCHEMA`, `SNOWFLAKE_WAREHOUSE` and `SNOWFLAKE_ROLE` are optional. With no current database, a bare object name cannot resolve, so the schema-scoped probes use fully qualified names. The harness never runs `USE` and never changes session state.
 
-Discovery is read-only, through the server's own tools. `databases_list_databases` lists the databases; only rows with `kind` `STANDARD` are kept, sorted by name, and the first 10 are tried. For each, `schemas_list_schemas` lists its schemas; `INFORMATION_SCHEMA` is skipped and `PUBLIC` is preferred, else the first by name. Names are passed double-quoted, with `"` doubled.
+Discovery is read-only, through the server's own tools. It first looks for the live fixture objects (below) in every `STANDARD` database: `governance_list_database_roles` for the database role, then `tables_list_tables`, `stages_list_stages` and `tasks_list_tasks` (filtered by name) in each schema, `PUBLIC` first. The first database and schema that hold all four become the namespace for every qualified probe. Otherwise `databases_list_databases` lists the databases; only rows with `kind` `STANDARD` are kept, sorted by name, and the first 10 are tried. For each, `schemas_list_schemas` lists its schemas; `INFORMATION_SCHEMA` is skipped and `PUBLIC` is preferred, else the first by name. Names are passed double-quoted, with `"` doubled.
 
-`_NAMESPACED` lists the 24 qualified fixtures. Each is `rejected` unless it is a soft-empty success tool in `_EMPTY_SUCCESS_TOOLS`, which keeps `success`. Sixteen send a dotted name (`schemas_describe_schema` sends `<database>.<schema>`, the rest `<database>.<schema>.<object>`). Eight keep the bare name and pass `database` and `schema_name` instead: `programmability_describe_procedure`, `programmability_describe_function`, `programmability_describe_secret`, `pipes_describe_pipe`, `alerts_describe_alert`, `horizon_describe_masking_policy`, `horizon_describe_row_access_policy` and `tags_describe_tag` (`SHOW TAGS` is then scoped `IN SCHEMA <database>.<schema>`). `TOOL_FIXTURES` itself is not changed.
+**Live fixture objects.** `scripts/live_fixtures.sql` creates four objects that four `success` probes name (`_FIXTURE_OBJECTS`): the table `E2E_MCP_FIXTURE_TABLE` (`governance_list_grants_on_object`), the database role `E2E_MCP_FIXTURE_DATABASE_ROLE` (`governance_list_grants_to_database_role`), the server-side encrypted stage `E2E_MCP_FIXTURE_STAGE` (`stages_get_presigned_url`, with a file path that does not exist; the URL is still generated) and the suspended task `E2E_MCP_FIXTURE_TASK`, which runs on the named warehouse (`tasks_list_task_dependents`, which takes the name as `'<database>.<schema>."E2E_MCP_FIXTURE_TASK"'`). Run it once per account before the live suite, with Snowflake CLI templating, which fills three variables (`database`, `schema` and `warehouse`): `snow sql -f scripts/live_fixtures.sql -D database=<database> -D schema=<schema> -D warehouse=<warehouse>`. It is safe to re-run: every statement is `CREATE ... IF NOT EXISTS`, and it never drops, grants, resumes or executes anything. The role that runs it needs `CREATE DATABASE ROLE` on the database. On the trial account used for the live checks, a maintainer runs it once. The harness stays read-only and never creates the objects. When they are not found, the four probes skip with `live fixture objects are not present; run scripts/live_fixtures.sql once per account`.
+
+**Snowpark Container Services on a trial account.** `compute_services_list_service_endpoints`, `compute_services_get_service_logs` and `compute_services_list_images` are `rejected`. Snowflake's SPCS setup says trial accounts are not supported (https://docs.snowflake.com/en/developer-guide/snowpark-container-services/tutorials/common-setup), so no service or image repository can be created as a fixture, and on the trial live run these probes fail with the not-found error (`does not exist`), which the global rejection markers match.
+
+`_NAMESPACED` lists the 25 qualified fixtures. Each is `rejected` unless it is a soft-empty success tool in `_EMPTY_SUCCESS_TOOLS`, which keeps `success`, or `cortex_suggest_search`, which keeps `cortex`. Sixteen send a dotted name (`schemas_describe_schema` sends `<database>.<schema>`, the rest `<database>.<schema>.<object>`). Nine keep the bare name and pass `database` and `schema_name` instead: `programmability_describe_procedure`, `programmability_describe_function`, `programmability_describe_secret`, `pipes_describe_pipe`, `alerts_describe_alert`, `horizon_describe_masking_policy`, `horizon_describe_row_access_policy`, `tags_describe_tag` (`SHOW TAGS` is then scoped `IN SCHEMA <database>.<schema>`) and `cortex_suggest_search` (the Cortex Search REST call needs both). `TOOL_FIXTURES` itself is not changed.
 
 `_DATABASE_SCOPED` lists two database-scoped list probes, `governance_list_database_roles` and `governance_list_future_grants`. With no current database they refuse to run, so the harness passes the discovered database as their `database` argument.
 
-The run prints three lines: the discovered database and schema (or `none`), the current role on its own line, and the warehouse state with whether a warehouse is configured. The account identifier and user are never printed.
+The run prints four lines: the discovered database and schema (or `none`), the current role on its own line, the warehouse state with whether a warehouse is configured, and whether the live fixture objects are present. The account identifier and user are never printed; a login name or user object name inside the database or schema name is printed as `[redacted user]`.
 
-Three skips, each with its reason:
+Four skips, each with its reason:
 
-- **No namespace:** when no readable database and schema is found, the 24 qualified fixtures and the 2 database-scoped probes skip before the call: `No readable database and schema for the current role among the first 10 databases (kind STANDARD) and their schemas, so the fully qualified probe could not be built.`
+- **No namespace:** when no readable database and schema is found, the 25 qualified fixtures, the 2 database-scoped probes and the 4 fixture-object probes skip before the call: `No readable database and schema for the current role among the first 10 databases (kind STANDARD) and their schemas, so the fully qualified probe could not be built.`
+- **No live fixture objects:** with a namespace but without the four objects, the 4 fixture-object probes skip before the call: `live fixture objects are not present; run scripts/live_fixtures.sql once per account`.
 - **No warehouse:** the state comes once from `governance_get_current_context` (`WAREHOUSE` in its `context` row): present, NULL, or unknown when the call fails or the row or key is missing. A `success`, `rejected` or `cortex` fixture skips only when the state is NULL, no warehouse is configured (`SNOWFLAKE_WAREHOUSE` or `connections.toml`), and the error text (exception, `isError` body, or a non-error body whose `status` is `partial`) matches `no active warehouse selected` without `fallback failed`. Reason: `No current warehouse: CURRENT_WAREHOUSE() is NULL and none is configured (SNOWFLAKE_WAREHOUSE or connections.toml); a query cannot be submitted without one.` If the context call itself fails with that error, raised or as an `isError` body, and no warehouse is configured, the state is NULL; a context error joined with `fallback failed` leaves it unknown. A configured warehouse, an unknown state, a joined `fallback failed` error or a `confirm` fixture never skips; those fail as before.
 - **No REST authentication:** REST-backed tools refuse password and other authenticators before any request is sent. A `success`, `rejected` or `cortex` fixture whose exception or `isError` body says `Snowflake REST tools need key-pair, PAT or OAuth-token authentication` skips with: `REST tools need key-pair, PAT or OAuth-token authentication; this run is configured for another authentication method.` A `confirm` fixture never skips on it.
 
