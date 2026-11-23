@@ -15,6 +15,44 @@ from snowflake_mcp.connection import (
 )
 from snowflake_mcp.errors import SafetyViolationError, status_error
 
+# SYSTEM$CANCEL_QUERY answers with a successful row in both cases below, matched case-insensitively.
+# Not running (unknown, already finished, or not visible): the documented `!abort` example at
+# https://docs.snowflake.com/en/developer-guide/snowflake-cli/sql/execute-sql
+_CANCEL_NOT_EXECUTING_MARK = "identified sql statement is not currently executing"
+# Cancelled: ``query [<id>] terminated.`` at
+# https://docs.snowflake.com/en/sql-reference/functions/system_cancel_query
+_CANCEL_DONE_MARK = "terminated."
+
+
+def _cancel_result(query_id: str, rows: Any) -> dict[str, Any]:
+    """The ``queries_cancel_query`` success payload with ``cancelled`` added.
+
+    Every value of every row is read (lower-cased), with the same guards as ``drop_result``:
+
+    - a not-executing reply gives ``cancelled: false`` and a ``message`` that nothing was
+      cancelled, since an id that is unknown, already finished, or not visible to this role
+      is not running (the end state the caller asked for);
+    - otherwise a ``terminated.`` reply gives ``cancelled: true``;
+    - otherwise (no rows, or a reply not recognized) ``cancelled`` is ``None``, never a guess.
+
+    The result stays a success either way.
+    """
+    replies = (
+        [str(v).lower() for row in rows if isinstance(row, dict) for v in row.values()]
+        if isinstance(rows, list)
+        else []
+    )
+    result: dict[str, Any] = {"status": "success", "query_id": query_id, "result": rows}
+    if any(_CANCEL_NOT_EXECUTING_MARK in reply for reply in replies):
+        message = (
+            f"Query {query_id} is not currently executing: unknown, already finished, or not visible "
+            "to this role. Nothing was cancelled."
+        )
+        return {**result, "cancelled": False, "message": message}
+    if any(_CANCEL_DONE_MARK in reply for reply in replies):
+        return {**result, "cancelled": True}
+    return {**result, "cancelled": None}
+
 
 def register_query_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
     """Register query execution and management tools."""
@@ -80,7 +118,7 @@ def register_query_tools(mcp: FastMCP, client: SnowflakeClient) -> None:
         try:
             cancel_sql = f"SELECT SYSTEM$CANCEL_QUERY({quote_literal(query_id)})"
             res = client.execute_query(cancel_sql)
-            return {"status": "success", "query_id": query_id, "result": res.get("data")}
+            return _cancel_result(query_id, res.get("data"))
         except Exception as e:
             failure = status_error(e)
         raise failure from None
