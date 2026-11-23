@@ -315,12 +315,12 @@ TOOL_FIXTURES: dict[str, tuple[dict[str, Any], str]] = {
             "instance_id": "E2E_MCP_MISSING_OBJECT",
             "container_name": "E2E_MCP_MISSING_OBJECT",
         },
-        "success",
+        "rejected",
     ),
-    "compute_services_list_images": ({"repository_name": "E2E_MCP_MISSING_OBJECT"}, "success"),
+    "compute_services_list_images": ({"repository_name": "E2E_MCP_MISSING_OBJECT"}, "rejected"),
     "compute_services_list_notebook_projects": ({}, "success"),
     "compute_services_list_notebooks": ({}, "success"),
-    "compute_services_list_service_endpoints": ({"service_name": "E2E_MCP_MISSING_OBJECT"}, "success"),
+    "compute_services_list_service_endpoints": ({"service_name": "E2E_MCP_MISSING_OBJECT"}, "rejected"),
     "compute_services_pull_streamlit_from_git": ({"streamlit_name": "E2E_MCP_MISSING_OBJECT"}, "confirm"),
     "compute_services_push_streamlit_to_git": ({"streamlit_name": "E2E_MCP_MISSING_OBJECT"}, "confirm"),
     "compute_services_resume_service": ({"service_name": "E2E_MCP_MISSING_OBJECT"}, "confirm"),
@@ -591,6 +591,11 @@ _CONFIRM_MARKERS = ("requires_confirmation", "denied in read-only", "read-only")
 # privilege error, which is the expected result there; with the grant the call must succeed.
 _ACCOUNT_USAGE_TOOLS = frozenset({"horizon_get_object_lineage", "horizon_get_column_lineage"})
 _ACCOUNT_USAGE_DENIED_MARKERS = ("schema 'snowflake.account_usage' does not exist or not authorized",)
+# SHOW ACCOUNTS needs ORGADMIN. Without it the live run gets 003001 insufficient privileges, which
+# is the expected result there (the ACCOUNT_USAGE marker above does not match it); with it the call
+# must succeed.
+_SHOW_ACCOUNTS_TOOLS = frozenset({"governance_list_accounts"})
+_SHOW_ACCOUNTS_DENIED_MARKERS = ("insufficient privileges", "003001")
 _CORTEX_UNAVAILABLE_MARKERS = ("unknown function", "cortex not enabled", "not available")
 # REST-backed tools refuse password and other authenticators before any request is sent
 # (snowflake_mcp.rest.SnowflakeRestClient.headers). Key-pair, PAT and OAuth runs still call them.
@@ -612,6 +617,10 @@ def _rejection_markers(tool_name: str) -> tuple[str, ...]:
 
 def _account_usage_denied(tool_name: str, text: str) -> bool:
     return tool_name in _ACCOUNT_USAGE_TOOLS and _contains_any(text, _ACCOUNT_USAGE_DENIED_MARKERS)
+
+
+def _show_accounts_denied(tool_name: str, text: str) -> bool:
+    return tool_name in _SHOW_ACCOUNTS_TOOLS and _contains_any(text, _SHOW_ACCOUNTS_DENIED_MARKERS)
 
 
 def _cortex_skip_requested() -> bool:
@@ -653,6 +662,8 @@ _NAMESPACED: dict[str, tuple[str, str]] = {
     "recipes_inspect_table_with_sample": ("table_name", _NS_FORM_DOTTED),
     "recipes_profile_table": ("table_name", _NS_FORM_DOTTED),
     "pipes_get_pipe_status": ("pipe_name", _NS_FORM_DOTTED),
+    # Cortex Search REST call: without database and schema_name it fails before any request. Stays cortex.
+    "cortex_suggest_search": ("service_name", _NS_FORM_ARGS),
 }
 # Database-scoped list probes. With no current database these tools refuse to run, so the
 # discovered database is passed as this argument; with no namespace they skip like _NAMESPACED.
@@ -660,6 +671,22 @@ _DATABASE_SCOPED: dict[str, str] = {
     "governance_list_database_roles": "database",
     "governance_list_future_grants": "database",
 }
+# Live fixture objects created once per account by scripts/live_fixtures.sql (TESTING.md "Live fixture
+# objects"). tool -> the object its probe names. The harness stays read-only and never creates them.
+_FIXTURE_TABLE = "E2E_MCP_FIXTURE_TABLE"
+_FIXTURE_DATABASE_ROLE = "E2E_MCP_FIXTURE_DATABASE_ROLE"
+_FIXTURE_STAGE = "E2E_MCP_FIXTURE_STAGE"
+_FIXTURE_TASK = "E2E_MCP_FIXTURE_TASK"
+_FIXTURE_OBJECTS: dict[str, str] = {
+    "governance_list_grants_on_object": _FIXTURE_TABLE,
+    "governance_list_grants_to_database_role": _FIXTURE_DATABASE_ROLE,
+    "stages_get_presigned_url": _FIXTURE_STAGE,
+    "tasks_list_task_dependents": _FIXTURE_TASK,
+}
+# GET_PRESIGNED_URL returns a URL even when the file does not exist:
+# https://docs.snowflake.com/en/sql-reference/functions/get_presigned_url
+_FIXTURE_MISSING_FILE = "e2e-missing-file.txt"
+NO_FIXTURE_OBJECTS_REASON = "live fixture objects are not present; run scripts/live_fixtures.sql once per account"
 _NAMESPACE_CANDIDATES = 10
 NO_NAMESPACE_REASON = (
     "No readable database and schema for the current role among the first 10 databases (kind STANDARD) "
@@ -782,6 +809,66 @@ async def discover_namespace(srv: Any) -> tuple[str, str] | None:
     return None
 
 
+# Read-only list probes for the schema-level fixture objects: (tool, result key, object name).
+_FIXTURE_LISTINGS = (
+    ("tables_list_tables", "tables", _FIXTURE_TABLE),
+    ("stages_list_stages", "stages", _FIXTURE_STAGE),
+    ("tasks_list_tasks", "tasks", _FIXTURE_TASK),
+)
+
+
+async def _schema_has_fixture_objects(srv: Any, database: str, schema: str) -> bool:
+    for tool_name, key, object_name in _FIXTURE_LISTINGS:
+        arguments = {"database": database, "schema_name": schema, "pattern": object_name}
+        payload = await _call_json(srv, tool_name, arguments)
+        if payload is None or object_name not in _usable_names(payload.get(key)):
+            return False
+    return True
+
+
+async def discover_fixture_namespace(srv: Any) -> tuple[str, str] | None:
+    """Find the (database, schema), both quoted, that holds all four live fixture objects.
+
+    Every STANDARD database is tried (not only the first 10), through the server's own read-only list
+    tools: the database role first, then the table, stage and task in each schema, PUBLIC first.
+    The database is not hardcoded: it is wherever scripts/live_fixtures.sql was run.
+    """
+    payload = await _call_json(srv, "databases_list_databases", {})
+    if payload is None:
+        return None
+    for database in _usable_names(payload.get("databases"), kind="STANDARD"):
+        quoted_database = quote_name(database)
+        roles = await _call_json(srv, "governance_list_database_roles", {"database": quoted_database})
+        if roles is None or _FIXTURE_DATABASE_ROLE not in _usable_names(roles.get("database_roles")):
+            continue
+        schemas_payload = await _call_json(srv, "schemas_list_schemas", {"database": quoted_database})
+        if schemas_payload is None:
+            continue
+        schemas = _usable_names(schemas_payload.get("schemas"), exclude=("INFORMATION_SCHEMA",))
+        for schema in sorted(schemas, key=lambda name: name != "PUBLIC"):
+            if await _schema_has_fixture_objects(srv, quoted_database, quote_name(schema)):
+                return (quoted_database, quote_name(schema))
+    return None
+
+
+def _fixture_object_arguments(tool_name: str, database: str, schema: str) -> dict[str, Any]:
+    """Arguments that name the live fixture object for one ``_FIXTURE_OBJECTS`` tool."""
+    if tool_name == "governance_list_grants_on_object":
+        return {"object_type": "TABLE", "object_name": f"{database}.{schema}.{_FIXTURE_TABLE}"}
+    if tool_name == "governance_list_grants_to_database_role":
+        return {"database_role": f"{database}.{_FIXTURE_DATABASE_ROLE}"}
+    if tool_name == "stages_get_presigned_url":
+        return {
+            "stage_name": _FIXTURE_STAGE,
+            "relative_path": _FIXTURE_MISSING_FILE,
+            "database": database,
+            "schema_name": schema,
+        }
+    # TASK_DEPENDENTS takes the whole name in single quotes (the tool's quote_literal), with the
+    # double-quoted parts inside: https://docs.snowflake.com/en/sql-reference/functions/task_dependents
+    return {"database": database, "task_name": f"{database}.{schema}.{quote_name(_FIXTURE_TASK)}"}
+
+
 def namespaced_fixtures(namespace: tuple[str, str]) -> dict[str, tuple[dict[str, Any], str]]:
     """Return a copy of TOOL_FIXTURES with the schema-scoped probes qualified. TOOL_FIXTURES is not changed."""
     database, schema = namespace
@@ -800,6 +887,9 @@ def namespaced_fixtures(namespace: tuple[str, str]) -> dict[str, tuple[dict[str,
     for tool_name, argument in _DATABASE_SCOPED.items():
         arguments, expect = fixtures[tool_name]
         fixtures[tool_name] = ({**arguments, argument: database}, expect)
+    for tool_name in _FIXTURE_OBJECTS:
+        arguments, expect = fixtures[tool_name]
+        fixtures[tool_name] = ({**arguments, **_fixture_object_arguments(tool_name, database, schema)}, expect)
     return fixtures
 
 
@@ -843,17 +933,25 @@ def live_log_lines(
     role: str | None,
     warehouse_state: str,
     warehouse_configured: bool,
+    fixture_objects_present: bool | None = None,
 ) -> list[str]:
-    """Three log lines. The role has its own line; the account identifier and user are never logged."""
+    """Three log lines, plus a fourth for the live fixture objects when that is given.
+
+    The role has its own line; the account identifier and user are never logged.
+    """
     if namespace is None:
         namespace_line = f"live namespace: none ({NO_NAMESPACE_REASON})"
     else:
         namespace_line = f"live namespace: database={namespace[0]} schema={namespace[1]}"
-    return [
+    lines = [
         namespace_line,
         f"live role: {role or 'unknown'}",
         f"live warehouse: state={warehouse_state} configured={str(warehouse_configured).lower()}",
     ]
+    if fixture_objects_present is not None:
+        state = "present" if fixture_objects_present else f"absent ({NO_FIXTURE_OBJECTS_REASON})"
+        lines.append(f"live fixtures: {state}")
+    return lines
 
 
 async def dispatch_tool_call(
@@ -865,13 +963,14 @@ async def dispatch_tool_call(
     namespace: tuple[str, str] | None | object = _NS_UNUSED,
     warehouse_state: str = WAREHOUSE_UNKNOWN,
     warehouse_configured: bool = True,
+    fixture_objects_present: bool = True,
 ) -> tuple[str, bool, str | None]:
     """Execute one fixture and return (status, is_error, error_message).
 
     ``is_destructive`` is retained for existing callers. The fixture ``expect``
     value (success, rejected, confirm, or cortex) decides the assertion.
     The keyword-only arguments are set by the live test; their defaults keep
-    the earlier behaviour (no namespace skip, no warehouse skip).
+    the earlier behaviour (no namespace skip, no warehouse skip, no fixture-object skip).
     """
     del is_destructive
     if tool_name not in fixtures:
@@ -880,8 +979,10 @@ async def dispatch_tool_call(
             return ("SKIP", False, reason)
         return ("FAIL", True, f"No fixture for {tool_name}")
 
-    if namespace is None and (tool_name in _NAMESPACED or tool_name in _DATABASE_SCOPED):
+    if namespace is None and any(tool_name in group for group in (_NAMESPACED, _DATABASE_SCOPED, _FIXTURE_OBJECTS)):
         return ("SKIP", False, NO_NAMESPACE_REASON)
+    if tool_name in _FIXTURE_OBJECTS and not fixture_objects_present:
+        return ("SKIP", False, NO_FIXTURE_OBJECTS_REASON)
 
     env_name = _ENV_NAMED_FIXTURES.get(tool_name)
     if env_name and not os.environ.get(env_name, "").strip():
@@ -922,7 +1023,9 @@ async def dispatch_tool_call(
             return ("SKIP", True, NO_WAREHOUSE_REASON)
         if expect != "confirm" and _contains_any(message, _REST_AUTH_MARKERS):
             return ("SKIP", True, REST_AUTH_SKIP_REASON)
-        if expect == "success" and _account_usage_denied(tool_name, message):
+        if expect == "success" and (
+            _account_usage_denied(tool_name, message) or _show_accounts_denied(tool_name, message)
+        ):
             return ("PASS", True, None)
         if expect == "cortex" and _contains_any(message, _CORTEX_UNAVAILABLE_MARKERS):
             return ("SKIP", True, CORTEX_SKIP_REASON)
@@ -965,7 +1068,7 @@ async def dispatch_tool_call(
         return ("PASS", False, None)
 
     is_err = bool(res.is_error)
-    if is_err and _account_usage_denied(tool_name, body):
+    if is_err and (_account_usage_denied(tool_name, body) or _show_accounts_denied(tool_name, body)):
         return ("PASS", True, None)
     return ("FAIL" if is_err else "PASS", is_err, None)
 
@@ -1253,18 +1356,21 @@ async def test_namespaced_fixtures_send_fully_qualified_sql() -> None:
     snapshot = copy.deepcopy(TOOL_FIXTURES)
     fixtures = namespaced_fixtures(_NS)
     assert TOOL_FIXTURES == snapshot
-    assert len(_NAMESPACED) == 24
-    assert sum(form == "args" for _, form in _NAMESPACED.values()) == 8
+    assert len(_NAMESPACED) == 25
+    assert sum(form == "args" for _, form in _NAMESPACED.values()) == 9
 
     client = SnowflakeClient(config=SnowflakeConfig(account="mock_account", user="mock_user"))
     client.execute_query = MagicMock(return_value={"data": [{"name": "ID", "type": "NUMBER"}]})  # type: ignore[method-assign]
     srv = create_server(client=client)
     for tool_name, (argument, form) in _NAMESPACED.items():
-        assert TOOL_FIXTURES[tool_name][1] == "rejected" or tool_name in _EMPTY_SUCCESS_TOOLS, tool_name
+        assert TOOL_FIXTURES[tool_name][1] in ("rejected", "cortex") or tool_name in _EMPTY_SUCCESS_TOOLS, tool_name
         arguments = fixtures[tool_name][0]
         if form == "args":
             assert "." not in arguments[argument], tool_name
             assert (arguments["database"], arguments["schema_name"]) == _NS
+        if TOOL_FIXTURES[tool_name][1] == "cortex":
+            # cortex_suggest_search is a REST call, not SQL; test_suggest_search_gets_namespace_args covers it.
+            continue
         client.execute_query.reset_mock()
         try:
             await srv.call_tool(tool_name, arguments)
@@ -1520,7 +1626,7 @@ async def test_fixture_catalog_matches_server_tools(mock_snowflake_client: Snowf
             assert arguments["confirm"] is False
         if expect == "cortex":
             assert CORTEX_SKIP_REASON.strip()
-    assert counts == {"success": 70, "rejected": 40, "confirm": 119, "cortex": 16}
+    assert counts == {"success": 67, "rejected": 43, "confirm": 119, "cortex": 16}
     assert TOOL_FIXTURES["queries_query"] == ({"query": "SELECT 1"}, "success")
     # A tag name with no match is the not-found error, not an empty success.
     assert TOOL_FIXTURES["tags_describe_tag"] == ({"tag_name": "E2E_MCP_MISSING_OBJECT"}, "rejected")
@@ -1545,8 +1651,12 @@ async def test_all_discovered_tools_live(monkeypatch: pytest.MonkeyPatch) -> Non
 
     warehouse_state, role = await read_warehouse_state(srv, warehouse_configured)
     await resolve_live_user_mask(srv)
-    namespace = await discover_namespace(srv)
-    for line in live_log_lines(namespace, role, warehouse_state, warehouse_configured):
+    # The database where scripts/live_fixtures.sql ran is the namespace for every qualified probe;
+    # without the fixture objects, the first readable database and schema is used as before.
+    fixture_namespace = await discover_fixture_namespace(srv)
+    fixture_objects_present = fixture_namespace is not None
+    namespace = fixture_namespace or await discover_namespace(srv)
+    for line in live_log_lines(namespace, role, warehouse_state, warehouse_configured, fixture_objects_present):
         print(line)
     fixtures = namespaced_fixtures(namespace) if namespace else TOOL_FIXTURES
 
@@ -1566,6 +1676,7 @@ async def test_all_discovered_tools_live(monkeypatch: pytest.MonkeyPatch) -> Non
             namespace=namespace,
             warehouse_state=warehouse_state,
             warehouse_configured=warehouse_configured,
+            fixture_objects_present=fixture_objects_present,
         )
         latency_ms = (time.perf_counter() - t0) * 1000
 
@@ -1682,3 +1793,242 @@ async def test_grants_probes_skip_when_env_is_unset(monkeypatch: pytest.MonkeyPa
     for tool_name, env_name in _ENV_NAMED_FIXTURES.items():
         assert await dispatch_tool_call(srv, tool_name, False) == ("SKIP", False, f"{env_name} is not set")
     srv.call_tool.assert_not_awaited()
+
+
+_SPCS_ROWS = (
+    "compute_services_list_service_endpoints",
+    "compute_services_get_service_logs",
+    "compute_services_list_images",
+)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name", _SPCS_ROWS)
+async def test_spcs_rows_expect_rejected(name: str) -> None:
+    """Trial accounts do not support Snowpark Container Services, so these probes get the not-found error."""
+    assert TOOL_FIXTURES[name][1] == "rejected"
+    mock_srv = AsyncMock()
+    mock_srv.call_tool.return_value = _json_result(
+        {"status": "error", "error": "E2E_MCP_MISSING_OBJECT does not exist or not authorized."}, is_error=True
+    )
+    assert await dispatch_tool_call(mock_srv, name, False) == ("PASS", True, None)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "denied",
+    [
+        "SQL access control error: Insufficient privileges to operate on account",
+        "003001 (42501): SQL access control error",
+    ],
+    ids=["insufficient-privileges", "003001"],
+)
+async def test_show_accounts_privilege_denied_is_success_pass(denied: str) -> None:
+    assert TOOL_FIXTURES["governance_list_accounts"] == ({}, "success")
+    body = json.dumps({"status": "error", "error": denied})
+    mock_srv = AsyncMock()
+    for name, expected in (("governance_list_accounts", "PASS"), ("warehouses_list_warehouses", "FAIL")):
+        mock_srv.call_tool.side_effect = ToolError(body)
+        assert (await dispatch_tool_call(mock_srv, name, False))[0] == expected, name
+        mock_srv.call_tool.side_effect = None
+        mock_srv.call_tool.return_value = _json_result(body, is_error=True)
+        assert (await dispatch_tool_call(mock_srv, name, False))[0] == expected, name
+
+    # With ORGADMIN the call runs and must succeed; any other error still fails.
+    mock_srv.call_tool.return_value = _json_result({"status": "success", "accounts": []})
+    assert await dispatch_tool_call(mock_srv, "governance_list_accounts", False) == ("PASS", False, None)
+    mock_srv.call_tool.return_value = _json_result({"status": "error", "error": "warehouse suspended"}, is_error=True)
+    assert (await dispatch_tool_call(mock_srv, "governance_list_accounts", False))[0] == "FAIL"
+
+
+@pytest.mark.asyncio
+async def test_fixture_objects_use_discovered_namespace() -> None:
+    snapshot = copy.deepcopy(TOOL_FIXTURES)
+    fixtures = namespaced_fixtures(("DBX", "SCHX"))
+    assert TOOL_FIXTURES == snapshot
+    assert fixtures["governance_list_grants_on_object"] == (
+        {"object_type": "TABLE", "object_name": "DBX.SCHX.E2E_MCP_FIXTURE_TABLE"},
+        "success",
+    )
+    assert fixtures["governance_list_grants_to_database_role"] == (
+        {"database_role": "DBX.E2E_MCP_FIXTURE_DATABASE_ROLE"},
+        "success",
+    )
+    assert fixtures["stages_get_presigned_url"] == (
+        {
+            "stage_name": "E2E_MCP_FIXTURE_STAGE",
+            "relative_path": "e2e-missing-file.txt",
+            "database": "DBX",
+            "schema_name": "SCHX",
+        },
+        "success",
+    )
+    assert fixtures["tasks_list_task_dependents"] == (
+        {"task_name": 'DBX.SCHX."E2E_MCP_FIXTURE_TASK"', "database": "DBX"},
+        "success",
+    )
+
+    # The SQL names the objects in the discovered (quoted) database and schema.
+    client = SnowflakeClient(config=SnowflakeConfig(account="mock_account", user="mock_user"))
+    client.execute_query = MagicMock(return_value={"data": []})  # type: ignore[method-assign]
+    srv = create_server(client=client)
+    quoted = namespaced_fixtures(_NS)
+    expected = {
+        "governance_list_grants_on_object": ['"Db ""1"""."PUBLIC"."E2E_MCP_FIXTURE_TABLE"'],
+        "governance_list_grants_to_database_role": ['"Db ""1"""."E2E_MCP_FIXTURE_DATABASE_ROLE"'],
+        "stages_get_presigned_url": ['@"Db ""1"""."PUBLIC"."E2E_MCP_FIXTURE_STAGE"', "'e2e-missing-file.txt'"],
+        "tasks_list_task_dependents": [
+            '"Db ""1""".INFORMATION_SCHEMA.TASK_DEPENDENTS(',
+            "TASK_NAME => '\"Db \"\"1\"\"\".\"PUBLIC\".\"E2E_MCP_FIXTURE_TASK\"'",
+        ],
+    }
+    assert set(expected) == set(_FIXTURE_OBJECTS)
+    for tool_name, parts in expected.items():
+        client.execute_query.reset_mock()
+        await srv.call_tool(tool_name, quoted[tool_name][0])
+        sqls = [c.args[0] for c in client.execute_query.call_args_list]
+        assert len(sqls) == 1, (tool_name, sqls)
+        for part in parts:
+            assert part in sqls[0], (tool_name, sqls[0])
+
+
+@pytest.mark.asyncio
+async def test_fixture_object_rows_skip_without_namespace() -> None:
+    mock_srv = AsyncMock()
+    for tool_name in (*_FIXTURE_OBJECTS, "cortex_suggest_search"):
+        result = await dispatch_tool_call(mock_srv, tool_name, False, namespace=None)
+        assert result == ("SKIP", False, NO_NAMESPACE_REASON), tool_name
+    mock_srv.call_tool.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_fixture_object_rows_skip_when_objects_absent(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SNOWFLAKE_MCP_E2E_SKIP_CORTEX", raising=False)
+    fixtures = namespaced_fixtures(_NS)
+    mock_srv = AsyncMock()
+    for tool_name in _FIXTURE_OBJECTS:
+        result = await dispatch_tool_call(
+            mock_srv, tool_name, False, fixtures=fixtures, namespace=_NS, fixture_objects_present=False
+        )
+        assert result == ("SKIP", False, NO_FIXTURE_OBJECTS_REASON), tool_name
+    mock_srv.call_tool.assert_not_awaited()
+
+    # cortex_suggest_search does not depend on the fixture objects.
+    mock_srv.call_tool.return_value = _json_result({"status": "success", "suggestions": []})
+    result = await dispatch_tool_call(
+        mock_srv, "cortex_suggest_search", False, fixtures=fixtures, namespace=_NS, fixture_objects_present=False
+    )
+    assert result == ("PASS", False, None)
+    mock_srv.call_tool.assert_awaited_once_with("cortex_suggest_search", fixtures["cortex_suggest_search"][0])
+
+    # With the objects present the probes run with the fixture-object arguments.
+    for tool_name in _FIXTURE_OBJECTS:
+        result = await dispatch_tool_call(
+            mock_srv, tool_name, False, fixtures=fixtures, namespace=_NS, fixture_objects_present=True
+        )
+        assert result == ("PASS", False, None), tool_name
+        mock_srv.call_tool.assert_awaited_with(tool_name, fixtures[tool_name][0])
+
+
+def test_suggest_search_gets_namespace_args() -> None:
+    assert TOOL_FIXTURES["cortex_suggest_search"] == (
+        {"service_name": "E2E_MCP_MISSING_OBJECT", "query": "SELECT 1"},
+        "cortex",
+    )
+    assert namespaced_fixtures(_NS)["cortex_suggest_search"] == (
+        {"service_name": "E2E_MCP_MISSING_OBJECT", "query": "SELECT 1", "database": _NS[0], "schema_name": _NS[1]},
+        "cortex",
+    )
+
+
+_ALL_SCHEMA_FIXTURES = frozenset({_FIXTURE_TABLE, _FIXTURE_STAGE, _FIXTURE_TASK})
+_LISTING_KEYS = {"tables_list_tables": "tables", "stages_list_stages": "stages", "tasks_list_tasks": "tasks"}
+
+
+def _fixture_server(
+    databases: Any,
+    roles: dict[str, list[str]],
+    schemas: dict[str, list[str]],
+    objects: dict[tuple[str, str], frozenset[str]],
+) -> AsyncMock:
+    """Fake server for fixture discovery: database, database-role, schema, table, stage and task lists."""
+    srv = AsyncMock()
+
+    async def call_tool(name: str, arguments: dict[str, Any]) -> CallToolResult:
+        if name == "databases_list_databases":
+            if isinstance(databases, CallToolResult):
+                return databases
+            return _json_result({"status": "success", "databases": databases})
+        if name == "governance_list_database_roles":
+            rows = [{"name": n} for n in roles.get(arguments["database"], [])]
+            return _json_result({"status": "success", "database_roles": rows})
+        if name == "schemas_list_schemas":
+            rows = [{"name": n} for n in schemas.get(arguments["database"], [])]
+            return _json_result({"status": "success", "schemas": rows})
+        key = _LISTING_KEYS[name]
+        present = objects.get((arguments["database"], arguments["schema_name"]), frozenset())
+        rows = [{"name": arguments["pattern"]}] if arguments["pattern"] in present else []
+        return _json_result({"status": "success", key: rows})
+
+    srv.call_tool.side_effect = call_tool
+    return srv
+
+
+_FIXTURE_DBS = [f"DB_{i:02d}" for i in range(12)]
+_FIXTURE_DB = quote_name("DB_11")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("objects", "expected"),
+    [
+        (
+            {
+                (_FIXTURE_DB, '"ANALYTICS"'): _ALL_SCHEMA_FIXTURES,
+                (_FIXTURE_DB, '"PUBLIC"'): _ALL_SCHEMA_FIXTURES,
+            },
+            (_FIXTURE_DB, '"PUBLIC"'),
+        ),
+        (
+            {
+                (_FIXTURE_DB, '"ANALYTICS"'): _ALL_SCHEMA_FIXTURES,
+                (_FIXTURE_DB, '"PUBLIC"'): frozenset({_FIXTURE_TABLE, _FIXTURE_STAGE}),
+            },
+            (_FIXTURE_DB, '"ANALYTICS"'),
+        ),
+        ({(_FIXTURE_DB, '"PUBLIC"'): frozenset({_FIXTURE_STAGE, _FIXTURE_TASK})}, None),
+    ],
+    ids=["public-preferred", "other-schema", "objects-incomplete"],
+)
+async def test_discover_fixture_namespace_finds_the_database_where_the_script_ran(
+    objects: dict[tuple[str, str], frozenset[str]], expected: tuple[str, str] | None
+) -> None:
+    """Every STANDARD database is searched, past the first 10; the role prunes databases first."""
+    srv = _fixture_server(
+        [{"name": n, "kind": "STANDARD"} for n in _FIXTURE_DBS] + [{"name": "SHARED", "kind": "IMPORTED DATABASE"}],
+        {quote_name("DB_03"): ["OTHER_ROLE"], _FIXTURE_DB: [_FIXTURE_DATABASE_ROLE]},
+        {_FIXTURE_DB: ["ANALYTICS", "INFORMATION_SCHEMA", "PUBLIC"]},
+        objects,
+    )
+    assert await discover_fixture_namespace(srv) == expected
+    calls = [(c.args[0], c.args[1].get("database")) for c in srv.call_tool.await_args_list]
+    role_lookups = [database for name, database in calls if name == "governance_list_database_roles"]
+    assert role_lookups == [quote_name(n) for n in _FIXTURE_DBS]
+    assert [database for name, database in calls if name == "schemas_list_schemas"] == [_FIXTURE_DB]
+    assert all(database == _FIXTURE_DB for name, database in calls if name in _LISTING_KEYS)
+
+
+@pytest.mark.asyncio
+async def test_discover_fixture_namespace_returns_none_when_listing_fails() -> None:
+    srv = _fixture_server(_json_result({"status": "error", "error": "denied"}, is_error=True), {}, {}, {})
+    assert await discover_fixture_namespace(srv) is None
+    assert [c.args[0] for c in srv.call_tool.await_args_list] == ["databases_list_databases"]
+
+
+def test_live_log_lines_report_fixture_objects() -> None:
+    present = live_log_lines(_NS, "E2E_FAKE_ROLE", WAREHOUSE_PRESENT, True, True)
+    assert present[3] == "live fixtures: present"
+    absent = live_log_lines(_NS, "E2E_FAKE_ROLE", WAREHOUSE_PRESENT, True, False)
+    assert absent[3] == f"live fixtures: absent ({NO_FIXTURE_OBJECTS_REASON})"
+    assert len(present) == len(absent) == 4
+    assert len(live_log_lines(_NS, "E2E_FAKE_ROLE", WAREHOUSE_PRESENT, True)) == 3
