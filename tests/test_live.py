@@ -1913,9 +1913,7 @@ async def test_cortex_analyst_unrelated_error_fails_and_success_passes(monkeypat
 _ANALYST_390114_WITH_REQUEST_ID = (
     'Snowflake REST request failed (400): {"code": "390114", "message": "rejected", "requestId": "1390400"}'
 )
-_ANALYST_MESSAGE_MENTIONS_390400 = (
-    'Snowflake REST request failed (400): {"code": "390114", "message": "see 390400"}'
-)
+_ANALYST_MESSAGE_MENTIONS_390400 = 'Snowflake REST request failed (400): {"code": "390114", "message": "see 390400"}'
 
 
 @pytest.mark.asyncio
