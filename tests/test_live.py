@@ -38,9 +38,15 @@ _RESOLVED_LIVE_NAMES: set[str] = set()
 
 
 def _redact_live_names(text: str) -> str:
-    """Mask the login name from SNOWFLAKE_USER and any resolved user object name."""
+    """Mask the login name from SNOWFLAKE_USER and any resolved user object name.
+
+    Quoted identifiers double an embedded quote (see quote_name), so a name with a quote also
+    appears in SQL-escaped form. Both forms are masked.
+    """
     names = {os.environ.get("SNOWFLAKE_USER", "").strip()} | _RESOLVED_LIVE_NAMES
-    for name in sorted((name for name in names if name), key=len, reverse=True):
+    names = {name for name in names if name}
+    names |= {name.replace('"', '""') for name in names}
+    for name in sorted(names, key=len, reverse=True):
         text = re.sub(re.escape(name), "[redacted user]", text, flags=re.IGNORECASE)
     return text
 
@@ -1633,6 +1639,15 @@ def test_live_log_lines_mask_user_in_namespace(monkeypatch: pytest.MonkeyPatch) 
     lines = live_log_lines(('"e2e_fake_user_db"', '"E2E_FAKE_OBJECT_SCHEMA"'), None, WAREHOUSE_PRESENT, True)
     assert lines[0] == 'live namespace: database="[redacted user]_db" schema="[redacted user]_SCHEMA"'
     assert not any("e2e_fake_user" in line.lower() or "e2e_fake_object" in line.lower() for line in lines)
+
+
+def test_live_log_lines_mask_sql_escaped_user_in_namespace(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A quoted identifier doubles an embedded quote in the login name, and that form is masked."""
+    monkeypatch.setenv("SNOWFLAKE_USER", 'A"B')
+    monkeypatch.setattr(sys.modules[__name__], "_RESOLVED_LIVE_NAMES", set())
+    lines = live_log_lines((quote_name('A"B_DB'), '"PUBLIC"'), "E2E_FAKE_ROLE", WAREHOUSE_PRESENT, True, True)
+    assert lines[0] == 'live namespace: database="[redacted user]_DB" schema="PUBLIC"'
+    assert not any('A""B' in line or 'A"B' in line for line in lines)
 
 
 @pytest.mark.asyncio
