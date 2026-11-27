@@ -72,7 +72,7 @@ The live test sets `SNOWFLAKE_MCP_READONLY=1` before it calls tools. Marker chec
 | `success` | The tool result is not `isError`. An empty success body passes. |
 | `rejected` | The exception text or result body matches that tool's rejection markers. A body that matches none of them fails (`Expected a safe rejection` when the body is not `isError`). |
 | `confirm` | The result body or `SafetyViolationError` text matches a confirm marker. Arguments that include `confirm` always pass `confirm: False`. A result without a confirm marker fails as `Destructive safety gate bypassed`. |
-| `cortex` | Cortex call. Unavailable Cortex is a skip (below), including when the result or exception text matches the unavailable markers. A result or exception that matches the global safe-rejection markers passes. Any other non-error success passes. An `isError` body that matches neither marker set fails. |
+| `cortex` | Cortex call. Unavailable Cortex is a skip (below), including when the result or exception text matches the unavailable markers. A result or exception that matches the global safe-rejection markers passes. For the four Cortex Analyst tools below, an exception or `isError` body that contains `390400` or `370001` is a separate skip. Any other non-error success passes. An `isError` body that matches none of these fails. |
 
 ### Soft-empty success (`_EMPTY_SUCCESS_TOOLS`)
 
@@ -129,6 +129,9 @@ The `cortex` fixtures are `cortex_analyst_query`, `cortex_complete`, `cortex_emb
 - `SNOWFLAKE_MCP_E2E_SKIP_CORTEX` set to `1`, `true`, or `yes` skips those tools before the call. Skip reason: `Cortex is not available on this account`.
 - A result or exception whose text matches `_CORTEX_UNAVAILABLE_MARKERS` (`unknown function`, `cortex not enabled`, `not available`, `399104`, `suggest api is not enabled`) is the same skip when the account does not offer Cortex. The last two match the HTTP 403 `cortex_suggest_search` gets when the Cortex Search Suggest API is not enabled on the account.
 - A match on `_SAFE_REJECTION_MARKERS` is a pass for `expect: cortex`, not a skip.
+- `_CORTEX_ANALYST_TOOLS` stays `expect: cortex`: `cortex_suggest_verified_queries`, `cortex_preselect_semantic_model_tables`, `cortex_suggest_semantic_model_metrics`, and `cortex_list_semantic_model_optimizations`. No semantic-model fixture objects exist for them.
+- `_CORTEX_ANALYST_EXPECTED_MARKERS` are `390400` and `370001`. `cortex_suggest_verified_queries` and `cortex_preselect_semantic_model_tables` return HTTP 400 `390400` (`warehouse cannot be empty string`); `cortex_list_semantic_model_optimizations` returns HTTP 400 `390400` (`semanticModel is required`); `cortex_suggest_semantic_model_metrics` returns HTTP 500 `370001`.
+- When the tool is in `_CORTEX_ANALYST_TOOLS` and the exception (`SafetyViolationError` or any other) or `isError` body contains either code, the harness skips with `Cortex Analyst rejected the placeholder request (390400 or 370001); the account has no semantic model fixture for this probe.` Those codes are not in `_SAFE_REJECTION_MARKERS`, `_CORTEX_UNAVAILABLE_MARKERS`, or `_TOOL_REJECTION_MARKERS`, and this is not the `Cortex is not available on this account` skip. The same codes on another tool still fail. An Analyst tool with an unrelated error still fails, and a successful Analyst result still passes.
 
 ### Live run with only account, user and token
 
@@ -157,6 +160,6 @@ Fixtures that submit a query and so need a warehouse (`DESCRIBE` and `SHOW` need
 
 ### When a live run fails on an expect mismatch
 
-Update the harness in the same pull request. Change `_SAFE_REJECTION_MARKERS`, `_TOOL_REJECTION_MARKERS`, `_CONFIRM_MARKERS`, or the fixture `expect` so the table matches the product behavior you reproduced, and update this section when a bucket or marker list changes.
+Update the harness in the same pull request. Change `_SAFE_REJECTION_MARKERS`, `_TOOL_REJECTION_MARKERS`, `_CONFIRM_MARKERS`, `_CORTEX_UNAVAILABLE_MARKERS`, `_CORTEX_ANALYST_EXPECTED_MARKERS`, or the fixture `expect` so the table matches the product behavior you reproduced, and update this section when a bucket or marker list changes.
 
 Take the evidence from the `TOOL_FIXTURES` table in `tests/test_live.py`. Reclassifying a tool in chat, including moving a soft-empty tool from `success` to `rejected`, needs that table (and a code change that shows the tool now rejects) in the same PR.
