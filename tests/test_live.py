@@ -615,7 +615,11 @@ _CORTEX_UNAVAILABLE_MARKERS = (
     "suggest api is not enabled",
 )
 # Cortex Analyst probes have no semantic-model fixture. The 2026-11-22 live run answered these
-# with REST errors that do not mean Cortex is unavailable:
+# with REST errors that do not mean Cortex is unavailable. rest.py builds
+# "Snowflake REST request failed ({status}): {response.text}" and errors.py puts that string
+# in {"status": "error", "error": ...}. The skip matches only when that body's "code" field
+# is exactly "390400" or "370001". Digits in a request id, a message, or any other field do
+# not match, and a successful result does not skip:
 # cortex_suggest_verified_queries and cortex_preselect_semantic_model_tables: HTTP 400 390400
 # ("warehouse cannot be empty string"); cortex_suggest_semantic_model_metrics: HTTP 500 370001;
 # cortex_list_semantic_model_optimizations: HTTP 400 390400 ("semanticModel is required").
@@ -628,6 +632,8 @@ _CORTEX_ANALYST_TOOLS = frozenset(
     }
 )
 _CORTEX_ANALYST_EXPECTED_MARKERS = ("390400", "370001")
+# SnowflakeRestClient.request (rest.py): "Snowflake REST request failed ({status}): {response.text}".
+_REST_FAILURE_LINE = re.compile(r"^Snowflake REST request failed \(\d+\): (.*)\Z", re.DOTALL)
 CORTEX_ANALYST_SKIP_REASON = (
     "Cortex Analyst rejected the placeholder request (390400 or 370001); "
     "the account has no semantic model fixture for this probe."
@@ -658,9 +664,45 @@ def _show_accounts_denied(tool_name: str, text: str) -> bool:
     return tool_name in _SHOW_ACCOUNTS_TOOLS and _contains_any(text, _SHOW_ACCOUNTS_DENIED_MARKERS)
 
 
+def _rest_failure_code(text: str) -> str | None:
+    """``code`` string from ``Snowflake REST request failed ({status}): {response.text}``.
+
+    ``response.text`` is the JSON object Snowflake returned. Only its ``code`` field counts.
+    """
+    match = _REST_FAILURE_LINE.fullmatch(text.strip())
+    if match is None:
+        return None
+    try:
+        value = json.loads(match.group(1))
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(value, dict):
+        return None
+    code = value.get("code")
+    return code if isinstance(code, str) else None
+
+
+def _status_error_message(text: str) -> str | None:
+    """``error`` string of a ``{"status": "error", "error": ...}`` tool payload.
+
+    ``status_error`` and ``SafetyViolationError`` both serialize that object (errors.py).
+    """
+    try:
+        parsed = json.loads(text.strip())
+    except json.JSONDecodeError:
+        return None
+    if isinstance(parsed, dict) and parsed.get("status") == "error" and isinstance(parsed.get("error"), str):
+        return parsed["error"]
+    return None
+
+
 def _cortex_analyst_expected(tool_name: str, text: str) -> bool:
-    """True when an Analyst probe's error text carries 390400 or 370001."""
-    return tool_name in _CORTEX_ANALYST_TOOLS and _contains_any(text, _CORTEX_ANALYST_EXPECTED_MARKERS)
+    """True when an Analyst probe's REST error ``code`` is exactly 390400 or 370001."""
+    if tool_name not in _CORTEX_ANALYST_TOOLS:
+        return False
+    inner = _status_error_message(text)
+    code = _rest_failure_code(inner if inner is not None else text)
+    return code in _CORTEX_ANALYST_EXPECTED_MARKERS
 
 
 def _cortex_skip_requested() -> bool:
@@ -1108,7 +1150,7 @@ async def dispatch_tool_call(
             return ("PASS", bool(res.is_error), None)
         if _contains_any(body, _CORTEX_UNAVAILABLE_MARKERS):
             return ("SKIP", True, CORTEX_SKIP_REASON)
-        if _cortex_analyst_expected(tool_name, body):
+        if res.is_error and _cortex_analyst_expected(tool_name, body):
             return ("SKIP", True, CORTEX_ANALYST_SKIP_REASON)
         if res.is_error:
             return ("FAIL", True, _redact_secrets(body) or None)
@@ -1865,6 +1907,57 @@ async def test_cortex_analyst_unrelated_error_fails_and_success_passes(monkeypat
     srv.call_tool.return_value = _json_result({"status": "error", "error": "warehouse suspended"}, is_error=True)
     assert (await dispatch_tool_call(srv, name, False))[0] == "FAIL"
     srv.call_tool.return_value = _json_result({"status": "success"})
+    assert await dispatch_tool_call(srv, name, False) == ("PASS", False, None)
+
+
+_ANALYST_390114_WITH_REQUEST_ID = (
+    'Snowflake REST request failed (400): {"code": "390114", "message": "rejected", "requestId": "1390400"}'
+)
+_ANALYST_MESSAGE_MENTIONS_390400 = (
+    'Snowflake REST request failed (400): {"code": "390114", "message": "see 390400"}'
+)
+
+
+@pytest.mark.asyncio
+async def test_cortex_analyst_request_id_digits_do_not_skip(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Code 390114 stays a FAIL when the request id contains 1390400."""
+    monkeypatch.delenv("SNOWFLAKE_MCP_E2E_SKIP_CORTEX", raising=False)
+    name = "cortex_suggest_verified_queries"
+    text = _ANALYST_390114_WITH_REQUEST_ID
+    srv = AsyncMock()
+    srv.call_tool.side_effect = ToolError(text)
+    assert (await dispatch_tool_call(srv, name, False))[0] == "FAIL"
+    srv.call_tool.side_effect = None
+    srv.call_tool.return_value = _json_result({"status": "error", "error": text}, is_error=True)
+    assert (await dispatch_tool_call(srv, name, False))[0] == "FAIL"
+
+
+@pytest.mark.asyncio
+async def test_cortex_analyst_message_mentioning_code_does_not_skip(monkeypatch: pytest.MonkeyPatch) -> None:
+    """390400 inside the message text is not the code field, so the probe fails."""
+    monkeypatch.delenv("SNOWFLAKE_MCP_E2E_SKIP_CORTEX", raising=False)
+    name = "cortex_suggest_verified_queries"
+    text = _ANALYST_MESSAGE_MENTIONS_390400
+    srv = AsyncMock()
+    srv.call_tool.side_effect = ToolError(text)
+    assert (await dispatch_tool_call(srv, name, False))[0] == "FAIL"
+    srv.call_tool.side_effect = None
+    srv.call_tool.return_value = _json_result({"status": "error", "error": text}, is_error=True)
+    assert (await dispatch_tool_call(srv, name, False))[0] == "FAIL"
+
+
+@pytest.mark.asyncio
+async def test_cortex_analyst_success_carrying_code_passes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A successful Analyst result stays PASS when the body carries code 390400."""
+    monkeypatch.delenv("SNOWFLAKE_MCP_E2E_SKIP_CORTEX", raising=False)
+    name = "cortex_suggest_verified_queries"
+    srv = AsyncMock()
+    srv.call_tool.return_value = _json_result(_ANALYST_390400_EMPTY_WAREHOUSE, is_error=False)
+    assert await dispatch_tool_call(srv, name, False) == ("PASS", False, None)
+    srv.call_tool.return_value = _json_result(
+        {"status": "success", "code": "390400", "requestId": "1390400"},
+        is_error=False,
+    )
     assert await dispatch_tool_call(srv, name, False) == ("PASS", False, None)
 
 
