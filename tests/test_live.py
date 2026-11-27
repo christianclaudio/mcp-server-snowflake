@@ -1990,7 +1990,7 @@ async def test_cortex_analyst_success_carrying_code_passes(monkeypatch: pytest.M
 
 
 _ANALYST_ERROR_CODE_390114 = (
-    'Snowflake REST request failed (500): '
+    "Snowflake REST request failed (500): "
     '{"message": null, "code": null, "error_code": "390114", "request_id": "1370001"}'
 )
 
