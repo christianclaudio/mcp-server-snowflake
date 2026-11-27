@@ -2009,6 +2009,49 @@ async def test_cortex_analyst_other_error_code_with_request_id_fails(monkeypatch
     assert (await dispatch_tool_call(srv, name, False))[0] == "FAIL"
 
 
+_ANALYST_ERROR_CODE_TYPES = (
+    (
+        'Snowflake REST request failed (500): {"message": null, "code": null, "error_code": 370001}',
+        "SKIP",
+    ),
+    (
+        'Snowflake REST request failed (500): {"message": null, "code": null, "error_code": true}',
+        "FAIL",
+    ),
+    (
+        'Snowflake REST request failed (500): {"message": null, "code": null, "error_code": 370001.0}',
+        "FAIL",
+    ),
+    (
+        'Snowflake REST request failed (500): {"message": null, "code": null, "error_code": null}',
+        "FAIL",
+    ),
+)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("text", "status"), _ANALYST_ERROR_CODE_TYPES, ids=["int", "bool", "float", "null"])
+async def test_cortex_analyst_error_code_json_types(monkeypatch: pytest.MonkeyPatch, text: str, status: str) -> None:
+    """JSON int 370001 skips; a bool, float, or null error_code fails."""
+    monkeypatch.delenv("SNOWFLAKE_MCP_E2E_SKIP_CORTEX", raising=False)
+    name = "cortex_suggest_semantic_model_metrics"
+    skip = ("SKIP", True, CORTEX_ANALYST_SKIP_REASON)
+    srv = AsyncMock()
+    srv.call_tool.side_effect = ToolError(text)
+    result = await dispatch_tool_call(srv, name, False)
+    if status == "SKIP":
+        assert result == skip
+    else:
+        assert result[0] == "FAIL"
+    srv.call_tool.side_effect = None
+    srv.call_tool.return_value = _json_result({"status": "error", "error": text}, is_error=True)
+    result = await dispatch_tool_call(srv, name, False)
+    if status == "SKIP":
+        assert result == skip
+    else:
+        assert result[0] == "FAIL"
+
+
 def test_analyst_codes_stay_out_of_the_other_marker_lists() -> None:
     """390400 and 370001 are Analyst-only; they are not global, unavailable, or per-tool rejection markers."""
     for code in _CORTEX_ANALYST_EXPECTED_MARKERS:
